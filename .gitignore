@@ -1,0 +1,53 @@
+# TrafficMonitor (外部项目，不纳入版本管理)
+TrafficMonitor/
+
+# Visual Studio
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.ncb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.VC.opendb
+.vs/
+ipch/
+Debug/
+Release/
+x64/
+x86/
+[Bb]uild/
+[Oo]ut/
+
+# MSBuild
+*.obj
+*.pch
+*.pdb
+*.ilk
+*.log
+*.idb
+*.lib
+*.exp
+*.exe
+*.dll
+*.res
+*.bsc
+*.sbr
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# JetBrains / Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# OS junk
+.DS_Store
