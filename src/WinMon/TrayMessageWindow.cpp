@@ -42,7 +42,7 @@ ClassicConnectionIds ReadClassicConnectionIds()
         if (SUCCEEDED(CoCreateInstance(
                 CLSID_ConnectionManager,
                 nullptr,
-                CLSCTX_INPROC_SERVER,
+                CLSCTX_LOCAL_SERVER,
                 IID_PPV_ARGS(&manager))))
         {
             Microsoft::WRL::ComPtr<IEnumNetConnection> connections;
