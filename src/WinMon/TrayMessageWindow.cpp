@@ -316,7 +316,6 @@ UINT TrayMessageWindow::ShowOperatorMenu()
         }
         else if (item.kind == winmon::OperatorMenuItemKind::Nic)
         {
-            if (nextCommand > ID_OPERATOR_NIC_LAST) continue;
             if (!menu.AppendMenu(MF_STRING, nextCommand, item.label.c_str())) return 0;
             menuNicIds_.push_back(item.stableId);
             if (item.checked) menu.CheckMenuRadioItem(allCommand, nextCommand, nextCommand, MF_BYCOMMAND);
