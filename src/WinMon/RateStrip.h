@@ -1,0 +1,27 @@
+#pragma once
+
+#include <afxwin.h>
+
+class RateStrip final : public CWnd
+{
+public:
+    [[nodiscard]] bool Embed();
+    void Shutdown() noexcept;
+
+private:
+    [[nodiscard]] static HWND FindPrimaryBottomTaskbar() noexcept;
+    [[nodiscard]] static HWND FindNotificationArea(HWND taskbar) noexcept;
+    [[nodiscard]] bool CreateSystemUiFont(HWND taskbar) noexcept;
+    [[nodiscard]] CSize MeasureSize(HWND taskbar) const;
+    [[nodiscard]] bool PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea) noexcept;
+
+    afx_msg void OnPaint();
+    afx_msg BOOL OnEraseBkgnd(CDC* deviceContext);
+    afx_msg int OnMouseActivate(CWnd* desktopWindow, UINT hitTest, UINT message);
+    afx_msg LRESULT OnNcHitTest(CPoint point);
+
+    DECLARE_MESSAGE_MAP()
+
+    CFont font_;
+    CSize size_{};
+};

@@ -95,10 +95,12 @@
   <ItemGroup>
     <ClInclude Include="resource.h" />
     <ClInclude Include="TrayMessageWindow.h" />
+    <ClInclude Include="RateStrip.h" />
     <ClInclude Include="WinMonApp.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="TrayMessageWindow.cpp" />
+    <ClCompile Include="RateStrip.cpp" />
     <ClCompile Include="WinMonApp.cpp" />
   </ItemGroup>
   <ItemGroup>

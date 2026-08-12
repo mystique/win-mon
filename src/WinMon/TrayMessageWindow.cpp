@@ -39,11 +39,13 @@ bool TrayMessageWindow::Initialize()
         return false;
     }
 
+    static_cast<void>(rateStrip_.Embed());
     return true;
 }
 
 void TrayMessageWindow::Shutdown() noexcept
 {
+    rateStrip_.Shutdown();
     RemoveTrayIcon();
 
     if (GetSafeHwnd() != nullptr)
@@ -140,6 +142,7 @@ UINT TrayMessageWindow::ShowOperatorMenu()
 
 void TrayMessageWindow::RequestExit()
 {
+    rateStrip_.Shutdown();
     RemoveTrayIcon();
 
     if (GetSafeHwnd() != nullptr)

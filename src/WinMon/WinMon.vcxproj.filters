@@ -10,12 +10,18 @@
     <ClInclude Include="WinMonApp.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="RateStrip.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="TrayMessageWindow.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="WinMonApp.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RateStrip.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Launch Win Mon from the Tray Icon.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Launch embeds the Rate Strip as a child of the primary Windows 11 taskbar, anchored beside the notification area.
 - [ ] The implementation uses the Shell_TrayWnd child strategy required by ADR-0001, not a free-floating always-on-top overlay.

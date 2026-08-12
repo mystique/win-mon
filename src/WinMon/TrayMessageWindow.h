@@ -2,6 +2,8 @@
 
 #include <afxwin.h>
 
+#include "RateStrip.h"
+
 class TrayMessageWindow final : public CWnd
 {
 public:
@@ -18,5 +20,6 @@ private:
 
     DECLARE_MESSAGE_MAP()
 
+    RateStrip rateStrip_;
     bool trayIconAdded_ = false;
 };
