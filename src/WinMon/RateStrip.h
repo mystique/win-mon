@@ -17,6 +17,7 @@ private:
     [[nodiscard]] bool CreateSystemUiFont(HWND taskbar) noexcept;
     [[nodiscard]] CSize MeasureSize(HWND taskbar) const;
     [[nodiscard]] bool PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea) noexcept;
+    [[nodiscard]] bool Relayout(HWND taskbar, HWND notificationArea) noexcept;
 
     afx_msg void OnPaint();
     afx_msg BOOL OnEraseBkgnd(CDC* deviceContext);
@@ -29,4 +30,5 @@ private:
     CSize size_{};
     std::wstring uploadText_ = L"0.0K/s";
     std::wstring downloadText_ = L"0.0K/s";
+    HWND taskbar_ = nullptr;
 };

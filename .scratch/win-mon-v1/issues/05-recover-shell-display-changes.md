@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 — Select one NIC from the Operator Menu.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Explorer/taskbar recreation restores exactly one Tray Icon and one supported Rate Strip without a user prompt.
 - [ ] Shell Recovery preserves the current in-memory NIC Selection and resumes its displayed rates.

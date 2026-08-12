@@ -15,15 +15,27 @@ constexpr UINT kTrayIconId = 1;
 constexpr UINT kTrayNotificationMessage = WM_APP + 1;
 constexpr wchar_t kTrayTooltip[] = L"Win Mon";
 constexpr UINT_PTR kRateSampleTimer = 1;
+constexpr UINT_PTR kShellRecoveryTimer = 2;
+constexpr UINT kShellRecoveryCadenceMs = 2000;
+const UINT kTaskbarCreatedMessage = RegisterWindowMessageW(L"TaskbarCreated");
 }
 
 BEGIN_MESSAGE_MAP(TrayMessageWindow, CWnd)
     ON_MESSAGE(kTrayNotificationMessage, &TrayMessageWindow::OnTrayNotification)
+    ON_REGISTERED_MESSAGE(kTaskbarCreatedMessage, &TrayMessageWindow::OnTaskbarCreated)
+    ON_MESSAGE(WM_DPICHANGED, &TrayMessageWindow::OnDpiChanged)
+    ON_WM_DISPLAYCHANGE()
+    ON_WM_SETTINGCHANGE()
+    ON_WM_THEMECHANGED()
     ON_WM_TIMER()
 END_MESSAGE_MAP()
 
 bool TrayMessageWindow::Initialize()
 {
+    if (kTaskbarCreatedMessage == 0)
+    {
+        return false;
+    }
     const CString windowClass = AfxRegisterWndClass(0);
     if (!CreateEx(
             0,
@@ -46,14 +58,21 @@ bool TrayMessageWindow::Initialize()
         return false;
     }
 
+    shuttingDown_ = false;
     static_cast<void>(rateStrip_.Embed());
+    if (rateStrip_.GetSafeHwnd() == nullptr)
+    {
+        ScheduleShellRecoveryRetry();
+    }
     SetTimer(kRateSampleTimer, 1000, nullptr);
     return true;
 }
 
 void TrayMessageWindow::Shutdown() noexcept
 {
+    shuttingDown_ = true;
     KillTimer(kRateSampleTimer);
+    CancelShellRecoveryRetry();
     rateStrip_.Shutdown();
     RemoveTrayIcon();
 
@@ -62,6 +81,8 @@ void TrayMessageWindow::Shutdown() noexcept
         DestroyWindow();
     }
 }
+
+
 
 std::vector<winmon::NicSnapshot> TrayMessageWindow::ReadNicSnapshots() const
 {
@@ -85,6 +106,103 @@ std::vector<winmon::NicSnapshot> TrayMessageWindow::ReadNicSnapshots() const
     FreeMibTable(table);
     return snapshots;
 }
+void TrayMessageWindow::ScheduleShellRecoveryRetry() noexcept
+{
+    if (shuttingDown_ || shellRecoveryTimerActive_ || GetSafeHwnd() == nullptr)
+    {
+        return;
+    }
+    shellRecoveryTimerActive_ = SetTimer(kShellRecoveryTimer, kShellRecoveryCadenceMs, nullptr) != 0;
+}
+
+void TrayMessageWindow::CancelShellRecoveryRetry() noexcept
+{
+    if (!shellRecoveryTimerActive_)
+    {
+        return;
+    }
+    KillTimer(kShellRecoveryTimer);
+    shellRecoveryTimerActive_ = false;
+}
+
+void TrayMessageWindow::RecoverRateStrip()
+{
+    if (shuttingDown_)
+    {
+        return;
+    }
+    rateStrip_.Shutdown();
+    if (!rateStrip_.Embed())
+    {
+        ScheduleShellRecoveryRetry();
+        return;
+    }
+    CancelShellRecoveryRetry();
+}
+
+void TrayMessageWindow::AttemptShellRecovery()
+{
+    if (shuttingDown_)
+    {
+        return;
+    }
+
+    if (!trayIconAdded_ && !AddTrayIcon())
+    {
+        ScheduleShellRecoveryRetry();
+        return;
+    }
+
+    // Embed() revalidates the parent taskbar, so an Explorer-created stale
+    // child is discarded before a new child is created.
+    if (!rateStrip_.Embed())
+    {
+        ScheduleShellRecoveryRetry();
+        return;
+    }
+    CancelShellRecoveryRetry();
+}
+
+LRESULT TrayMessageWindow::OnTaskbarCreated(WPARAM, LPARAM)
+{
+    if (shuttingDown_)
+    {
+        return 0;
+    }
+
+    // The shell has discarded the old notification-area state. Delete first
+    // so a delayed shell callback cannot leave two icons after NIM_ADD.
+    RemoveTrayIcon();
+    static_cast<void>(AddTrayIcon());
+    RecoverRateStrip();
+    if (!trayIconAdded_ || rateStrip_.GetSafeHwnd() == nullptr)
+    {
+        ScheduleShellRecoveryRetry();
+    }
+    return 0;
+}
+
+LRESULT TrayMessageWindow::OnDpiChanged(WPARAM, LPARAM)
+{
+    RecoverRateStrip();
+    return 0;
+}
+
+void TrayMessageWindow::OnDisplayChange(UINT, int, int)
+{
+    RecoverRateStrip();
+}
+
+void TrayMessageWindow::OnSettingChange(UINT, LPCTSTR)
+{
+    RecoverRateStrip();
+}
+
+LRESULT TrayMessageWindow::OnThemeChanged()
+{
+    RecoverRateStrip();
+    return 0;
+}
 
 void TrayMessageWindow::SampleRates()
 {
@@ -100,6 +218,16 @@ void TrayMessageWindow::OnTimer(UINT_PTR timerId)
     if (timerId == kRateSampleTimer)
     {
         SampleRates();
+    }
+    else if (timerId == kShellRecoveryTimer)
+    {
+        shellRecoveryTimerActive_ = false;
+        KillTimer(kShellRecoveryTimer);
+        AttemptShellRecovery();
+        if (!trayIconAdded_ || rateStrip_.GetSafeHwnd() == nullptr)
+        {
+            ScheduleShellRecoveryRetry();
+        }
     }
     CWnd::OnTimer(timerId);
 }
@@ -126,9 +254,11 @@ bool TrayMessageWindow::AddTrayIcon()
     }
 
     wcscpy_s(iconData.szTip, kTrayTooltip);
-
     if (!Shell_NotifyIconW(NIM_ADD, &iconData))
     {
+        // Explorer can still be replacing its notification area. Treat this
+        // as transient during recovery; the bounded retry will try again.
+        trayIconAdded_ = false;
         return false;
     }
 
@@ -191,14 +321,7 @@ UINT TrayMessageWindow::ShowOperatorMenu()
 
 void TrayMessageWindow::RequestExit()
 {
-    rateStrip_.Shutdown();
-    RemoveTrayIcon();
-
-    if (GetSafeHwnd() != nullptr)
-    {
-        DestroyWindow();
-    }
-
+    Shutdown();
     PostQuitMessage(0);
 }
 LRESULT TrayMessageWindow::OnTrayNotification(WPARAM, LPARAM lParam)

@@ -50,21 +50,35 @@ END_MESSAGE_MAP()
 
 bool RateStrip::Embed()
 {
-    if (GetSafeHwnd() != nullptr)
-    {
-        return true;
-    }
-
     const HWND taskbar = FindPrimaryBottomTaskbar();
     if (taskbar == nullptr)
     {
+        Shutdown();
         return false;
     }
 
     const HWND notificationArea = FindNotificationArea(taskbar);
     if (notificationArea == nullptr)
     {
+        Shutdown();
         return false;
+    }
+
+    if (GetSafeHwnd() != nullptr)
+    {
+        if (taskbar_ != taskbar || !IsWindow(taskbar_))
+        {
+            Shutdown();
+        }
+        else if (!Relayout(taskbar, notificationArea))
+        {
+            Shutdown();
+        }
+        else
+        {
+            ShowWindow(SW_SHOWNOACTIVATE);
+            return true;
+        }
     }
 
     if (!CreateSystemUiFont(taskbar))
@@ -94,10 +108,10 @@ bool RateStrip::Embed()
         return false;
     }
 
-    if (!PlaceBesideNotificationArea(taskbar, notificationArea))
+    taskbar_ = taskbar;
+    if (!Relayout(taskbar, notificationArea))
     {
-        DestroyWindow();
-        font_.DeleteObject();
+        Shutdown();
         return false;
     }
 
@@ -105,6 +119,23 @@ bool RateStrip::Embed()
     return true;
 }
 
+bool RateStrip::Relayout(HWND taskbar, HWND notificationArea) noexcept
+{
+    if (font_.GetSafeHandle() != nullptr)
+    {
+        font_.DeleteObject();
+    }
+    if (!CreateSystemUiFont(taskbar))
+    {
+        return false;
+    }
+    size_ = MeasureSize(taskbar);
+    if (size_.cx <= 0 || size_.cy <= 0)
+    {
+        return false;
+    }
+    return PlaceBesideNotificationArea(taskbar, notificationArea);
+}
 void RateStrip::Shutdown() noexcept
 {
     if (GetSafeHwnd() != nullptr)
@@ -117,8 +148,11 @@ void RateStrip::Shutdown() noexcept
         font_.DeleteObject();
     }
 
+    taskbar_ = nullptr;
     size_ = {};
 }
+
+
 
 HWND RateStrip::FindPrimaryBottomTaskbar() noexcept
 {
