@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] A normal user can launch Win Mon without elevation or a visible main window.
 - [ ] Launch creates exactly one Tray Icon with tooltip `Win Mon`.
