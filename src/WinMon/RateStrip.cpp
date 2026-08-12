@@ -37,7 +37,7 @@ void RateStrip::SetRates(const std::wstring& uploadText, const std::wstring& dow
     downloadText_ = downloadText;
     if (GetSafeHwnd() != nullptr)
     {
-        Invalidate(FALSE);
+        static_cast<void>(Render());
     }
 }
 
@@ -99,17 +99,23 @@ bool RateStrip::Embed(bool shouldShow)
     }
 
     const CString windowClass = AfxRegisterWndClass(0, LoadCursorW(nullptr, IDC_ARROW), nullptr, nullptr);
-    const DWORD style = WS_CHILD | WS_DISABLED | WS_CLIPSIBLINGS;
+    const DWORD style = WS_POPUP | WS_SYSMENU;
     if (!CreateEx(
-            WS_EX_NOACTIVATE,
+            WS_EX_TOOLWINDOW | WS_EX_LAYERED,
             windowClass,
             nullptr,
             style,
             CRect(0, 0, size_.cx, size_.cy),
-            CWnd::FromHandle(taskbar),
+            nullptr,
             0))
     {
         font_.DeleteObject();
+        return false;
+    }
+
+    if (::SetParent(GetSafeHwnd(), taskbar) == nullptr)
+    {
+        Shutdown();
         return false;
     }
 
@@ -121,7 +127,7 @@ bool RateStrip::Embed(bool shouldShow)
     }
 
     ShowWindow(SW_SHOWNOACTIVATE);
-    return true;
+    return Render();
 }
 
 bool RateStrip::Relayout(HWND taskbar, HWND notificationArea) noexcept
@@ -256,13 +262,13 @@ bool RateStrip::PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea)
 {
     RECT notificationRect{};
     RECT taskbarClientRect{};
-    if (!::GetWindowRect(notificationArea, &notificationRect) || !::GetClientRect(taskbar, &taskbarClientRect))
+    if (!::GetWindowRect(notificationArea, &notificationRect) ||
+        !::GetClientRect(taskbar, &taskbarClientRect))
     {
         return false;
     }
 
     ::MapWindowPoints(nullptr, taskbar, reinterpret_cast<POINT*>(&notificationRect), 2);
-
     const UINT dpi = GetDpiForWindow(taskbar);
     const int margin = MulDiv(4, static_cast<int>(dpi), 96);
     const int x = notificationRect.left - size_.cx - margin;
@@ -272,30 +278,76 @@ bool RateStrip::PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea)
         return false;
     }
 
-    return ::MoveWindow(GetSafeHwnd(), x, y, size_.cx, size_.cy, FALSE) != FALSE;
+    return ::SetWindowPos(
+               GetSafeHwnd(),
+               HWND_TOP,
+               x,
+               y,
+               size_.cx,
+               size_.cy,
+               SWP_NOACTIVATE | SWP_SHOWWINDOW) != FALSE;
 }
 
-void RateStrip::OnPaint()
+bool RateStrip::Render() noexcept
 {
-    CPaintDC deviceContext(this);
-    CRect clientRect;
-    GetClientRect(&clientRect);
+    if (GetSafeHwnd() == nullptr || size_.cx <= 0 || size_.cy <= 0)
+    {
+        return false;
+    }
 
-    deviceContext.FillSolidRect(&clientRect, GetSysColor(COLOR_MENU));
-    deviceContext.SetBkMode(TRANSPARENT);
-    deviceContext.SetTextColor(GetSysColor(COLOR_MENUTEXT));
+    CClientDC windowDc(this);
+    CDC memoryDc;
+    if (!memoryDc.CreateCompatibleDC(&windowDc))
+    {
+        return false;
+    }
 
-    CFont* const previousFont = deviceContext.SelectObject(&font_);
-    const int midpoint = clientRect.top + clientRect.Height() / 2;
+    CBitmap bitmap;
+    if (!bitmap.CreateCompatibleBitmap(&windowDc, size_.cx, size_.cy))
+    {
+        return false;
+    }
+
+    CBitmap* const previousBitmap = memoryDc.SelectObject(&bitmap);
+    CFont* const previousFont = memoryDc.SelectObject(&font_);
+    CRect clientRect(0, 0, size_.cx, size_.cy);
+    memoryDc.FillSolidRect(&clientRect, GetSysColor(COLOR_MENU));
+    memoryDc.SetBkMode(TRANSPARENT);
+    memoryDc.SetTextColor(GetSysColor(COLOR_MENUTEXT));
+
+    const int midpoint = clientRect.Height() / 2;
     CRect topLineRect = clientRect;
     topLineRect.bottom = midpoint;
     CRect bottomLineRect = clientRect;
     bottomLineRect.top = midpoint;
     const std::wstring topLine = uploadText_ + L" ↑";
     const std::wstring bottomLine = downloadText_ + L" ↓";
-    deviceContext.DrawTextW(topLine.c_str(), &topLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
-    deviceContext.DrawTextW(bottomLine.c_str(), &bottomLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
-    deviceContext.SelectObject(previousFont);
+    memoryDc.DrawTextW(topLine.c_str(), &topLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    memoryDc.DrawTextW(bottomLine.c_str(), &bottomLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+
+    POINT source{};
+    SIZE windowSize{ size_.cx, size_.cy };
+    BLENDFUNCTION blend{ AC_SRC_OVER, 0, 255, 0 };
+    const bool rendered = ::UpdateLayeredWindow(
+        GetSafeHwnd(),
+        nullptr,
+        nullptr,
+        &windowSize,
+        memoryDc.GetSafeHdc(),
+        &source,
+        0,
+        &blend,
+        ULW_ALPHA) != FALSE;
+
+    memoryDc.SelectObject(previousFont);
+    memoryDc.SelectObject(previousBitmap);
+    return rendered;
+}
+
+void RateStrip::OnPaint()
+{
+    CPaintDC deviceContext(this);
+    static_cast<void>(Render());
 }
 
 BOOL RateStrip::OnEraseBkgnd(CDC*)

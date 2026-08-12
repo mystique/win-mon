@@ -18,6 +18,7 @@ private:
     [[nodiscard]] bool CreateSystemUiFont(HWND taskbar) noexcept;
     [[nodiscard]] CSize MeasureSize(HWND taskbar) const;
     [[nodiscard]] bool PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea) noexcept;
+    [[nodiscard]] bool Render() noexcept;
     [[nodiscard]] bool Relayout(HWND taskbar, HWND notificationArea) noexcept;
 
     afx_msg void OnPaint();
