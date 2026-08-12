@@ -7,10 +7,9 @@ namespace
 {
 constexpr wchar_t kTaskbarClassName[] = L"Shell_TrayWnd";
 constexpr wchar_t kNotificationAreaClassName[] = L"TrayNotifyWnd";
-constexpr wchar_t kTopLine[] = L"0.0K/s ↑";
-constexpr wchar_t kBottomLine[] = L"0.0K/s ↓";
 constexpr wchar_t kMaximumTopLine[] = L"999.9G/s ↑";
 constexpr wchar_t kMaximumBottomLine[] = L"999.9G/s ↓";
+
 
 struct NotificationAreaSearch
 {
@@ -31,6 +30,15 @@ BOOL CALLBACK FindNotificationAreaChild(HWND child, LPARAM parameter)
 
     return TRUE;
 }
+}
+void RateStrip::SetRates(const std::wstring& uploadText, const std::wstring& downloadText) noexcept
+{
+    uploadText_ = uploadText;
+    downloadText_ = downloadText;
+    if (GetSafeHwnd() != nullptr)
+    {
+        Invalidate(FALSE);
+    }
 }
 
 BEGIN_MESSAGE_MAP(RateStrip, CWnd)
@@ -231,8 +239,10 @@ void RateStrip::OnPaint()
     topLineRect.bottom = midpoint;
     CRect bottomLineRect = clientRect;
     bottomLineRect.top = midpoint;
-    deviceContext.DrawTextW(kTopLine, &topLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
-    deviceContext.DrawTextW(kBottomLine, &bottomLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    const std::wstring topLine = uploadText_ + L" ↑";
+    const std::wstring bottomLine = downloadText_ + L" ↓";
+    deviceContext.DrawTextW(topLine.c_str(), &topLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    deviceContext.DrawTextW(bottomLine.c_str(), &bottomLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
     deviceContext.SelectObject(previousFont);
 }
 

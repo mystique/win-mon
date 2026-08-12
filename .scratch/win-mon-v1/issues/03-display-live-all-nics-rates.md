@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 — Embed a static Rate Strip.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Win Mon enumerates non-loopback NICs using normal-user Windows APIs.
 - [ ] A Rate Sample is taken about once per second and uses actual elapsed time when converting byte-counter deltas into bytes per second.

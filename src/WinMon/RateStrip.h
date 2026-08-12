@@ -2,11 +2,14 @@
 
 #include <afxwin.h>
 
+#include <string>
+
 class RateStrip final : public CWnd
 {
 public:
     [[nodiscard]] bool Embed();
     void Shutdown() noexcept;
+    void SetRates(const std::wstring& uploadText, const std::wstring& downloadText) noexcept;
 
 private:
     [[nodiscard]] static HWND FindPrimaryBottomTaskbar() noexcept;
@@ -24,4 +27,6 @@ private:
 
     CFont font_;
     CSize size_{};
+    std::wstring uploadText_ = L"0.0K/s";
+    std::wstring downloadText_ = L"0.0K/s";
 };

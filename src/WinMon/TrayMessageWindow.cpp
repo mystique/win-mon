@@ -3,16 +3,23 @@
 #include "resource.h"
 
 #include <shellapi.h>
-
+#include <iphlpapi.h>
+#include <netioapi.h>
+#include <chrono>
+#include <vector>
+#include <string>
+#include <utility>
 namespace
 {
 constexpr UINT kTrayIconId = 1;
 constexpr UINT kTrayNotificationMessage = WM_APP + 1;
 constexpr wchar_t kTrayTooltip[] = L"Win Mon";
+constexpr UINT_PTR kRateSampleTimer = 1;
 }
 
 BEGIN_MESSAGE_MAP(TrayMessageWindow, CWnd)
     ON_MESSAGE(kTrayNotificationMessage, &TrayMessageWindow::OnTrayNotification)
+    ON_WM_TIMER()
 END_MESSAGE_MAP()
 
 bool TrayMessageWindow::Initialize()
@@ -40,11 +47,13 @@ bool TrayMessageWindow::Initialize()
     }
 
     static_cast<void>(rateStrip_.Embed());
+    SetTimer(kRateSampleTimer, 1000, nullptr);
     return true;
 }
 
 void TrayMessageWindow::Shutdown() noexcept
 {
+    KillTimer(kRateSampleTimer);
     rateStrip_.Shutdown();
     RemoveTrayIcon();
 
@@ -52,6 +61,45 @@ void TrayMessageWindow::Shutdown() noexcept
     {
         DestroyWindow();
     }
+}
+
+void TrayMessageWindow::SampleRates()
+{
+    MIB_IF_TABLE2* table = nullptr;
+    if (GetIfTable2(&table) != NO_ERROR || table == nullptr)
+    {
+        return;
+    }
+
+    std::vector<winmon::NicSnapshot> snapshots;
+    snapshots.reserve(table->NumEntries);
+    for (ULONG index = 0; index < table->NumEntries; ++index)
+    {
+        const auto& row = table->Table[index];
+        winmon::NicSnapshot snapshot;
+        snapshot.stableId = std::to_string(row.InterfaceLuid.Value);
+        snapshot.name = row.Alias;
+        snapshot.loopback = row.Type == IF_TYPE_SOFTWARE_LOOPBACK;
+        snapshot.up = row.OperStatus == IfOperStatusUp;
+        snapshot.inOctets = row.InOctets;
+        snapshot.outOctets = row.OutOctets;
+        snapshots.push_back(std::move(snapshot));
+    }
+    FreeMibTable(table);
+
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    const double seconds = std::chrono::duration<double>(now).count();
+    const auto display = core_.Sample(snapshots, seconds);
+    rateStrip_.SetRates(display.uploadText, display.downloadText);
+}
+
+void TrayMessageWindow::OnTimer(UINT_PTR timerId)
+{
+    if (timerId == kRateSampleTimer)
+    {
+        SampleRates();
+    }
+    CWnd::OnTimer(timerId);
 }
 
 bool TrayMessageWindow::AddTrayIcon()

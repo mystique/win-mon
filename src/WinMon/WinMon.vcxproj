@@ -46,7 +46,7 @@
   <PropertyGroup>
     <TargetName>WinMon</TargetName>
     <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
-    <IntDir>$(SolutionDir)obj\$(Configuration)\</IntDir>
+    <IntDir>$(SolutionDir)obj\WinMon\$(Configuration)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -61,7 +61,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>Shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>Shell32.lib;Iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateManifest>true</GenerateManifest>
       <EnableUAC>true</EnableUAC>
       <UACExecutionLevel>AsInvoker</UACExecutionLevel>
@@ -85,7 +85,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>Shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>Shell32.lib;Iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateManifest>true</GenerateManifest>
       <EnableUAC>true</EnableUAC>
       <UACExecutionLevel>AsInvoker</UACExecutionLevel>
@@ -96,11 +96,13 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="TrayMessageWindow.h" />
     <ClInclude Include="RateStrip.h" />
+    <ClInclude Include="..\WinMonCore\WinMonCore.h" />
     <ClInclude Include="WinMonApp.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="TrayMessageWindow.cpp" />
     <ClCompile Include="RateStrip.cpp" />
+    <ClCompile Include="..\WinMonCore\WinMonCore.cpp" />
     <ClCompile Include="WinMonApp.cpp" />
   </ItemGroup>
   <ItemGroup>
