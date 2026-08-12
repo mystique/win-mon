@@ -4,7 +4,10 @@
 
 #include <shellapi.h>
 #include <iphlpapi.h>
+#include <netcon.h>
 #include <netioapi.h>
+#include <wrl/client.h>
+#include <algorithm>
 #include <chrono>
 #include <vector>
 #include <string>
@@ -18,6 +21,64 @@ constexpr UINT_PTR kRateSampleTimer = 1;
 constexpr UINT_PTR kShellRecoveryTimer = 2;
 constexpr UINT kShellRecoveryCadenceMs = 2000;
 const UINT kTaskbarCreatedMessage = RegisterWindowMessageW(L"TaskbarCreated");
+struct ClassicConnectionIds final
+{
+    bool available = false;
+    std::vector<GUID> values;
+};
+
+ClassicConnectionIds ReadClassicConnectionIds()
+{
+    const HRESULT initialization = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const bool shouldUninitialize = SUCCEEDED(initialization);
+    if (FAILED(initialization) && initialization != RPC_E_CHANGED_MODE)
+    {
+        return {};
+    }
+
+    ClassicConnectionIds result;
+    {
+        Microsoft::WRL::ComPtr<INetConnectionManager> manager;
+        if (SUCCEEDED(CoCreateInstance(
+                CLSID_ConnectionManager,
+                nullptr,
+                CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(&manager))))
+        {
+            Microsoft::WRL::ComPtr<IEnumNetConnection> connections;
+            if (SUCCEEDED(manager->EnumConnections(NCME_DEFAULT, &connections)))
+            {
+                result.available = true;
+                Microsoft::WRL::ComPtr<INetConnection> connection;
+                ULONG fetched = 0;
+                while (connections->Next(1, connection.ReleaseAndGetAddressOf(), &fetched) == S_OK)
+                {
+                    NETCON_PROPERTIES* properties = nullptr;
+                    if (SUCCEEDED(connection->GetProperties(&properties)) && properties != nullptr)
+                    {
+                        result.values.push_back(properties->guidId);
+                        CoTaskMemFree(properties->pszwName);
+                        CoTaskMemFree(properties->pszwDeviceName);
+                        CoTaskMemFree(properties);
+                    }
+                }
+            }
+        }
+    }
+
+    if (shouldUninitialize)
+    {
+        CoUninitialize();
+    }
+    return result;
+}
+
+bool ContainsConnectionId(const std::vector<GUID>& ids, const GUID& candidate) noexcept
+{
+    return std::any_of(ids.begin(), ids.end(), [&candidate](const GUID& id) {
+        return InlineIsEqualGUID(id, candidate) != FALSE;
+    });
+}
 }
 
 BEGIN_MESSAGE_MAP(TrayMessageWindow, CWnd)
@@ -89,11 +150,12 @@ void TrayMessageWindow::Shutdown() noexcept
 
 
 
-std::vector<winmon::NicSnapshot> TrayMessageWindow::ReadNicSnapshots() const
+std::vector<winmon::NicSnapshot> TrayMessageWindow::ReadNicSnapshots(bool classifyForMenu) const
 {
     MIB_IF_TABLE2* table = nullptr;
     if (GetIfTable2(&table) != NO_ERROR || table == nullptr) return {};
     std::vector<winmon::NicSnapshot> snapshots;
+    const auto classicConnectionIds = classifyForMenu ? ReadClassicConnectionIds() : ClassicConnectionIds{};
     snapshots.reserve(table->NumEntries);
     for (ULONG index = 0; index < table->NumEntries; ++index)
     {
@@ -103,6 +165,7 @@ std::vector<winmon::NicSnapshot> TrayMessageWindow::ReadNicSnapshots() const
         snapshot.friendlyName = row.Alias;
         snapshot.description = row.Description;
         snapshot.loopback = row.Type == IF_TYPE_SOFTWARE_LOOPBACK;
+        snapshot.visibleInClassicConnections = !classifyForMenu || !classicConnectionIds.available || ContainsConnectionId(classicConnectionIds.values, row.InterfaceGuid);
         snapshot.up = row.OperStatus == IfOperStatusUp;
         snapshot.inOctets = row.InOctets;
         snapshot.outOctets = row.OutOctets;
@@ -299,10 +362,11 @@ UINT TrayMessageWindow::ShowOperatorMenu()
 {
     CPoint cursorPosition;
     if (!GetCursorPos(&cursorPosition)) return 0;
-    snapshots_ = ReadNicSnapshots();
+    snapshots_ = ReadNicSnapshots(true);
     const auto model = core_.BuildOperatorMenu(snapshots_);
     CMenu menu;
-    if (!menu.CreatePopupMenu()) return 0;
+    CMenu nicMenu;
+    if (!menu.CreatePopupMenu() || !nicMenu.CreatePopupMenu()) return 0;
     menuNicIds_.clear();
     UINT nextCommand = ID_OPERATOR_NIC_BASE;
     UINT allCommand = ID_OPERATOR_ALL;
@@ -311,18 +375,20 @@ UINT TrayMessageWindow::ShowOperatorMenu()
     {
         if (item.kind == winmon::OperatorMenuItemKind::All)
         {
-            if (!menu.AppendMenu(MF_STRING, allCommand, item.label.c_str())) return 0;
-            if (item.checked) menu.CheckMenuRadioItem(allCommand, allCommand, allCommand, MF_BYCOMMAND);
+            if (!nicMenu.AppendMenu(MF_STRING, allCommand, item.label.c_str())) return 0;
+            if (item.checked) nicMenu.CheckMenuRadioItem(allCommand, allCommand, allCommand, MF_BYCOMMAND);
         }
         else if (item.kind == winmon::OperatorMenuItemKind::Nic)
         {
-            if (!menu.AppendMenu(MF_STRING, nextCommand, item.label.c_str())) return 0;
+            if (!nicMenu.AppendMenu(MF_STRING, nextCommand, item.label.c_str())) return 0;
             menuNicIds_.push_back(item.stableId);
-            if (item.checked) menu.CheckMenuRadioItem(allCommand, nextCommand, nextCommand, MF_BYCOMMAND);
+            if (item.checked) nicMenu.CheckMenuRadioItem(allCommand, nextCommand, nextCommand, MF_BYCOMMAND);
             ++nextCommand;
         }
         else if (item.kind == winmon::OperatorMenuItemKind::Separator)
         {
+            if (!menu.AppendMenu(MF_POPUP, reinterpret_cast<UINT_PTR>(nicMenu.GetSafeHmenu()), L"NIC Selection")) return 0;
+            nicMenu.Detach();
             if (!menu.AppendMenu(MF_SEPARATOR)) return 0;
         }
         else if (item.kind == winmon::OperatorMenuItemKind::Exit && !menu.AppendMenu(MF_STRING, exitCommand, item.label.c_str()))

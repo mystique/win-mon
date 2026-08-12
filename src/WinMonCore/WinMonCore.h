@@ -22,6 +22,7 @@ struct NicSnapshot final
     std::wstring name;
     bool loopback = false;
     bool up = false;
+    bool visibleInClassicConnections = true;
     std::uint64_t inOctets = 0;
     std::uint64_t outOctets = 0;
 };

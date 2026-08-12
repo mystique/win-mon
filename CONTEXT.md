@@ -17,7 +17,7 @@ The notification-area icon that is the sole operator entry (Operator Menu only).
 _Avoid_: main window, shell icon (ambiguous)
 
 **Operator Menu**:
-The tray context menu opened only from the Tray Icon. Structure: radio list with **All** first, then each NIC in system enumeration order (friendly/alias name, else description), separator, **Exit**. English labels only.
+The tray context menu opened only from the Tray Icon. Structure: **NIC Selection** submenu, separator, **Exit**. The submenu is a radio list with **All** first, then each NIC represented in the classic Windows Network Connections folder (friendly/alias name, else description). English labels only.
 _Avoid_: main menu, settings dialog
 
 **Exit**:
@@ -25,7 +25,7 @@ Operator Menu command that removes the Tray Icon, destroys the Rate Strip, and e
 _Avoid_: Quit, Close
 
 **NIC**:
-A system network interface the user may select for rate display. Menu lists every non-loopback NIC (up or down).
+A system network interface the user may select for rate display. NIC Selection lists non-loopback NICs represented in the classic Windows Network Connections folder, whether up or down; if that classification is unavailable, it retains all enumerated non-loopback NICs.
 _Avoid_: connection, adapter (as domain term), interface (unless Windows API talk)
 
 **All NICs**:

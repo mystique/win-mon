@@ -25,7 +25,7 @@ private:
     [[nodiscard]] UINT ShowOperatorMenu();
     void RequestExit();
     void SampleRates();
-    [[nodiscard]] std::vector<winmon::NicSnapshot> ReadNicSnapshots() const;
+    [[nodiscard]] std::vector<winmon::NicSnapshot> ReadNicSnapshots(bool classifyForMenu = false) const;
     afx_msg LRESULT OnTrayNotification(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnTaskbarCreated(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnDpiChanged(WPARAM wParam, LPARAM lParam);

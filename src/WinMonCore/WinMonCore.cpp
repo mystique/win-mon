@@ -56,7 +56,7 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(const std::vector<Ni
     menu.push_back({OperatorMenuItemKind::All, {}, L"All", selectedNicId_.empty()});
     for (const auto& snapshot : snapshots)
     {
-        if (snapshot.loopback) continue;
+        if (snapshot.loopback || !snapshot.visibleInClassicConnections) continue;
         menu.push_back({OperatorMenuItemKind::Nic, snapshot.stableId, DisplayName(snapshot), snapshot.stableId == selectedNicId_});
     }
     menu.push_back({OperatorMenuItemKind::Separator, {}, {}, false});

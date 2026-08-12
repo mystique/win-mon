@@ -38,9 +38,22 @@ NicSnapshot NamedNic(const char* id, const wchar_t* friendly, const wchar_t* des
     return nic;
 }
 
+
 void Require(bool condition, const char* message)
 {
     if (!condition) throw std::runtime_error(message);
+}
+void ClassicConnectionsLimitNicSelectionChoices()
+{
+    WinMonCore core;
+    auto ethernet = NamedNic("ethernet", L"Ethernet", L"Intel Ethernet");
+    auto internalAdapter = NamedNic("internal", L"Internal Adapter", L"Internal transport");
+    internalAdapter.visibleInClassicConnections = false;
+
+    const auto menu = core.BuildOperatorMenu({ethernet, internalAdapter});
+    Require(menu.size() == 4, "only classic Network Connections NICs are offered");
+    Require(menu[0].kind == winmon::OperatorMenuItemKind::All && menu[1].stableId == "ethernet", "classic NIC remains selectable");
+    Require(menu[2].kind == winmon::OperatorMenuItemKind::Separator && menu[3].kind == winmon::OperatorMenuItemKind::Exit, "operator menu tail remains intact");
 }
 
 void RequireRate(const winmon::RateDisplay& display, double upload, double download)
@@ -179,6 +192,7 @@ int main()
         FormatsBase1000BoundariesAndMinimumK();
         RateStripVisibilityFollowsPrimaryBottomAvailability();
         MenuAndSelectionFollowEnumeration();
+        ClassicConnectionsLimitNicSelectionChoices();
         SelectedNicOnlyAndChurnFallback();
     }
     catch (const std::exception& error)
