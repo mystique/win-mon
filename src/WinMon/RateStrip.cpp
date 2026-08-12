@@ -1,5 +1,6 @@
 #include "RateStrip.h"
 
+#include <algorithm>
 #include <cwchar>
 #include <iterator>
 
@@ -325,57 +326,93 @@ COLORREF RateStrip::ChooseTextColor(HWND taskbar, HWND notificationArea) const n
 
 bool RateStrip::Render() noexcept
 {
-    if (GetSafeHwnd() == nullptr || size_.cx <= 0 || size_.cy <= 0)
+    if (GetSafeHwnd() == nullptr || size_.cx <= 0 || size_.cy <= 0 || font_.GetSafeHandle() == nullptr)
     {
         return false;
     }
 
-    CClientDC windowDc(this);
-    CDC memoryDc;
-    if (!memoryDc.CreateCompatibleDC(&windowDc))
+    const HDC screenDc = ::GetDC(nullptr);
+    if (screenDc == nullptr)
     {
         return false;
     }
 
-    CBitmap bitmap;
-    if (!bitmap.CreateCompatibleBitmap(&windowDc, size_.cx, size_.cy))
+    const HDC memoryDc = ::CreateCompatibleDC(screenDc);
+    if (memoryDc == nullptr)
     {
+        ::ReleaseDC(nullptr, screenDc);
         return false;
     }
 
-    CBitmap* const previousBitmap = memoryDc.SelectObject(&bitmap);
-    CFont* const previousFont = memoryDc.SelectObject(&font_);
-    CRect clientRect(0, 0, size_.cx, size_.cy);
-    memoryDc.FillSolidRect(&clientRect, GetSysColor(COLOR_MENU));
+    BITMAPINFO bitmapInfo{};
+    bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bitmapInfo.bmiHeader.biWidth = size_.cx;
+    bitmapInfo.bmiHeader.biHeight = -size_.cy;
+    bitmapInfo.bmiHeader.biPlanes = 1;
+    bitmapInfo.bmiHeader.biBitCount = 32;
+    bitmapInfo.bmiHeader.biCompression = BI_RGB;
 
-    memoryDc.SetBkMode(TRANSPARENT);
-    memoryDc.SetTextColor(textColor_);
+    void* bitmapBits = nullptr;
+    const HBITMAP bitmap = ::CreateDIBSection(memoryDc, &bitmapInfo, DIB_RGB_COLORS, &bitmapBits, nullptr, 0);
+    if (bitmap == nullptr || bitmapBits == nullptr)
+    {
+        ::DeleteDC(memoryDc);
+        ::ReleaseDC(nullptr, screenDc);
+        return false;
+    }
 
-    const int midpoint = clientRect.Height() / 2;
-    CRect topLineRect = clientRect;
+    const HGDIOBJ previousBitmap = ::SelectObject(memoryDc, bitmap);
+    const HGDIOBJ previousFont = ::SelectObject(memoryDc, font_.GetSafeHandle());
+    const RECT clientRect{ 0, 0, size_.cx, size_.cy };
+    ::PatBlt(memoryDc, 0, 0, size_.cx, size_.cy, BLACKNESS);
+    ::SetBkMode(memoryDc, TRANSPARENT);
+    ::SetTextColor(memoryDc, RGB(255, 255, 255));
+
+    const int midpoint = size_.cy / 2;
+    RECT topLineRect = clientRect;
     topLineRect.bottom = midpoint;
-    CRect bottomLineRect = clientRect;
+    RECT bottomLineRect = clientRect;
     bottomLineRect.top = midpoint;
     const std::wstring topLine = uploadText_ + L" \u2191";
     const std::wstring bottomLine = downloadText_ + L" \u2193";
-    memoryDc.DrawTextW(topLine.c_str(), &topLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
-    memoryDc.DrawTextW(bottomLine.c_str(), &bottomLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    ::DrawTextW(memoryDc, topLine.c_str(), -1, &topLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    ::DrawTextW(memoryDc, bottomLine.c_str(), -1, &bottomLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+
+    auto* const pixels = static_cast<DWORD*>(bitmapBits);
+    const DWORD red = GetRValue(textColor_);
+    const DWORD green = GetGValue(textColor_);
+    const DWORD blue = GetBValue(textColor_);
+    const size_t pixelCount = static_cast<size_t>(size_.cx) * static_cast<size_t>(size_.cy);
+    for (size_t index = 0; index < pixelCount; ++index)
+    {
+        const DWORD mask = pixels[index];
+        const DWORD alpha = std::max(GetRValue(mask), std::max(GetGValue(mask), GetBValue(mask)));
+        pixels[index] =
+            (alpha << 24) |
+            ((red * alpha / 255) << 16) |
+            ((green * alpha / 255) << 8) |
+            (blue * alpha / 255);
+    }
 
     POINT source{};
     SIZE windowSize{ size_.cx, size_.cy };
-    BLENDFUNCTION blend{ AC_SRC_OVER, 0, 255, 0 };
+    BLENDFUNCTION blend{ AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
     const bool rendered = ::UpdateLayeredWindow(
-        GetSafeHwnd(),
-        nullptr,
-        nullptr,
-        &windowSize,
-        memoryDc.GetSafeHdc(),
-        &source,
-        0,
-        &blend,
-        ULW_ALPHA) != FALSE;
-    memoryDc.SelectObject(previousFont);
-    memoryDc.SelectObject(previousBitmap);
+                              GetSafeHwnd(),
+                              screenDc,
+                              nullptr,
+                              &windowSize,
+                              memoryDc,
+                              &source,
+                              0,
+                              &blend,
+                              ULW_ALPHA) != FALSE;
+
+    ::SelectObject(memoryDc, previousFont);
+    ::SelectObject(memoryDc, previousBitmap);
+    ::DeleteObject(bitmap);
+    ::DeleteDC(memoryDc);
+    ::ReleaseDC(nullptr, screenDc);
     return rendered;
 }
 

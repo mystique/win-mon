@@ -63,6 +63,7 @@ try {
 
     $textPixelsVisible = $false
     $transparentBackgroundVisible = $false
+    $opaqueBackgroundVisible = $false
     foreach ($child in $visible) {
         $rect = New-Object WindowProbe+Rect
         [void][WindowProbe]::GetWindowRect($child, [ref]$rect)
@@ -70,16 +71,13 @@ try {
         $height = $rect.Bottom - $rect.Top
         Write-Output ("child=0x{0:X} rect={1},{2},{3},{4}" -f $child.ToInt64(), $rect.Left, $rect.Top, $rect.Right, $rect.Bottom)
         Write-Output ("visible={0}" -f [WindowProbe]::IsWindowVisible($child))
-        if ($width -le 0 -or $height -le 0) { continue }
-        $referenceBitmap = New-Object System.Drawing.Bitmap(1, 1)
-        $referenceGraphics = [System.Drawing.Graphics]::FromImage($referenceBitmap)
+        $leftReferenceBitmap = New-Object System.Drawing.Bitmap(1, $height)
+        $leftReferenceGraphics = [System.Drawing.Graphics]::FromImage($leftReferenceBitmap)
         try {
-            $referenceGraphics.CopyFromScreen($rect.Left - 2, $rect.Top + [Math]::Floor($height / 2), 0, 0, $referenceBitmap.Size)
-            $referenceColor = $referenceBitmap.GetPixel(0, 0)
+            $leftReferenceGraphics.CopyFromScreen($rect.Left - 2, $rect.Top, 0, 0, $leftReferenceBitmap.Size)
         }
         finally {
-            $referenceGraphics.Dispose()
-            $referenceBitmap.Dispose()
+            $leftReferenceGraphics.Dispose()
         }
 
 
@@ -99,19 +97,35 @@ try {
             $nonDominant = ($width * $height) - $dominant
             $dominantEntry = $colors.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1
             $dominantArgb = ([int64]$dominantEntry.Key) -band 4294967295
+            $dominantCoverage = $dominant / ($width * $height)
             Write-Output ("screen-colors={0} dominant-argb=0x{1:X8} non-dominant-pixels={2}" -f $colors.Count, $dominantArgb, $nonDominant)
-            $cornerColor = $bitmap.GetPixel(1, [Math]::Floor($height / 2))
-            $backgroundDelta = [Math]::Abs($cornerColor.R - $referenceColor.R) +
-                [Math]::Abs($cornerColor.G - $referenceColor.G) +
-                [Math]::Abs($cornerColor.B - $referenceColor.B)
-            Write-Output ("background-delta={0}" -f $backgroundDelta)
-            if ($backgroundDelta -le 24) { $transparentBackgroundVisible = $true }
+            $matchingBackgroundPixels = 0
+            for ($y = 0; $y -lt $height; $y++) {
+                $reference = $leftReferenceBitmap.GetPixel(0, $y)
+                for ($x = 0; $x -lt $width; $x++) {
+                    $actual = $bitmap.GetPixel($x, $y)
+                    $delta = [Math]::Abs($actual.R - $reference.R) +
+                        [Math]::Abs($actual.G - $reference.G) +
+                        [Math]::Abs($actual.B - $reference.B)
+                    if ($delta -le 24) { $matchingBackgroundPixels++ }
+                }
+            }
+            $backgroundMatchCoverage = $matchingBackgroundPixels / ($width * $height)
+            Write-Output ("background-match-coverage={0:N3} dominant-coverage={1:N3}" -f $backgroundMatchCoverage, $dominantCoverage)
+            if ($backgroundMatchCoverage -ge 0.75) { $transparentBackgroundVisible = $true }
+            if ($dominantCoverage -ge 0.75 -and $backgroundMatchCoverage -lt 0.75) { $opaqueBackgroundVisible = $true }
             if ($colors.Count -ge 2 -and $nonDominant -ge 20) { $textPixelsVisible = $true }
+            $leftReferenceBitmap.Dispose()
         }
         finally {
             $graphics.Dispose()
             $bitmap.Dispose()
         }
+    }
+
+    if ($opaqueBackgroundVisible) {
+        Write-Output 'FAIL: Rate Strip is still an opaque solid rectangle'
+        exit 1
     }
 
     if (!$transparentBackgroundVisible) {
