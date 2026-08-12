@@ -4,7 +4,7 @@
 
 **Blocked by:** 03 — Display live All NICs rates.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The Operator Menu lists All first, then every non-loopback NIC in Windows enumeration order, then a separator and Exit.
 - [ ] NIC labels prefer the Windows friendly or alias name and fall back to description.

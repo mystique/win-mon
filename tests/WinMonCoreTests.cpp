@@ -15,10 +15,19 @@ NicSnapshot Nic(const char* id, bool up, std::uint64_t inOctets, std::uint64_t o
 {
     NicSnapshot nic;
     nic.stableId = id;
+    nic.friendlyName = L"";
     nic.up = up;
     nic.loopback = loopback;
     nic.inOctets = inOctets;
     nic.outOctets = outOctets;
+    return nic;
+}
+
+NicSnapshot NamedNic(const char* id, const wchar_t* friendly, const wchar_t* description, bool up = true)
+{
+    auto nic = Nic(id, up, 0, 0);
+    nic.friendlyName = friendly;
+    nic.description = description;
     return nic;
 }
 
@@ -84,6 +93,35 @@ void BackwardCountersAndDisappearingNicsAreZero()
     RequireRate(display, 100.0, 100.0);
 }
 
+
+void MenuAndSelectionFollowEnumeration()
+{
+    WinMonCore core;
+    const std::vector<NicSnapshot> nics = {NamedNic("a", L"Alpha", L"A desc"), NamedNic("down", L"", L"Down description", false), Nic("loop", true, 0, 0, true)};
+    auto menu = core.BuildOperatorMenu(nics);
+    Require(menu.size() == 5 && menu[0].label == L"All" && menu[0].checked, "default all menu");
+    Require(menu[1].label == L"Alpha" && menu[2].label == L"Down description" && menu[2].checked == false, "menu order and fallback");
+    Require(menu[3].kind == winmon::OperatorMenuItemKind::Separator && menu[4].kind == winmon::OperatorMenuItemKind::Exit, "menu tail");
+    core.SelectNic("down");
+    menu = core.BuildOperatorMenu(nics);
+    Require(menu[2].checked && !menu[0].checked, "selected down checked");
+    core.SelectAll();
+    Require(core.IsAllSelected(), "select all");
+}
+
+void SelectedNicOnlyAndChurnFallback()
+{
+    WinMonCore core;
+    core.Sample({Nic("a", true, 0, 0), Nic("b", true, 0, 0)}, 1.0);
+    core.SelectNic("b");
+    auto display = core.Sample({Nic("a", true, 1000, 1000), Nic("b", true, 2000, 3000)}, 2.0);
+    RequireRate(display, 3000.0, 2000.0);
+    display = core.Sample({Nic("a", true, 2000, 2000), Nic("b", false, 3000, 5000)}, 3.0);
+    RequireRate(display, 0.0, 0.0);
+    display = core.Sample({Nic("a", true, 3000, 3000)}, 4.0);
+    RequireRate(display, 1000.0, 1000.0);
+    Require(core.IsAllSelected(), "disappeared selected falls back all");
+}
 void NonpositiveElapsedIsZero()
 {
     WinMonCore core;
@@ -105,8 +143,8 @@ void FormatsBase1000BoundariesAndMinimumK()
     Require(WinMonCore::FormatRate(1000000000.0) == L"1.0G/s", "G boundary");
     Require(WinMonCore::FormatRate(-1.0).find(L"B") == std::wstring::npos, "no B unit");
 }
-}
 
+}
 int main()
 {
     try
@@ -118,6 +156,8 @@ int main()
         BackwardCountersAndDisappearingNicsAreZero();
         NonpositiveElapsedIsZero();
         FormatsBase1000BoundariesAndMinimumK();
+        MenuAndSelectionFollowEnumeration();
+        SelectedNicOnlyAndChurnFallback();
     }
     catch (const std::exception& error)
     {

@@ -63,14 +63,10 @@ void TrayMessageWindow::Shutdown() noexcept
     }
 }
 
-void TrayMessageWindow::SampleRates()
+std::vector<winmon::NicSnapshot> TrayMessageWindow::ReadNicSnapshots() const
 {
     MIB_IF_TABLE2* table = nullptr;
-    if (GetIfTable2(&table) != NO_ERROR || table == nullptr)
-    {
-        return;
-    }
-
+    if (GetIfTable2(&table) != NO_ERROR || table == nullptr) return {};
     std::vector<winmon::NicSnapshot> snapshots;
     snapshots.reserve(table->NumEntries);
     for (ULONG index = 0; index < table->NumEntries; ++index)
@@ -78,7 +74,8 @@ void TrayMessageWindow::SampleRates()
         const auto& row = table->Table[index];
         winmon::NicSnapshot snapshot;
         snapshot.stableId = std::to_string(row.InterfaceLuid.Value);
-        snapshot.name = row.Alias;
+        snapshot.friendlyName = row.Alias;
+        snapshot.description = row.Description;
         snapshot.loopback = row.Type == IF_TYPE_SOFTWARE_LOOPBACK;
         snapshot.up = row.OperStatus == IfOperStatusUp;
         snapshot.inOctets = row.InOctets;
@@ -86,10 +83,15 @@ void TrayMessageWindow::SampleRates()
         snapshots.push_back(std::move(snapshot));
     }
     FreeMibTable(table);
+    return snapshots;
+}
 
+void TrayMessageWindow::SampleRates()
+{
+    snapshots_ = ReadNicSnapshots();
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
     const double seconds = std::chrono::duration<double>(now).count();
-    const auto display = core_.Sample(snapshots, seconds);
+    const auto display = core_.Sample(snapshots_, seconds);
     rateStrip_.SetRates(display.uploadText, display.downloadText);
 }
 
@@ -155,35 +157,34 @@ void TrayMessageWindow::RemoveTrayIcon() noexcept
 UINT TrayMessageWindow::ShowOperatorMenu()
 {
     CPoint cursorPosition;
-    if (!GetCursorPos(&cursorPosition))
-    {
-        return 0;
-    }
-
+    if (!GetCursorPos(&cursorPosition)) return 0;
+    snapshots_ = ReadNicSnapshots();
+    const auto model = core_.BuildOperatorMenu(snapshots_);
     CMenu menu;
-    if (!menu.CreatePopupMenu())
+    if (!menu.CreatePopupMenu()) return 0;
+    menuNicIds_.clear();
+    UINT nextCommand = ID_OPERATOR_NIC_BASE;
+    UINT allCommand = ID_OPERATOR_ALL;
+    UINT exitCommand = ID_OPERATOR_EXIT;
+    for (const auto& item : model)
     {
-        return 0;
+        if (item.kind == winmon::OperatorMenuItemKind::All)
+        {
+            menu.AppendMenu(MF_STRING, allCommand, item.label.c_str());
+            if (item.checked) menu.CheckMenuRadioItem(allCommand, allCommand, allCommand, MF_BYCOMMAND);
+        }
+        else if (item.kind == winmon::OperatorMenuItemKind::Nic)
+        {
+            menu.AppendMenu(MF_STRING, nextCommand, item.label.c_str());
+            menuNicIds_.push_back(item.stableId);
+            if (item.checked) menu.CheckMenuRadioItem(allCommand, nextCommand, nextCommand, MF_BYCOMMAND);
+            ++nextCommand;
+        }
+        else if (item.kind == winmon::OperatorMenuItemKind::Separator) menu.AppendMenu(MF_SEPARATOR);
+        else if (item.kind == winmon::OperatorMenuItemKind::Exit) menu.AppendMenu(MF_STRING, exitCommand, item.label.c_str());
     }
-
-    menu.AppendMenu(MF_STRING, ID_OPERATOR_ALL, L"All");
-    menu.CheckMenuRadioItem(
-        ID_OPERATOR_ALL,
-        ID_OPERATOR_ALL,
-        ID_OPERATOR_ALL,
-        MF_BYCOMMAND);
-    menu.AppendMenu(MF_SEPARATOR);
-    menu.AppendMenu(MF_STRING, ID_OPERATOR_EXIT, L"Exit");
-
     SetForegroundWindow();
-    const UINT command = static_cast<UINT>(::TrackPopupMenu(
-        menu.GetSafeHmenu(),
-        TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
-        cursorPosition.x,
-        cursorPosition.y,
-        0,
-        GetSafeHwnd(),
-        nullptr));
+    const UINT command = static_cast<UINT>(::TrackPopupMenu(menu.GetSafeHmenu(), TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, cursorPosition.x, cursorPosition.y, 0, GetSafeHwnd(), nullptr));
     PostMessage(WM_NULL);
     return command;
 }
@@ -200,19 +201,13 @@ void TrayMessageWindow::RequestExit()
 
     PostQuitMessage(0);
 }
-
 LRESULT TrayMessageWindow::OnTrayNotification(WPARAM, LPARAM lParam)
 {
     const UINT notification = LOWORD(lParam);
-    if (notification != WM_RBUTTONUP && notification != WM_CONTEXTMENU)
-    {
-        return 0;
-    }
-
-    if (ShowOperatorMenu() == ID_OPERATOR_EXIT)
-    {
-        RequestExit();
-    }
-
+    if (notification != WM_RBUTTONUP && notification != WM_CONTEXTMENU) return 0;
+    const UINT command = ShowOperatorMenu();
+    if (command == ID_OPERATOR_EXIT) RequestExit();
+    else if (command == ID_OPERATOR_ALL) core_.SelectAll();
+    else if (command >= ID_OPERATOR_NIC_BASE && command < ID_OPERATOR_NIC_BASE + menuNicIds_.size()) core_.SelectNic(menuNicIds_[command - ID_OPERATOR_NIC_BASE]);
     return 0;
 }

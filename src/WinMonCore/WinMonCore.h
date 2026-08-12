@@ -6,14 +6,32 @@
 
 namespace winmon
 {
+enum class OperatorMenuItemKind
+{
+    All,
+    Nic,
+    Separator,
+    Exit,
+};
+
 struct NicSnapshot final
 {
     std::string stableId;
+    std::wstring friendlyName;
+    std::wstring description;
     std::wstring name;
     bool loopback = false;
     bool up = false;
     std::uint64_t inOctets = 0;
     std::uint64_t outOctets = 0;
+};
+
+struct OperatorMenuItem final
+{
+    OperatorMenuItemKind kind = OperatorMenuItemKind::All;
+    std::string stableId;
+    std::wstring label;
+    bool checked = false;
 };
 
 struct RateDisplay final
@@ -28,8 +46,13 @@ class WinMonCore final
 {
 public:
     RateDisplay Sample(const std::vector<NicSnapshot>& snapshots, double monotonicSeconds);
+    std::vector<OperatorMenuItem> BuildOperatorMenu(const std::vector<NicSnapshot>& snapshots) const;
+    void SelectAll() noexcept;
+    void SelectNic(const std::string& stableId) noexcept;
+    [[nodiscard]] bool IsAllSelected() const noexcept;
+    [[nodiscard]] const std::string& SelectedNicId() const noexcept;
     static std::wstring FormatRate(double bytesPerSecond);
-
+    static std::wstring DisplayName(const NicSnapshot& snapshot);
 private:
     struct PreviousSample final
     {
@@ -40,5 +63,6 @@ private:
     std::vector<PreviousSample> previous_;
     double previousTime_ = 0.0;
     bool hasPrevious_ = false;
+    std::string selectedNicId_;
 };
 }

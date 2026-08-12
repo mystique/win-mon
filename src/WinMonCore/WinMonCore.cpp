@@ -10,6 +10,11 @@ namespace winmon
 
 RateDisplay WinMonCore::Sample(const std::vector<NicSnapshot>& snapshots, double monotonicSeconds)
 {
+    if (!selectedNicId_.empty())
+    {
+        const auto selected = std::find_if(snapshots.begin(), snapshots.end(), [this](const NicSnapshot& snapshot) { return !snapshot.loopback && snapshot.stableId == selectedNicId_; });
+        if (selected == snapshots.end()) selectedNicId_.clear();
+    }
     RateDisplay display;
     const double elapsed = monotonicSeconds - previousTime_;
     const bool validElapsed = hasPrevious_ && elapsed > 0.0;
@@ -17,38 +22,48 @@ RateDisplay WinMonCore::Sample(const std::vector<NicSnapshot>& snapshots, double
     {
         for (const auto& current : snapshots)
         {
-            if (!current.up || current.loopback)
-            {
-                continue;
-            }
-
-            const auto previous = std::find_if(
-                previous_.begin(),
-                previous_.end(),
-                [&current](const PreviousSample& sample) { return sample.stableId == current.stableId; });
-            if (previous == previous_.end() || current.inOctets < previous->inOctets || current.outOctets < previous->outOctets)
-            {
-                continue;
-            }
-
+            if (!current.up || current.loopback || (!selectedNicId_.empty() && current.stableId != selectedNicId_)) continue;
+            const auto previous = std::find_if(previous_.begin(), previous_.end(), [&current](const PreviousSample& sample) { return sample.stableId == current.stableId; });
+            if (previous == previous_.end() || current.inOctets < previous->inOctets || current.outOctets < previous->outOctets) continue;
             display.downloadBytesPerSecond += static_cast<double>(current.inOctets - previous->inOctets) / elapsed;
             display.uploadBytesPerSecond += static_cast<double>(current.outOctets - previous->outOctets) / elapsed;
         }
     }
-
     previous_.clear();
     previous_.reserve(snapshots.size());
-    for (const auto& snapshot : snapshots)
-    {
-        previous_.push_back({snapshot.stableId, snapshot.inOctets, snapshot.outOctets});
-    }
+    for (const auto& snapshot : snapshots) previous_.push_back({snapshot.stableId, snapshot.inOctets, snapshot.outOctets});
     previousTime_ = monotonicSeconds;
     hasPrevious_ = true;
-
     display.uploadText = FormatRate(display.uploadBytesPerSecond);
     display.downloadText = FormatRate(display.downloadBytesPerSecond);
     return display;
 }
+
+std::wstring WinMonCore::DisplayName(const NicSnapshot& snapshot)
+{
+    if (!snapshot.friendlyName.empty()) return snapshot.friendlyName;
+    if (!snapshot.name.empty()) return snapshot.name;
+    return snapshot.description;
+}
+
+std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(const std::vector<NicSnapshot>& snapshots) const
+{
+    std::vector<OperatorMenuItem> menu;
+    menu.push_back({OperatorMenuItemKind::All, {}, L"All", selectedNicId_.empty()});
+    for (const auto& snapshot : snapshots)
+    {
+        if (snapshot.loopback) continue;
+        menu.push_back({OperatorMenuItemKind::Nic, snapshot.stableId, DisplayName(snapshot), snapshot.stableId == selectedNicId_});
+    }
+    menu.push_back({OperatorMenuItemKind::Separator, {}, {}, false});
+    menu.push_back({OperatorMenuItemKind::Exit, {}, L"Exit", false});
+    return menu;
+}
+
+void WinMonCore::SelectAll() noexcept { selectedNicId_.clear(); }
+void WinMonCore::SelectNic(const std::string& stableId) noexcept { selectedNicId_ = stableId; }
+bool WinMonCore::IsAllSelected() const noexcept { return selectedNicId_.empty(); }
+const std::string& WinMonCore::SelectedNicId() const noexcept { return selectedNicId_; }
 
 std::wstring WinMonCore::FormatRate(double bytesPerSecond)
 {
