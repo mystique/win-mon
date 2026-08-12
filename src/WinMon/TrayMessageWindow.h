@@ -18,6 +18,7 @@ private:
     void RemoveTrayIcon() noexcept;
     void AttemptShellRecovery();
     void RecoverRateStrip();
+    [[nodiscard]] bool ShouldRetryRateStrip() const noexcept;
     void ScheduleShellRecoveryRetry() noexcept;
     void CancelShellRecoveryRetry() noexcept;
 

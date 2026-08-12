@@ -59,12 +59,17 @@ bool TrayMessageWindow::Initialize()
     }
 
     shuttingDown_ = false;
-    static_cast<void>(rateStrip_.Embed());
-    if (rateStrip_.GetSafeHwnd() == nullptr)
+    static_cast<void>(rateStrip_.Embed(
+        core_.ShouldShowRateStrip(RateStrip::IsPrimaryBottomTaskbarAvailable())));
+    if (ShouldRetryRateStrip())
     {
         ScheduleShellRecoveryRetry();
     }
-    SetTimer(kRateSampleTimer, 1000, nullptr);
+    if (SetTimer(kRateSampleTimer, 1000, nullptr) == 0)
+    {
+        Shutdown();
+        return false;
+    }
     return true;
 }
 
@@ -106,6 +111,12 @@ std::vector<winmon::NicSnapshot> TrayMessageWindow::ReadNicSnapshots() const
     FreeMibTable(table);
     return snapshots;
 }
+
+bool TrayMessageWindow::ShouldRetryRateStrip() const noexcept
+{
+    return rateStrip_.GetSafeHwnd() == nullptr &&
+        core_.ShouldShowRateStrip(RateStrip::IsPrimaryBottomTaskbarAvailable());
+}
 void TrayMessageWindow::ScheduleShellRecoveryRetry() noexcept
 {
     if (shuttingDown_ || shellRecoveryTimerActive_ || GetSafeHwnd() == nullptr)
@@ -127,14 +138,10 @@ void TrayMessageWindow::CancelShellRecoveryRetry() noexcept
 
 void TrayMessageWindow::RecoverRateStrip()
 {
-    if (shuttingDown_)
-    {
-        return;
-    }
     rateStrip_.Shutdown();
-    if (!rateStrip_.Embed())
+    if (!rateStrip_.Embed(core_.ShouldShowRateStrip(RateStrip::IsPrimaryBottomTaskbarAvailable())))
     {
-        ScheduleShellRecoveryRetry();
+        if (ShouldRetryRateStrip()) ScheduleShellRecoveryRetry();
         return;
     }
     CancelShellRecoveryRetry();
@@ -155,9 +162,9 @@ void TrayMessageWindow::AttemptShellRecovery()
 
     // Embed() revalidates the parent taskbar, so an Explorer-created stale
     // child is discarded before a new child is created.
-    if (!rateStrip_.Embed())
+    if (!rateStrip_.Embed(core_.ShouldShowRateStrip(RateStrip::IsPrimaryBottomTaskbarAvailable())))
     {
-        ScheduleShellRecoveryRetry();
+        if (ShouldRetryRateStrip()) ScheduleShellRecoveryRetry();
         return;
     }
     CancelShellRecoveryRetry();
@@ -175,7 +182,7 @@ LRESULT TrayMessageWindow::OnTaskbarCreated(WPARAM, LPARAM)
     RemoveTrayIcon();
     static_cast<void>(AddTrayIcon());
     RecoverRateStrip();
-    if (!trayIconAdded_ || rateStrip_.GetSafeHwnd() == nullptr)
+    if (!trayIconAdded_ || ShouldRetryRateStrip())
     {
         ScheduleShellRecoveryRetry();
     }
@@ -218,13 +225,17 @@ void TrayMessageWindow::OnTimer(UINT_PTR timerId)
     if (timerId == kRateSampleTimer)
     {
         SampleRates();
+        if ((!trayIconAdded_ || ShouldRetryRateStrip()) && !shellRecoveryTimerActive_)
+        {
+            AttemptShellRecovery();
+        }
     }
     else if (timerId == kShellRecoveryTimer)
     {
         shellRecoveryTimerActive_ = false;
         KillTimer(kShellRecoveryTimer);
         AttemptShellRecovery();
-        if (!trayIconAdded_ || rateStrip_.GetSafeHwnd() == nullptr)
+        if (!trayIconAdded_ || ShouldRetryRateStrip())
         {
             ScheduleShellRecoveryRetry();
         }
@@ -300,18 +311,25 @@ UINT TrayMessageWindow::ShowOperatorMenu()
     {
         if (item.kind == winmon::OperatorMenuItemKind::All)
         {
-            menu.AppendMenu(MF_STRING, allCommand, item.label.c_str());
+            if (!menu.AppendMenu(MF_STRING, allCommand, item.label.c_str())) return 0;
             if (item.checked) menu.CheckMenuRadioItem(allCommand, allCommand, allCommand, MF_BYCOMMAND);
         }
         else if (item.kind == winmon::OperatorMenuItemKind::Nic)
         {
-            menu.AppendMenu(MF_STRING, nextCommand, item.label.c_str());
+            if (nextCommand > ID_OPERATOR_NIC_LAST) continue;
+            if (!menu.AppendMenu(MF_STRING, nextCommand, item.label.c_str())) return 0;
             menuNicIds_.push_back(item.stableId);
             if (item.checked) menu.CheckMenuRadioItem(allCommand, nextCommand, nextCommand, MF_BYCOMMAND);
             ++nextCommand;
         }
-        else if (item.kind == winmon::OperatorMenuItemKind::Separator) menu.AppendMenu(MF_SEPARATOR);
-        else if (item.kind == winmon::OperatorMenuItemKind::Exit) menu.AppendMenu(MF_STRING, exitCommand, item.label.c_str());
+        else if (item.kind == winmon::OperatorMenuItemKind::Separator)
+        {
+            if (!menu.AppendMenu(MF_SEPARATOR)) return 0;
+        }
+        else if (item.kind == winmon::OperatorMenuItemKind::Exit && !menu.AppendMenu(MF_STRING, exitCommand, item.label.c_str()))
+        {
+            return 0;
+        }
     }
     SetForegroundWindow();
     const UINT command = static_cast<UINT>(::TrackPopupMenu(menu.GetSafeHmenu(), TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, cursorPosition.x, cursorPosition.y, 0, GetSafeHwnd(), nullptr));
@@ -331,6 +349,10 @@ LRESULT TrayMessageWindow::OnTrayNotification(WPARAM, LPARAM lParam)
     const UINT command = ShowOperatorMenu();
     if (command == ID_OPERATOR_EXIT) RequestExit();
     else if (command == ID_OPERATOR_ALL) core_.SelectAll();
-    else if (command >= ID_OPERATOR_NIC_BASE && command < ID_OPERATOR_NIC_BASE + menuNicIds_.size()) core_.SelectNic(menuNicIds_[command - ID_OPERATOR_NIC_BASE]);
+    else if (command >= ID_OPERATOR_NIC_BASE)
+    {
+        const auto nicIndex = static_cast<std::size_t>(command - ID_OPERATOR_NIC_BASE);
+        if (nicIndex < menuNicIds_.size()) core_.SelectNic(menuNicIds_[nicIndex]);
+    }
     return 0;
 }

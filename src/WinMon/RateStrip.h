@@ -7,8 +7,9 @@
 class RateStrip final : public CWnd
 {
 public:
-    [[nodiscard]] bool Embed();
+    [[nodiscard]] bool Embed(bool shouldShow);
     void Shutdown() noexcept;
+    [[nodiscard]] static bool IsPrimaryBottomTaskbarAvailable() noexcept;
     void SetRates(const std::wstring& uploadText, const std::wstring& downloadText) noexcept;
 
 private:

@@ -48,8 +48,13 @@ BEGIN_MESSAGE_MAP(RateStrip, CWnd)
     ON_WM_NCHITTEST()
 END_MESSAGE_MAP()
 
-bool RateStrip::Embed()
+bool RateStrip::Embed(bool shouldShow)
 {
+    if (!shouldShow)
+    {
+        Shutdown();
+        return false;
+    }
     const HWND taskbar = FindPrimaryBottomTaskbar();
     if (taskbar == nullptr)
     {
@@ -152,6 +157,11 @@ void RateStrip::Shutdown() noexcept
     size_ = {};
 }
 
+bool RateStrip::IsPrimaryBottomTaskbarAvailable() noexcept
+{
+    return FindPrimaryBottomTaskbar() != nullptr;
+}
+
 
 
 HWND RateStrip::FindPrimaryBottomTaskbar() noexcept
@@ -206,20 +216,28 @@ CSize RateStrip::MeasureSize(HWND taskbar) const
         return {};
     }
 
+    if (font_.GetSafeHandle() == nullptr)
+    {
+        ::ReleaseDC(taskbar, deviceContext);
+        return {};
+    }
+
     const HGDIOBJ previousFont = SelectObject(deviceContext, font_.GetSafeHandle());
+    if (previousFont == nullptr)
+    {
+        ::ReleaseDC(taskbar, deviceContext);
+        return {};
+    }
+
     SIZE topSize{};
     SIZE bottomSize{};
     TEXTMETRICW textMetrics{};
     const bool measured =
-        previousFont != nullptr &&
         GetTextExtentPoint32W(deviceContext, kMaximumTopLine, static_cast<int>(std::size(kMaximumTopLine) - 1), &topSize) != FALSE &&
         GetTextExtentPoint32W(deviceContext, kMaximumBottomLine, static_cast<int>(std::size(kMaximumBottomLine) - 1), &bottomSize) != FALSE &&
         GetTextMetricsW(deviceContext, &textMetrics) != FALSE;
 
-    if (previousFont != nullptr)
-    {
-        SelectObject(deviceContext, previousFont);
-    }
+    SelectObject(deviceContext, previousFont);
     ::ReleaseDC(taskbar, deviceContext);
 
     if (!measured)

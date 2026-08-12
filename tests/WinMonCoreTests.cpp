@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <locale>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -10,6 +11,12 @@ namespace
 {
 using winmon::NicSnapshot;
 using winmon::WinMonCore;
+
+class CommaDecimalPunctuation final : public std::numpunct<wchar_t>
+{
+protected:
+    wchar_t do_decimal_point() const override { return L','; }
+};
 
 NicSnapshot Nic(const char* id, bool up, std::uint64_t inOctets, std::uint64_t outOctets, bool loopback = false)
 {
@@ -88,7 +95,7 @@ void BackwardCountersAndDisappearingNicsAreZero()
     WinMonCore core;
     core.Sample({Nic("a", true, 100, 100), Nic("gone", true, 100, 100)}, 1.0);
     auto display = core.Sample({Nic("a", true, 50, 200)}, 2.0);
-    RequireRate(display, 0.0, 0.0);
+    RequireRate(display, 100.0, 0.0);
     display = core.Sample({Nic("a", true, 150, 300)}, 3.0);
     RequireRate(display, 100.0, 100.0);
 }
@@ -107,7 +114,11 @@ void MenuAndSelectionFollowEnumeration()
     Require(menu[2].checked && !menu[0].checked, "selected down checked");
     core.SelectAll();
     Require(core.IsAllSelected(), "select all");
+    core.SelectNic("missing");
+    menu = core.BuildOperatorMenu(nics);
+    Require(core.IsAllSelected() && menu[0].checked, "missing selected NIC falls back before menu presentation");
 }
+
 
 void SelectedNicOnlyAndChurnFallback()
 {
@@ -132,6 +143,12 @@ void NonpositiveElapsedIsZero()
     RequireRate(display, 0.0, 0.0);
 }
 
+void RateStripVisibilityFollowsPrimaryBottomAvailability()
+{
+    Require(WinMonCore::ShouldShowRateStrip(true), "primary bottom taskbar shows strip");
+    Require(!WinMonCore::ShouldShowRateStrip(false), "missing or unsupported taskbar hides strip");
+}
+
 void FormatsBase1000BoundariesAndMinimumK()
 {
     Require(WinMonCore::FormatRate(0.0) == L"0.0K/s", "zero format");
@@ -142,6 +159,10 @@ void FormatsBase1000BoundariesAndMinimumK()
     Require(WinMonCore::FormatRate(999999999.0) == L"1000.0M/s", "M upper format");
     Require(WinMonCore::FormatRate(1000000000.0) == L"1.0G/s", "G boundary");
     Require(WinMonCore::FormatRate(-1.0).find(L"B") == std::wstring::npos, "no B unit");
+    const std::locale previousLocale = std::locale();
+    std::locale::global(std::locale(previousLocale, new CommaDecimalPunctuation));
+    Require(WinMonCore::FormatRate(12345.0) == L"12.3K/s", "format uses product decimal point");
+    std::locale::global(previousLocale);
 }
 
 }
@@ -156,6 +177,7 @@ int main()
         BackwardCountersAndDisappearingNicsAreZero();
         NonpositiveElapsedIsZero();
         FormatsBase1000BoundariesAndMinimumK();
+        RateStripVisibilityFollowsPrimaryBottomAvailability();
         MenuAndSelectionFollowEnumeration();
         SelectedNicOnlyAndChurnFallback();
     }

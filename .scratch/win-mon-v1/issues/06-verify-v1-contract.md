@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Launch Win Mon from the Tray Icon; 02 — Embed a static Rate Strip; 03 — Display live All NICs rates; 04 — Select one NIC from the Operator Menu; 05 — Recover from Windows shell and display changes.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] A clean release build succeeds for the intended Windows 11 architecture and documented Visual Studio/MFC toolchain.
 - [ ] All WinMonCore automated tests pass from a clean workspace.

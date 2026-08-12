@@ -46,11 +46,12 @@ class WinMonCore final
 {
 public:
     RateDisplay Sample(const std::vector<NicSnapshot>& snapshots, double monotonicSeconds);
-    std::vector<OperatorMenuItem> BuildOperatorMenu(const std::vector<NicSnapshot>& snapshots) const;
+    std::vector<OperatorMenuItem> BuildOperatorMenu(const std::vector<NicSnapshot>& snapshots);
     void SelectAll() noexcept;
     void SelectNic(const std::string& stableId) noexcept;
     [[nodiscard]] bool IsAllSelected() const noexcept;
     [[nodiscard]] const std::string& SelectedNicId() const noexcept;
+    [[nodiscard]] static bool ShouldShowRateStrip(bool primaryBottomTaskbarAvailable) noexcept;
     static std::wstring FormatRate(double bytesPerSecond);
     static std::wstring DisplayName(const NicSnapshot& snapshot);
 private:
@@ -63,6 +64,7 @@ private:
     std::vector<PreviousSample> previous_;
     double previousTime_ = 0.0;
     bool hasPrevious_ = false;
+    void ReconcileSelection(const std::vector<NicSnapshot>& snapshots) noexcept;
     std::string selectedNicId_;
 };
 }

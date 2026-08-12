@@ -16,8 +16,8 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <TargetName>WinMonCoreTests</TargetName>
-    <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
-    <IntDir>$(SolutionDir)obj\WinMonCoreTests\$(Configuration)\</IntDir>
+    <OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)obj\WinMonCoreTests\$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup><ClCompile><WarningLevel>Level4</WarningLevel><SDLCheck>true</SDLCheck><ConformanceMode>true</ConformanceMode><LanguageStandard>stdcpp20</LanguageStandard><PreprocessorDefinitions>NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions><AdditionalIncludeDirectories>$(ProjectDir)..\src\WinMonCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebugDLL</RuntimeLibrary><RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreadedDLL</RuntimeLibrary></ClCompile><Link><SubSystem>Console</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation></Link></ItemDefinitionGroup>
   <ItemGroup><ClInclude Include="..\src\WinMonCore\WinMonCore.h" /></ItemGroup>
