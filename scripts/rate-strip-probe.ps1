@@ -1,5 +1,6 @@
 param(
-    [string]$ExePath = (Join-Path $PSScriptRoot '..\bin\x64\Release\WinMon.exe')
+    [string]$ExePath = (Join-Path $PSScriptRoot '..\bin\x64\Release\WinMon.exe'),
+    [string]$SnapshotPath = ''
 )
 
 Add-Type -AssemblyName System.Drawing
@@ -46,7 +47,7 @@ public static class WindowProbe
 
 $process = Start-Process -FilePath $ExePath -PassThru
 try {
-    Start-Sleep -Milliseconds 1200
+    Start-Sleep -Milliseconds 2200
     $taskbar = [WindowProbe]::FindWindow('Shell_TrayWnd', $null)
     if ($taskbar -eq [IntPtr]::Zero) {
         Write-Output 'FAIL: primary Shell_TrayWnd not found'
@@ -61,6 +62,7 @@ try {
     }
 
     $textPixelsVisible = $false
+    $transparentBackgroundVisible = $false
     foreach ($child in $visible) {
         $rect = New-Object WindowProbe+Rect
         [void][WindowProbe]::GetWindowRect($child, [ref]$rect)
@@ -69,11 +71,23 @@ try {
         Write-Output ("child=0x{0:X} rect={1},{2},{3},{4}" -f $child.ToInt64(), $rect.Left, $rect.Top, $rect.Right, $rect.Bottom)
         Write-Output ("visible={0}" -f [WindowProbe]::IsWindowVisible($child))
         if ($width -le 0 -or $height -le 0) { continue }
+        $referenceBitmap = New-Object System.Drawing.Bitmap(1, 1)
+        $referenceGraphics = [System.Drawing.Graphics]::FromImage($referenceBitmap)
+        try {
+            $referenceGraphics.CopyFromScreen($rect.Left - 2, $rect.Top + [Math]::Floor($height / 2), 0, 0, $referenceBitmap.Size)
+            $referenceColor = $referenceBitmap.GetPixel(0, 0)
+        }
+        finally {
+            $referenceGraphics.Dispose()
+            $referenceBitmap.Dispose()
+        }
+
 
         $bitmap = New-Object System.Drawing.Bitmap($width, $height)
         $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
         try {
             $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
+            if ($SnapshotPath -ne '') { $bitmap.Save($SnapshotPath) }
             $colors = @{}
             for ($y = 0; $y -lt $height; $y++) {
                 for ($x = 0; $x -lt $width; $x++) {
@@ -86,12 +100,23 @@ try {
             $dominantEntry = $colors.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1
             $dominantArgb = ([int64]$dominantEntry.Key) -band 4294967295
             Write-Output ("screen-colors={0} dominant-argb=0x{1:X8} non-dominant-pixels={2}" -f $colors.Count, $dominantArgb, $nonDominant)
+            $cornerColor = $bitmap.GetPixel(1, [Math]::Floor($height / 2))
+            $backgroundDelta = [Math]::Abs($cornerColor.R - $referenceColor.R) +
+                [Math]::Abs($cornerColor.G - $referenceColor.G) +
+                [Math]::Abs($cornerColor.B - $referenceColor.B)
+            Write-Output ("background-delta={0}" -f $backgroundDelta)
+            if ($backgroundDelta -le 24) { $transparentBackgroundVisible = $true }
             if ($colors.Count -ge 2 -and $nonDominant -ge 20) { $textPixelsVisible = $true }
         }
         finally {
             $graphics.Dispose()
             $bitmap.Dispose()
         }
+    }
+
+    if (!$transparentBackgroundVisible) {
+        Write-Output 'FAIL: Rate Strip background does not match the surrounding taskbar'
+        exit 1
     }
 
     if (!$textPixelsVisible) {

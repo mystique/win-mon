@@ -1,15 +1,15 @@
 #include "RateStrip.h"
 
-#include <iterator>
 #include <cwchar>
+#include <iterator>
 
 namespace
 {
 constexpr wchar_t kTaskbarClassName[] = L"Shell_TrayWnd";
 constexpr wchar_t kNotificationAreaClassName[] = L"TrayNotifyWnd";
-constexpr wchar_t kMaximumTopLine[] = L"999.9G/s ↑";
-constexpr wchar_t kMaximumBottomLine[] = L"999.9G/s ↓";
-
+constexpr wchar_t kMaximumTopLine[] = L"999.9G/s \u2191";
+constexpr wchar_t kMaximumBottomLine[] = L"999.9G/s \u2193";
+constexpr wchar_t kMonospaceFont[] = L"Consolas";
 
 struct NotificationAreaSearch
 {
@@ -159,6 +159,7 @@ void RateStrip::Shutdown() noexcept
         font_.DeleteObject();
     }
 
+
     taskbar_ = nullptr;
     size_ = {};
 }
@@ -211,6 +212,8 @@ bool RateStrip::CreateSystemUiFont(HWND taskbar) noexcept
 
     const UINT dpi = GetDpiForWindow(taskbar);
     metrics.lfMessageFont.lfHeight = -MulDiv(9, static_cast<int>(dpi), 72);
+    metrics.lfMessageFont.lfPitchAndFamily = FIXED_PITCH | FF_MODERN;
+    wcscpy_s(metrics.lfMessageFont.lfFaceName, kMonospaceFont);
     return font_.CreateFontIndirectW(&metrics.lfMessageFont) != FALSE;
 }
 
@@ -278,6 +281,7 @@ bool RateStrip::PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea)
         return false;
     }
 
+    textColor_ = ChooseTextColor(taskbar, notificationArea);
     return ::SetWindowPos(
                GetSafeHwnd(),
                HWND_TOP,
@@ -286,6 +290,37 @@ bool RateStrip::PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea)
                size_.cx,
                size_.cy,
                SWP_NOACTIVATE | SWP_SHOWWINDOW) != FALSE;
+}
+
+
+COLORREF RateStrip::ChooseTextColor(HWND taskbar, HWND notificationArea) const noexcept
+{
+    RECT notificationRect{};
+    RECT taskbarRect{};
+    if (!::GetWindowRect(notificationArea, &notificationRect) ||
+        !::GetWindowRect(taskbar, &taskbarRect))
+    {
+        return GetSysColor(COLOR_MENUTEXT);
+    }
+
+    const HDC screen = ::GetDC(nullptr);
+    if (screen == nullptr)
+    {
+        return GetSysColor(COLOR_MENUTEXT);
+    }
+
+    const int sampleX = notificationRect.left - size_.cx / 2;
+    const int sampleY = taskbarRect.top + (taskbarRect.bottom - taskbarRect.top) / 2;
+    const COLORREF background = ::GetPixel(screen, sampleX, sampleY);
+    ::ReleaseDC(nullptr, screen);
+    if (background == CLR_INVALID)
+    {
+        return GetSysColor(COLOR_MENUTEXT);
+    }
+
+    const int luminance =
+        (299 * GetRValue(background) + 587 * GetGValue(background) + 114 * GetBValue(background)) / 1000;
+    return luminance >= 140 ? RGB(24, 24, 24) : RGB(255, 255, 255);
 }
 
 bool RateStrip::Render() noexcept
@@ -312,16 +347,17 @@ bool RateStrip::Render() noexcept
     CFont* const previousFont = memoryDc.SelectObject(&font_);
     CRect clientRect(0, 0, size_.cx, size_.cy);
     memoryDc.FillSolidRect(&clientRect, GetSysColor(COLOR_MENU));
+
     memoryDc.SetBkMode(TRANSPARENT);
-    memoryDc.SetTextColor(GetSysColor(COLOR_MENUTEXT));
+    memoryDc.SetTextColor(textColor_);
 
     const int midpoint = clientRect.Height() / 2;
     CRect topLineRect = clientRect;
     topLineRect.bottom = midpoint;
     CRect bottomLineRect = clientRect;
     bottomLineRect.top = midpoint;
-    const std::wstring topLine = uploadText_ + L" ↑";
-    const std::wstring bottomLine = downloadText_ + L" ↓";
+    const std::wstring topLine = uploadText_ + L" \u2191";
+    const std::wstring bottomLine = downloadText_ + L" \u2193";
     memoryDc.DrawTextW(topLine.c_str(), &topLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
     memoryDc.DrawTextW(bottomLine.c_str(), &bottomLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
 
@@ -338,7 +374,6 @@ bool RateStrip::Render() noexcept
         0,
         &blend,
         ULW_ALPHA) != FALSE;
-
     memoryDc.SelectObject(previousFont);
     memoryDc.SelectObject(previousBitmap);
     return rendered;
