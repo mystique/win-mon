@@ -9,7 +9,7 @@ The product and process the user runs. Tray tooltip and identity string are `Win
 _Avoid_: win-mon (except repo/folder), TrafficMonitor (reference tree only — ADR-0006), bandwidth monitor
 
 **Rate Strip**:
-The two-line Upload/Download Rate text embedded on the primary bottom taskbar only (see ADRs). Upload on top with ↑, download below with ↓. Display-only: not a control surface (no click, menu, or tooltip). Hidden when that taskbar is missing or not bottom-aligned; not shown on secondary taskbars. Width is stable (sized for a wide sample such as `999.9G/s`), system UI font, text color follows taskbar/system theme when practical. If embed fails while the Tray Icon is up, the process stays alive and retries (including via Shell Recovery).
+The two-line Upload/Download Rate text embedded on the primary bottom taskbar only (see ADRs). Upload on top with ↑, download below with ↓. Text is right-aligned and display-only: not a control surface (no click, menu, or tooltip). Hidden when that taskbar is missing or not bottom-aligned; not shown on secondary taskbars. Width is stable (sized for a wide sample such as `999.9G/s`), system UI font, text color follows taskbar/system theme. While running, Win Mon refreshes the strip position and theme color once per Rate Sample so changes in the notification area do not cause overlap or stale contrast. If embed fails while the Tray Icon is up, the process stays alive and retries (including via Shell Recovery).
 _Avoid_: taskbar window, widget, HUD, overlay (unless contrasting implementation), main UI
 
 **Tray Icon**:
@@ -49,5 +49,5 @@ At most one Win Mon process owns the Tray Icon and Rate Strip. A second launch e
 _Avoid_: mutex (implementation), singleton app
 
 **Shell Recovery**:
-After Explorer/taskbar recreation, Win Mon re-creates the Rate Strip and Tray Icon and keeps the in-memory NIC Selection and sampling state. No user prompt. DPI change and primary-monitor change also re-find/relayout the Rate Strip while running.
+After Explorer/taskbar recreation, Win Mon re-creates the Rate Strip and Tray Icon and keeps the in-memory NIC Selection and sampling state. The message sink is a hidden top-level window so it receives the registered `TaskbarCreated` broadcast. No user prompt. DPI change and primary-monitor change re-find/relayout the Rate Strip while running; the periodic refresh also tracks notification-area geometry and theme color changes.
 _Avoid_: restart app, relaunch

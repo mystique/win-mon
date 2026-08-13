@@ -10,8 +10,8 @@
 - [ ] All WinMonCore automated tests pass from a clean workspace.
 - [ ] Manual Windows 11 smoke verifies launch, Tray Icon tooltip, live All NICs rates, one-NIC selection, zero states, and Exit.
 - [ ] Manual smoke verifies a second launch exits silently without duplicate product surfaces.
-- [ ] Manual smoke verifies Explorer restart recovery and preserved in-memory NIC Selection.
-- [ ] Manual smoke verifies primary-taskbar/DPI behavior available on the test workstation.
+- [ ] Manual smoke verifies Explorer restart recovery, tray icon restoration, and preserved in-memory NIC Selection.
+- [ ] Manual smoke verifies primary-taskbar/DPI behavior and runtime notification-area repositioning and theme-color refresh where available.
 - [ ] Exit leaves no Tray Icon ghost, Rate Strip, process, or taskbar layout damage.
 - [ ] No main window or Rate Strip interaction is exposed.
 - [ ] No product setting is persisted and no autostart registration is created.
@@ -21,3 +21,9 @@
 - [ ] The build dependency audit finds no TrafficMonitor project, library, include path, shared source, vendored module, or runtime artifact.
 - [ ] Only Win Mon-owned product code and required platform/MFC runtime artifacts are needed to build and run Win Mon.
 - [ ] Any acceptance gap discovered by integration is fixed and reverified before this ticket is complete.
+
+## Current implementation notes
+
+- The release path includes runtime Rate Strip placement refresh and theme-color refresh in addition to the original shell recovery behavior.
+- Explorer recovery restores the Tray Icon because the message sink is a hidden top-level broadcast recipient for `TaskbarCreated`.
+- Automated verification remains limited to WinMonCore; shell geometry, tray restoration, DPI, and theme behavior require Windows 11 smoke.

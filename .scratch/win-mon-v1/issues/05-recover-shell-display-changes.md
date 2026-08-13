@@ -18,3 +18,10 @@
 - [ ] Rate Strip recovery never resizes or alters unrelated taskbar children.
 - [ ] Exit remains clean after one or more shell recovery, DPI, primary-monitor, hide, or restore cycles.
 - [ ] Manual Windows 11 smoke covers Explorer restart, supported taskbar return, DPI or primary-monitor change where available, selection retention, and final Exit.
+
+## Implementation notes
+
+- `TrayMessageWindow` uses a hidden top-level `WS_POPUP` message sink, not `HWND_MESSAGE`, because the registered `TaskbarCreated` notification is a system broadcast.
+- The tray icon is deleted and re-added after shell recreation; the Rate Strip is re-embedded while `WinMonCore` selection and sampling state remain in memory.
+- During each one-second Rate Sample, an existing Rate Strip re-reads the notification-area geometry and moves itself beside the current tray edge. It also re-samples taskbar theme color while hidden and re-renders when the color changes.
+- The dynamic refresh path destroys the strip when the supported taskbar or notification area is unavailable; existing bounded Shell Recovery retries embedding without altering unrelated taskbar children.

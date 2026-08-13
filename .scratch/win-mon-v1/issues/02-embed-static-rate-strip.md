@@ -18,3 +18,7 @@
 - [ ] No classic-taskbar surgery such as modifying MSTaskSwWClass is introduced.
 - [ ] TrafficMonitor may be read to understand the taskbar technique, but all shipped implementation is Win Mon-owned and no TrafficMonitor source or project enters the build.
 - [ ] Manual Windows 11 smoke verifies the Rate Strip locus, two-line layout, lack of interaction, stable width, and clean Exit.
+
+## Implementation notes
+
+The Rate Strip is right-aligned within its fixed-width surface. Its shell host refreshes the current notification-area position and taskbar-derived text color once per Rate Sample, so runtime tray-width and theme changes do not require restarting Win Mon. Theme sampling occurs while the strip is hidden to avoid reading the strip's own layered pixels.

@@ -85,12 +85,12 @@ On Windows 11, the user wants a glanceable live view of network upload and downl
 - Create Tray Icon with tip `Win Mon`; failure at startup → message box → exit process.
 - Build Operator Menu from core menu model on each open (or on NIC list refresh); radio + Exit; English.
 - Enumerate NICs via normal-user Windows APIs; refresh list on a sensible cadence or on menu open; feed core.
-- Rate Sample timer ~1s; feed counters into core; invalidate Rate Strip.
-- Rate Strip: child window embedded into primary `Shell_TrayWnd`, anchored near the notification area (TrafficMonitor Win11 path as reference); owner-drawn two lines; fixed width from wide sample; system font; theme-aware text color when practical (ADR-0001, ADR-0002).
+- Rate Sample timer ~1s; feed counters into core, update the Rate Strip text, and refresh its current placement and theme color against the live notification-area/taskbar state.
+- Rate Strip: child window embedded into primary `Shell_TrayWnd`, anchored near the notification area (TrafficMonitor Win11 path as reference); owner-drawn two lines, right-aligned; fixed width from wide sample; system font; theme-aware text color sampled while hidden during refresh when practical (ADR-0001, ADR-0002).
 - Never shrink or modify `MSTaskSwWClass` / task list windows.
 - No interaction handlers on the Rate Strip (ignore click/context menu).
-- Shell Recovery: detect explorer/taskbar recreation; recreate tray + strip; keep core state.
-- On DPI / primary monitor change: re-find taskbar and relayout strip.
+- Shell Recovery: use a hidden top-level broadcast-capable message sink to detect `TaskbarCreated`; recreate tray + strip; keep core state.
+- On DPI / primary monitor change: re-find taskbar and relayout strip; periodic refresh also tracks notification-area geometry and theme changes.
 - Non-bottom or missing primary taskbar: hide strip, keep tray + sampling.
 - Exit: `NIM_DELETE`, destroy strip, end process.
 - Strip embed failure with tray OK: remain running, retry (timer and/or recovery path).

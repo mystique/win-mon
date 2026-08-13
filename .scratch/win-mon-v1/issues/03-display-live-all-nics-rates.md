@@ -11,7 +11,7 @@
 - [ ] All NICs aggregates only NICs that are currently up and always excludes loopback.
 - [ ] The first sample, an incomplete sample, no NICs, or no up NICs produces zero Upload Rate and Download Rate rather than fabricated traffic.
 - [ ] Counter resets, replacement, or invalid backward deltas do not produce an enormous or negative displayed rate.
-- [ ] Upload Rate and Download Rate update the Rate Strip without moving or resizing the strip.
+- [ ] Upload Rate and Download Rate update the Rate Strip without moving or resizing the strip; the shell refreshes placement and theme color independently once per Rate Sample.
 - [ ] Formatting uses base 1000, exactly one decimal place, and automatic K/s, M/s, or G/s tiers.
 - [ ] Values below 1000 bytes per second remain in K/s; no display string contains `B`.
 - [ ] Upload remains the top line with ↑ and download remains the bottom line with ↓.
