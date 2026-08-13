@@ -42,6 +42,58 @@ void RateStrip::SetRates(const std::wstring& uploadText, const std::wstring& dow
     }
 }
 
+
+std::wstring RateStrip::GetRateFontName() const
+{
+    return hasSelectedFont_ ? selectedFont_.logFont.lfFaceName : kMonospaceFont;
+}
+
+bool RateStrip::GetRateFont(RateFontSelection& selection) const noexcept
+{
+    if (hasSelectedFont_)
+    {
+        selection = selectedFont_;
+        return true;
+    }
+
+    const HWND taskbar = taskbar_ != nullptr && IsWindow(taskbar_) ? taskbar_ : nullptr;
+    return LoadDefaultRateFont(taskbar, selection);
+}
+
+bool RateStrip::SetRateFont(const RateFontSelection& selection) noexcept
+{
+    if (selection.logFont.lfFaceName[0] == L'\0' || selection.pointSizeTenths <= 0)
+    {
+        return false;
+    }
+
+    const RateFontSelection previousFont = selectedFont_;
+    const bool previouslySelected = hasSelectedFont_;
+    selectedFont_ = selection;
+    hasSelectedFont_ = true;
+
+    if (GetSafeHwnd() == nullptr)
+    {
+        return true;
+    }
+
+    const HWND taskbar = FindPrimaryBottomTaskbar();
+    const HWND notificationArea = taskbar == nullptr ? nullptr : FindNotificationArea(taskbar);
+    if (notificationArea != nullptr && taskbar_ == taskbar && Relayout(taskbar, notificationArea) && Render())
+    {
+        return true;
+    }
+
+    selectedFont_ = previousFont;
+    hasSelectedFont_ = previouslySelected;
+    if (notificationArea != nullptr && taskbar_ == taskbar)
+    {
+        static_cast<void>(Relayout(taskbar, notificationArea));
+        static_cast<void>(Render());
+    }
+    return false;
+}
+
 void RateStrip::SetContextMenuOwner(HWND owner, UINT notificationMessage) noexcept
 {
     contextMenuOwner_ = owner;
@@ -109,12 +161,13 @@ bool RateStrip::Embed(bool shouldShow)
         }
     }
 
-    if (!CreateSystemUiFont(taskbar))
+    if (!CreateRateFont(taskbar))
     {
         return false;
     }
 
-    size_ = MeasureSize(taskbar);
+    naturalSize_ = MeasureSize(taskbar);
+    size_ = naturalSize_;
     if (size_.cx <= 0 || size_.cy <= 0)
     {
         font_.DeleteObject();
@@ -197,11 +250,12 @@ bool RateStrip::Relayout(HWND taskbar, HWND notificationArea) noexcept
     {
         font_.DeleteObject();
     }
-    if (!CreateSystemUiFont(taskbar))
+    if (!CreateRateFont(taskbar))
     {
         return false;
     }
-    size_ = MeasureSize(taskbar);
+    naturalSize_ = MeasureSize(taskbar);
+    size_ = naturalSize_;
     if (size_.cx <= 0 || size_.cy <= 0)
     {
         return false;
@@ -262,7 +316,7 @@ HWND RateStrip::FindNotificationArea(HWND taskbar) noexcept
     return search.notificationArea;
 }
 
-bool RateStrip::CreateSystemUiFont(HWND taskbar) noexcept
+bool RateStrip::LoadDefaultRateFont(HWND taskbar, RateFontSelection& selection) noexcept
 {
     NONCLIENTMETRICSW metrics{};
     metrics.cbSize = sizeof(metrics);
@@ -271,11 +325,30 @@ bool RateStrip::CreateSystemUiFont(HWND taskbar) noexcept
         return false;
     }
 
+    selection.logFont = metrics.lfMessageFont;
+    selection.logFont.lfPitchAndFamily = FIXED_PITCH | FF_MODERN;
+    wcscpy_s(selection.logFont.lfFaceName, kMonospaceFont);
+    selection.pointSizeTenths = 90;
+    const UINT dpi = taskbar == nullptr ? GetDpiForSystem() : GetDpiForWindow(taskbar);
+    selection.logFont.lfHeight = -MulDiv(selection.pointSizeTenths, static_cast<int>(dpi), 720);
+    return true;
+}
+
+bool RateStrip::CreateRateFont(HWND taskbar) noexcept
+{
+    RateFontSelection selection;
+    if (hasSelectedFont_)
+    {
+        selection = selectedFont_;
+    }
+    else if (!LoadDefaultRateFont(taskbar, selection))
+    {
+        return false;
+    }
+
     const UINT dpi = GetDpiForWindow(taskbar);
-    metrics.lfMessageFont.lfHeight = -MulDiv(9, static_cast<int>(dpi), 72);
-    metrics.lfMessageFont.lfPitchAndFamily = FIXED_PITCH | FF_MODERN;
-    wcscpy_s(metrics.lfMessageFont.lfFaceName, kMonospaceFont);
-    return font_.CreateFontIndirectW(&metrics.lfMessageFont) != FALSE;
+    selection.logFont.lfHeight = -MulDiv(selection.pointSizeTenths, static_cast<int>(dpi), 720);
+    return font_.CreateFontIndirectW(&selection.logFont) != FALSE;
 }
 
 CSize RateStrip::MeasureSize(HWND taskbar) const
@@ -335,12 +408,19 @@ bool RateStrip::PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea)
     ::MapWindowPoints(nullptr, taskbar, reinterpret_cast<POINT*>(&notificationRect), 2);
     const UINT dpi = GetDpiForWindow(taskbar);
     const int margin = MulDiv(4, static_cast<int>(dpi), 96);
-    const int x = notificationRect.left - size_.cx - margin;
-    const int y = (taskbarClientRect.bottom - size_.cy) / 2;
-    if (x < taskbarClientRect.left || y < taskbarClientRect.top)
+    const int availableWidth = notificationRect.left - margin - taskbarClientRect.left;
+    const int availableHeight = taskbarClientRect.bottom - taskbarClientRect.top;
+    if (availableWidth <= 0 || availableHeight <= 0)
     {
         return false;
     }
+
+    // Keep every supported font applicable even when notification chrome
+    // leaves less room than its natural two-line extent.
+    size_.cx = std::min(static_cast<int>(naturalSize_.cx), availableWidth);
+    size_.cy = std::min(static_cast<int>(naturalSize_.cy), availableHeight);
+    const int x = notificationRect.left - size_.cx - margin;
+    const int y = taskbarClientRect.top + (availableHeight - size_.cy) / 2;
 
     textColor_ = ChooseTextColor(taskbar, notificationArea);
     return ::SetWindowPos(

@@ -27,6 +27,7 @@ private:
     [[nodiscard]] UINT ShowOperatorMenu();
     void RequestExit();
     void HandleOperatorMenuCommand(UINT command);
+    void ChooseRateFont();
     void SampleRates();
     [[nodiscard]] std::vector<winmon::NicSnapshot> ReadNicSnapshots(bool classifyForMenu = false) const;
     afx_msg LRESULT OnTrayNotification(WPARAM wParam, LPARAM lParam);

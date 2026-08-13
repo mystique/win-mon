@@ -13,6 +13,8 @@ enum class OperatorMenuItemKind
     Separator,
     Autostart,
     RightClickSpeedText,
+    CurrentFont,
+    SetFont,
     Exit,
 };
 
@@ -58,7 +60,8 @@ public:
     RateDisplay Sample(const std::vector<NicSnapshot>& snapshots, double monotonicSeconds);
     std::vector<OperatorMenuItem> BuildOperatorMenu(
         const std::vector<NicSnapshot>& snapshots,
-        const OperatorMenuToggles& toggles = {});
+        const OperatorMenuToggles& toggles = {},
+        const std::wstring& rateFontName = L"Consolas");
     void SelectAll() noexcept;
     void SelectNic(const std::string& stableId) noexcept;
     [[nodiscard]] bool IsAllSelected() const noexcept;

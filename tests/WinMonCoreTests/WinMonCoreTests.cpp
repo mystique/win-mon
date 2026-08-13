@@ -51,9 +51,9 @@ void ClassicConnectionsLimitNicSelectionChoices()
     internalAdapter.visibleInClassicConnections = false;
 
     const auto menu = core.BuildOperatorMenu({ethernet, internalAdapter});
-    Require(menu.size() == 7, "only classic Network Connections NICs are offered");
+    Require(menu.size() == 10, "only classic Network Connections NICs are offered");
     Require(menu[0].kind == winmon::OperatorMenuItemKind::All && menu[1].stableId == "ethernet", "classic NIC remains selectable");
-    Require(menu[2].kind == winmon::OperatorMenuItemKind::Separator && menu[6].kind == winmon::OperatorMenuItemKind::Exit, "operator menu tail remains intact");
+    Require(menu[2].kind == winmon::OperatorMenuItemKind::Separator && menu[9].kind == winmon::OperatorMenuItemKind::Exit, "operator menu tail remains intact");
 }
 
 void RequireRate(const winmon::RateDisplay& display, double upload, double download)
@@ -119,9 +119,9 @@ void MenuAndSelectionFollowEnumeration()
     WinMonCore core;
     const std::vector<NicSnapshot> nics = {NamedNic("a", L"Alpha", L"A desc"), NamedNic("down", L"", L"Down description", false), Nic("loop", true, 0, 0, true)};
     auto menu = core.BuildOperatorMenu(nics);
-    Require(menu.size() == 8 && menu[0].label == L"All" && menu[0].checked, "default all menu");
+    Require(menu.size() == 11 && menu[0].label == L"All" && menu[0].checked, "default all menu");
     Require(menu[1].label == L"Alpha" && menu[2].label == L"Down description" && menu[2].checked == false, "menu order and fallback");
-    Require(menu[3].kind == winmon::OperatorMenuItemKind::Separator && menu[7].kind == winmon::OperatorMenuItemKind::Exit, "menu tail");
+    Require(menu[3].kind == winmon::OperatorMenuItemKind::Separator && menu[10].kind == winmon::OperatorMenuItemKind::Exit, "menu tail");
     core.SelectNic("down");
     menu = core.BuildOperatorMenu(nics);
     Require(menu[2].checked && !menu[0].checked, "selected down checked");
@@ -162,20 +162,22 @@ void RateStripVisibilityFollowsPrimaryBottomAvailability()
     Require(!WinMonCore::ShouldShowRateStrip(false), "missing or unsupported taskbar hides strip");
 }
 
-void OperatorMenuGroupsPersistedTogglesWithoutSeparator()
+void OperatorMenuGroupsControlsAndFontActions()
 {
     WinMonCore core;
     const std::vector<NicSnapshot> nics = {NamedNic("a", L"Alpha", L"A desc")};
-    const auto menu = core.BuildOperatorMenu(nics, {true, false});
-    Require(menu.size() == 7, "toggles join the operator menu tail");
+    const auto menu = core.BuildOperatorMenu(nics, {true, false}, L"Cascadia Mono");
+    Require(menu.size() == 10, "font actions join the operator menu tail");
     Require(menu[3].kind == winmon::OperatorMenuItemKind::Autostart && menu[3].checked, "autostart state is checked");
     Require(menu[4].kind == winmon::OperatorMenuItemKind::RightClickSpeedText && !menu[4].checked, "speed text toggle state is unchecked");
-    Require(menu[5].kind == winmon::OperatorMenuItemKind::Separator, "only one separator before Exit");
-    Require(menu[3].label == L"Launch at Login", "autostart keeps its plain label");
-    Require(menu[4].label == L"Right-Click Speed Text", "speed text toggle stays plain and short");
+    Require(menu[5].kind == winmon::OperatorMenuItemKind::Separator, "font actions begin a separate group");
+    Require(menu[6].kind == winmon::OperatorMenuItemKind::CurrentFont && menu[6].label == L"Font: Cascadia Mono", "current font is shown above the action");
+    Require(menu[7].kind == winmon::OperatorMenuItemKind::SetFont && menu[7].label == L"Set Font...", "font chooser action follows the current font");
+    Require(menu[8].kind == winmon::OperatorMenuItemKind::Separator && menu[9].kind == winmon::OperatorMenuItemKind::Exit, "font group is separated from Exit");
 
-    const auto toggled = core.BuildOperatorMenu(nics, {false, true});
+    const auto toggled = core.BuildOperatorMenu(nics, {false, true}, L"Consolas");
     Require(!toggled[3].checked && toggled[4].checked, "toggle marks follow persisted settings");
+    Require(toggled[6].label == L"Font: Consolas", "current font label follows live Rate Strip state");
 }
 
 void FormatsBase1000BoundariesAndMinimumK()
@@ -208,7 +210,7 @@ int main()
         FormatsBase1000BoundariesAndMinimumK();
         RateStripVisibilityFollowsPrimaryBottomAvailability();
         MenuAndSelectionFollowEnumeration();
-        OperatorMenuGroupsPersistedTogglesWithoutSeparator();
+        OperatorMenuGroupsControlsAndFontActions();
         ClassicConnectionsLimitNicSelectionChoices();
         SelectedNicOnlyAndChurnFallback();
     }

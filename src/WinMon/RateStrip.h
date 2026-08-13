@@ -4,6 +4,12 @@
 
 #include <string>
 
+struct RateFontSelection final
+{
+    LOGFONTW logFont{};
+    int pointSizeTenths = 90;
+};
+
 class RateStrip final : public CWnd
 {
 public:
@@ -17,11 +23,15 @@ public:
     // Enables or disables mouse response; disabled keeps the strip display-only.
     void SetContextMenuEnabled(bool enabled) noexcept;
     [[nodiscard]] bool IsContextMenuEnabled() const noexcept { return contextMenuEnabled_; }
+    [[nodiscard]] std::wstring GetRateFontName() const;
+    [[nodiscard]] bool GetRateFont(RateFontSelection& selection) const noexcept;
+    [[nodiscard]] bool SetRateFont(const RateFontSelection& selection) noexcept;
 
 private:
     [[nodiscard]] static HWND FindPrimaryBottomTaskbar() noexcept;
     [[nodiscard]] static HWND FindNotificationArea(HWND taskbar) noexcept;
-    [[nodiscard]] bool CreateSystemUiFont(HWND taskbar) noexcept;
+    [[nodiscard]] static bool LoadDefaultRateFont(HWND taskbar, RateFontSelection& selection) noexcept;
+    [[nodiscard]] bool CreateRateFont(HWND taskbar) noexcept;
     [[nodiscard]] CSize MeasureSize(HWND taskbar) const;
     [[nodiscard]] bool PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea) noexcept;
     [[nodiscard]] bool Render() noexcept;
@@ -37,6 +47,8 @@ private:
     DECLARE_MESSAGE_MAP()
 
     CFont font_;
+    RateFontSelection selectedFont_{};
+    CSize naturalSize_{};
     CSize size_{};
     std::wstring uploadText_ = L"0.0K/s";
     std::wstring downloadText_ = L"0.0K/s";
@@ -45,4 +57,5 @@ private:
     HWND contextMenuOwner_ = nullptr;
     UINT contextMenuMessage_ = 0;
     bool contextMenuEnabled_ = false;
+    bool hasSelectedFont_ = false;
 };

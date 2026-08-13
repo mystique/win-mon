@@ -4,6 +4,7 @@
 
 #include "res/resource.h"
 
+#include <afxdlgs.h>
 #include <shellapi.h>
 #include <iphlpapi.h>
 #include <netcon.h>
@@ -435,7 +436,9 @@ UINT TrayMessageWindow::ShowOperatorMenu()
     snapshots_ = ReadNicSnapshots(true);
     autostartWasEnabled_ = autostart::IsEnabled();
     const auto model = core_.BuildOperatorMenu(
-        snapshots_, {autostartWasEnabled_, rateStrip_.IsContextMenuEnabled()});
+        snapshots_,
+        {autostartWasEnabled_, rateStrip_.IsContextMenuEnabled()},
+        rateStrip_.GetRateFontName());
     CMenu menu;
     CMenu nicMenu;
     if (!menu.CreatePopupMenu() || !nicMenu.CreatePopupMenu()) return 0;
@@ -472,6 +475,12 @@ UINT TrayMessageWindow::ShowOperatorMenu()
         case winmon::OperatorMenuItemKind::RightClickSpeedText:
             if (!AppendToggle(menu, ID_OPERATOR_SPEED_TEXT_MENU, item)) return 0;
             break;
+        case winmon::OperatorMenuItemKind::CurrentFont:
+            if (!menu.AppendMenu(MF_STRING | MF_DISABLED | MF_GRAYED, ID_OPERATOR_CURRENT_FONT, item.label.c_str())) return 0;
+            break;
+        case winmon::OperatorMenuItemKind::SetFont:
+            if (!menu.AppendMenu(MF_STRING, ID_OPERATOR_SET_FONT, item.label.c_str())) return 0;
+            break;
         case winmon::OperatorMenuItemKind::Exit:
             if (!menu.AppendMenu(MF_STRING, ID_OPERATOR_EXIT, item.label.c_str())) return 0;
             break;
@@ -488,6 +497,33 @@ void TrayMessageWindow::RequestExit()
     Shutdown();
     PostQuitMessage(0);
 }
+void TrayMessageWindow::ChooseRateFont()
+{
+    RateFontSelection selection;
+    if (!rateStrip_.GetRateFont(selection))
+    {
+        return;
+    }
+
+    CFontDialog dialog(
+        &selection.logFont,
+        CF_SCREENFONTS | CF_INITTOLOGFONTSTRUCT | CF_FORCEFONTEXIST |
+            CF_NOVERTFONTS | CF_NOSCRIPTSEL | CF_LIMITSIZE,
+        nullptr,
+        this);
+    dialog.m_cf.nSizeMin = 6;
+    dialog.m_cf.nSizeMax = 12;
+    dialog.m_cf.iPointSize = selection.pointSizeTenths;
+    if (dialog.DoModal() != IDOK)
+    {
+        return;
+    }
+
+    dialog.GetCurrentFont(&selection.logFont);
+    selection.pointSizeTenths = dialog.GetSize();
+    static_cast<void>(rateStrip_.SetRateFont(selection));
+}
+
 void TrayMessageWindow::HandleOperatorMenuCommand(UINT command)
 {
     if (command == ID_OPERATOR_EXIT)
@@ -504,6 +540,10 @@ void TrayMessageWindow::HandleOperatorMenuCommand(UINT command)
         const bool enabled = !rateStrip_.IsContextMenuEnabled();
         rateStrip_.SetContextMenuEnabled(enabled);
         static_cast<void>(settings::SetRightClickSpeedTextEnabled(enabled));
+    }
+    else if (command == ID_OPERATOR_SET_FONT)
+    {
+        ChooseRateFont();
     }
     else if (command == ID_OPERATOR_ALL_NETWORKS)
     {

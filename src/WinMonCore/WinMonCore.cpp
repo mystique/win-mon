@@ -51,7 +51,8 @@ std::wstring WinMonCore::DisplayName(const NicSnapshot& snapshot)
 
 std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
     const std::vector<NicSnapshot>& snapshots,
-    const OperatorMenuToggles& toggles)
+    const OperatorMenuToggles& toggles,
+    const std::wstring& rateFontName)
 {
     ReconcileSelection(snapshots);
     std::vector<OperatorMenuItem> menu;
@@ -64,6 +65,9 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
     menu.push_back({OperatorMenuItemKind::Separator, {}, {}, false});
     menu.push_back({OperatorMenuItemKind::Autostart, {}, L"Launch at Login", toggles.autostartEnabled});
     menu.push_back({OperatorMenuItemKind::RightClickSpeedText, {}, L"Right-Click Speed Text", toggles.rightClickSpeedTextEnabled});
+    menu.push_back({OperatorMenuItemKind::Separator, {}, {}, false});
+    menu.push_back({OperatorMenuItemKind::CurrentFont, {}, L"Font: " + rateFontName, false});
+    menu.push_back({OperatorMenuItemKind::SetFont, {}, L"Set Font...", false});
     menu.push_back({OperatorMenuItemKind::Separator, {}, {}, false});
     menu.push_back({OperatorMenuItemKind::Exit, {}, L"Exit", false});
     return menu;
