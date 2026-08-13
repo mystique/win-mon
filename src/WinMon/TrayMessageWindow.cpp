@@ -84,21 +84,90 @@ bool ContainsConnectionId(const std::vector<GUID>& ids, const GUID& candidate) n
     });
 }
 
-bool AppendToggle(CMenu& menu, UINT command, const winmon::OperatorMenuItem& item)
+bool AppendMenuItems(CMenu& menu, const std::vector<winmon::OperatorMenuItem>& items)
 {
-    const UINT flags = MF_STRING | (item.checked ? MF_CHECKED : MF_UNCHECKED);
-    return menu.AppendMenu(flags, command, item.label.c_str()) != FALSE;
+    for (const auto& item : items)
+    {
+        if (item.separator)
+        {
+            if (!menu.AppendMenu(MF_SEPARATOR)) return false;
+            continue;
+        }
+        if (!item.children.empty())
+        {
+            CMenu submenu;
+            if (!submenu.CreatePopupMenu() || !AppendMenuItems(submenu, item.children) ||
+                !menu.AppendMenu(MF_POPUP, reinterpret_cast<UINT_PTR>(submenu.GetSafeHmenu()), item.label.c_str()))
+            {
+                return false;
+            }
+            submenu.Detach();
+            continue;
+        }
+
+        UINT flags = MF_STRING;
+        if (item.checked) flags |= MF_CHECKED;
+        if (item.radio) flags |= MFT_RADIOCHECK;
+        if (!item.enabled) flags |= MF_DISABLED | MF_GRAYED;
+        if (!menu.AppendMenu(flags, static_cast<UINT>(item.choiceToken), item.label.c_str())) return false;
+    }
+    return true;
 }
 
-// Marks the Operator Menu as open for as long as it is being built and tracked.
-struct MenuOpenScope final
+struct OperatorMenuScope final
 {
-    explicit MenuOpenScope(bool& flag) noexcept : flag(flag) { flag = true; }
-    ~MenuOpenScope() noexcept { flag = false; }
-    MenuOpenScope(const MenuOpenScope&) = delete;
-    MenuOpenScope& operator=(const MenuOpenScope&) = delete;
+    explicit OperatorMenuScope(winmon::WinMonCore& core) noexcept : core(core) {}
+    ~OperatorMenuScope() noexcept
+    {
+        if (!completed) core.CancelOperatorMenu();
+    }
+    OperatorMenuScope(const OperatorMenuScope&) = delete;
+    OperatorMenuScope& operator=(const OperatorMenuScope&) = delete;
 
-    bool& flag;
+    winmon::WinMonCore& core;
+    bool completed = false;
+};
+class RightClickSettingChange final : public winmon::OperatorSettingChange
+{
+public:
+    RightClickSettingChange(RateStrip& rateStrip, bool enabled) noexcept
+        : rateStrip_(rateStrip), previous_(rateStrip.IsContextMenuEnabled()), enabled_(enabled) {}
+
+    bool ApplyLive() override
+    {
+        rateStrip_.SetContextMenuEnabled(enabled_);
+        return true;
+    }
+    bool Persist() override { return settings::SetRightClickSpeedTextEnabled(enabled_); }
+    bool RollbackLive() override
+    {
+        rateStrip_.SetContextMenuEnabled(previous_);
+        return true;
+    }
+
+private:
+    RateStrip& rateStrip_;
+    bool previous_;
+    bool enabled_;
+};
+
+class RateFontSettingChange final : public winmon::OperatorSettingChange
+{
+public:
+    RateFontSettingChange(
+        RateStrip& rateStrip,
+        const RateFontSelection& previous,
+        const RateFontSelection& selected) noexcept
+        : rateStrip_(rateStrip), previous_(previous), selected_(selected) {}
+
+    bool ApplyLive() override { return rateStrip_.SetRateFont(selected_); }
+    bool Persist() override { return settings::SetRateFont(selected_); }
+    bool RollbackLive() override { return rateStrip_.SetRateFont(previous_); }
+
+private:
+    RateStrip& rateStrip_;
+    const RateFontSelection& previous_;
+    const RateFontSelection& selected_;
 };
 }
 
@@ -110,8 +179,11 @@ BEGIN_MESSAGE_MAP(TrayMessageWindow, CWnd)
     ON_WM_DISPLAYCHANGE()
     ON_WM_SETTINGCHANGE()
     ON_WM_THEMECHANGED()
+
     ON_WM_TIMER()
 END_MESSAGE_MAP()
+
+TrayMessageWindow::TrayMessageWindow() noexcept : shellLifecycle_(*this) {}
 
 bool TrayMessageWindow::Initialize()
 {
@@ -136,21 +208,13 @@ bool TrayMessageWindow::Initialize()
         return false;
     }
 
-    if (!AddTrayIcon())
-    {
-        DestroyWindow();
-        return false;
-    }
-
     shuttingDown_ = false;
     rateStrip_.SetContextMenuOwner(GetSafeHwnd(), kRightClickSpeedTextMessage);
     rateStrip_.SetContextMenuEnabled(settings::IsRightClickSpeedTextEnabled());
-    LoadSavedRateFont();
-    static_cast<void>(rateStrip_.Embed(
-        core_.ShouldShowRateStrip(RateStrip::IsPrimaryBottomTaskbarAvailable())));
-    if (ShouldRetryRateStrip())
+    if (!shellLifecycle_.Start())
     {
-        ScheduleShellRecoveryRetry();
+        DestroyWindow();
+        return false;
     }
     if (SetTimer(kRateSampleTimer, 1000, nullptr) == 0)
     {
@@ -164,9 +228,7 @@ void TrayMessageWindow::Shutdown() noexcept
 {
     shuttingDown_ = true;
     KillTimer(kRateSampleTimer);
-    CancelShellRecoveryRetry();
-    rateStrip_.Shutdown();
-    RemoveTrayIcon();
+    shellLifecycle_.Shutdown();
 
     if (GetSafeHwnd() != nullptr)
     {
@@ -176,12 +238,13 @@ void TrayMessageWindow::Shutdown() noexcept
 
 
 
-std::vector<winmon::NicSnapshot> TrayMessageWindow::ReadNicSnapshots(bool classifyForMenu) const
+winmon::NetworkObservation TrayMessageWindow::ReadNetworkObservation() const
 {
     MIB_IF_TABLE2* table = nullptr;
     if (GetIfTable2(&table) != NO_ERROR || table == nullptr) return {};
     std::vector<winmon::NicSnapshot> snapshots;
-    const auto classicConnectionIds = classifyForMenu ? ReadClassicConnectionIds() : ClassicConnectionIds{};
+    const auto classicConnectionIds = ReadClassicConnectionIds();
+    const bool classicClassificationAvailable = classicConnectionIds.available;
     snapshots.reserve(table->NumEntries);
     for (ULONG index = 0; index < table->NumEntries; ++index)
     {
@@ -191,139 +254,54 @@ std::vector<winmon::NicSnapshot> TrayMessageWindow::ReadNicSnapshots(bool classi
         snapshot.friendlyName = row.Alias;
         snapshot.description = row.Description;
         snapshot.loopback = row.Type == IF_TYPE_SOFTWARE_LOOPBACK;
-        snapshot.visibleInClassicConnections = !classifyForMenu || !classicConnectionIds.available || ContainsConnectionId(classicConnectionIds.values, row.InterfaceGuid);
+        snapshot.visibleInClassicConnections =
+            classicConnectionIds.available && ContainsConnectionId(classicConnectionIds.values, row.InterfaceGuid);
         snapshot.up = row.OperStatus == IfOperStatusUp;
         snapshot.inOctets = row.InOctets;
         snapshot.outOctets = row.OutOctets;
         snapshots.push_back(std::move(snapshot));
     }
     FreeMibTable(table);
-    return snapshots;
+    return {std::move(snapshots), classicClassificationAvailable};
 }
 
-bool TrayMessageWindow::ShouldRetryRateStrip() const noexcept
-{
-    return rateStrip_.GetSafeHwnd() == nullptr &&
-        core_.ShouldShowRateStrip(RateStrip::IsPrimaryBottomTaskbarAvailable());
-}
-void TrayMessageWindow::ScheduleShellRecoveryRetry() noexcept
-{
-    if (shuttingDown_ || shellRecoveryTimerActive_ || GetSafeHwnd() == nullptr)
-    {
-        return;
-    }
-    shellRecoveryTimerActive_ = SetTimer(kShellRecoveryTimer, kShellRecoveryCadenceMs, nullptr) != 0;
-}
-
-void TrayMessageWindow::CancelShellRecoveryRetry() noexcept
-{
-    if (!shellRecoveryTimerActive_)
-    {
-        return;
-    }
-    KillTimer(kShellRecoveryTimer);
-    shellRecoveryTimerActive_ = false;
-}
-
-void TrayMessageWindow::LoadSavedRateFont()
-{
-    RateFontSelection savedFont;
-    if (settings::GetRateFont(savedFont))
-    {
-        static_cast<void>(rateStrip_.SetRateFont(savedFont));
-    }
-    else
-    {
-        static_cast<void>(rateStrip_.ResetRateFont());
-    }
-}
-
-void TrayMessageWindow::RecoverRateStrip()
-{
-    rateStrip_.Shutdown();
-    LoadSavedRateFont();
-    if (!rateStrip_.Embed(core_.ShouldShowRateStrip(RateStrip::IsPrimaryBottomTaskbarAvailable())))
-    {
-        if (ShouldRetryRateStrip()) ScheduleShellRecoveryRetry();
-        return;
-    }
-    CancelShellRecoveryRetry();
-}
-
-void TrayMessageWindow::AttemptShellRecovery()
-{
-    if (shuttingDown_)
-    {
-        return;
-    }
-
-    if (!trayIconAdded_ && !AddTrayIcon())
-    {
-        ScheduleShellRecoveryRetry();
-        return;
-    }
-
-    // Embed() revalidates the parent taskbar, so an Explorer-created stale
-    // child is discarded before a new child is created.
-    LoadSavedRateFont();
-    if (!rateStrip_.Embed(core_.ShouldShowRateStrip(RateStrip::IsPrimaryBottomTaskbarAvailable())))
-    {
-        if (ShouldRetryRateStrip()) ScheduleShellRecoveryRetry();
-        return;
-    }
-    CancelShellRecoveryRetry();
-}
 
 LRESULT TrayMessageWindow::OnTaskbarCreated(WPARAM, LPARAM)
 {
-    if (shuttingDown_)
-    {
-        return 0;
-    }
-
-    // The shell has discarded the old notification-area state. Delete first
-    // so a delayed shell callback cannot leave two icons after NIM_ADD.
-    RemoveTrayIcon();
-    static_cast<void>(AddTrayIcon());
-    RecoverRateStrip();
-    if (!trayIconAdded_ || ShouldRetryRateStrip())
-    {
-        ScheduleShellRecoveryRetry();
-    }
+    shellLifecycle_.OnShellCreated();
     return 0;
 }
 
 LRESULT TrayMessageWindow::OnDpiChanged(WPARAM, LPARAM)
 {
-    RecoverRateStrip();
+    shellLifecycle_.OnEnvironmentChanged();
     return 0;
 }
 
 void TrayMessageWindow::OnDisplayChange(UINT, int, int)
 {
-    RecoverRateStrip();
+    shellLifecycle_.OnEnvironmentChanged();
 }
 
 void TrayMessageWindow::OnSettingChange(UINT, LPCTSTR)
 {
     UpdateTrayIconTheme();
-    RecoverRateStrip();
+    shellLifecycle_.OnEnvironmentChanged();
 }
 
 LRESULT TrayMessageWindow::OnThemeChanged()
 {
     UpdateTrayIconTheme();
-    RecoverRateStrip();
+    shellLifecycle_.OnEnvironmentChanged();
     return 0;
 }
 
 void TrayMessageWindow::SampleRates()
 {
-    LoadSavedRateFont();
-    snapshots_ = ReadNicSnapshots();
+    core_.ObserveNetwork(ReadNetworkObservation());
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
     const double seconds = std::chrono::duration<double>(now).count();
-    const auto display = core_.Sample(snapshots_, seconds);
+    const auto display = core_.Sample(seconds);
     rateStrip_.SetRates(display.uploadText, display.downloadText);
 }
 
@@ -332,24 +310,12 @@ void TrayMessageWindow::OnTimer(UINT_PTR timerId)
     if (timerId == kRateSampleTimer)
     {
         SampleRates();
-        if (rateStrip_.GetSafeHwnd() != nullptr)
-        {
-            static_cast<void>(rateStrip_.Refresh());
-        }
-        if ((!trayIconAdded_ || ShouldRetryRateStrip()) && !shellRecoveryTimerActive_)
-        {
-            AttemptShellRecovery();
-        }
+        shellLifecycle_.OnRateSample();
     }
     else if (timerId == kShellRecoveryTimer)
     {
-        shellRecoveryTimerActive_ = false;
-        KillTimer(kShellRecoveryTimer);
-        AttemptShellRecovery();
-        if (!trayIconAdded_ || ShouldRetryRateStrip())
-        {
-            ScheduleShellRecoveryRetry();
-        }
+        CancelRecovery();
+        shellLifecycle_.Retry();
     }
     CWnd::OnTimer(timerId);
 }
@@ -396,8 +362,70 @@ void TrayMessageWindow::UpdateTrayIconTheme() noexcept
     }
 }
 
-bool TrayMessageWindow::AddTrayIcon()
+winmon::RateStripState TrayMessageWindow::RecreateRateStrip()
 {
+    rateStrip_.Shutdown();
+    LoadSavedRateFont();
+    if (!RateStrip::IsPrimaryBottomTaskbarAvailable())
+    {
+        return winmon::RateStripState::Hidden;
+    }
+    return rateStrip_.Embed(true) ? winmon::RateStripState::Visible : winmon::RateStripState::Retry;
+}
+
+winmon::RateStripState TrayMessageWindow::RefreshRateStrip()
+{
+    if (rateStrip_.GetSafeHwnd() != nullptr && rateStrip_.Refresh())
+    {
+        return winmon::RateStripState::Visible;
+    }
+    if (!RateStrip::IsPrimaryBottomTaskbarAvailable())
+    {
+        rateStrip_.Shutdown();
+        return winmon::RateStripState::Hidden;
+    }
+    return winmon::RateStripState::Retry;
+}
+
+void TrayMessageWindow::DestroyRateStrip() noexcept
+{
+    rateStrip_.Shutdown();
+}
+
+void TrayMessageWindow::ForgetTrayIcon() noexcept
+{
+    trayIconAdded_ = false;
+}
+
+void TrayMessageWindow::ScheduleRecovery() noexcept
+{
+    if (shuttingDown_ || shellRecoveryTimerActive_ || GetSafeHwnd() == nullptr) return;
+    shellRecoveryTimerActive_ = SetTimer(kShellRecoveryTimer, kShellRecoveryCadenceMs, nullptr) != 0;
+}
+
+void TrayMessageWindow::CancelRecovery() noexcept
+{
+    if (!shellRecoveryTimerActive_) return;
+    KillTimer(kShellRecoveryTimer);
+    shellRecoveryTimerActive_ = false;
+}
+
+void TrayMessageWindow::LoadSavedRateFont()
+{
+    RateFontSelection savedFont;
+    if (settings::GetRateFont(savedFont))
+    {
+        static_cast<void>(rateStrip_.SetRateFont(savedFont));
+    }
+    else
+    {
+        static_cast<void>(rateStrip_.ResetRateFont());
+    }
+}
+
+bool TrayMessageWindow::EnsureTrayIcon()
+{
+    if (trayIconAdded_) return true;
     NOTIFYICONDATAW iconData{};
     iconData.cbSize = sizeof(iconData);
     iconData.hWnd = GetSafeHwnd();
@@ -442,71 +470,31 @@ void TrayMessageWindow::RemoveTrayIcon() noexcept
     trayIconAdded_ = false;
 }
 
-UINT TrayMessageWindow::ShowOperatorMenu()
+winmon::OperatorAction TrayMessageWindow::ShowOperatorMenu()
 {
-    // TrackPopupMenu pumps messages, so a queued open request would otherwise
-    // nest a second menu and rebuild menuNicIds_ under the outer one.
-    if (menuOpen_) return 0;
     CPoint cursorPosition;
-    if (!GetCursorPos(&cursorPosition)) return 0;
-    const MenuOpenScope menuScope{menuOpen_};
-    snapshots_ = ReadNicSnapshots(true);
-    autostartWasEnabled_ = autostart::IsEnabled();
-    const auto model = core_.BuildOperatorMenu(
-        snapshots_,
-        {autostartWasEnabled_, rateStrip_.IsContextMenuEnabled()},
+    if (!GetCursorPos(&cursorPosition)) return {};
+    core_.ObserveNetwork(ReadNetworkObservation());
+    const auto model = core_.BeginOperatorMenu(
+        {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled()},
         rateStrip_.GetRateFontName());
+    if (!model.has_value()) return {};
+    OperatorMenuScope transaction{core_};
+
     CMenu menu;
-    CMenu nicMenu;
-    if (!menu.CreatePopupMenu() || !nicMenu.CreatePopupMenu()) return 0;
-    menuNicIds_.clear();
-    UINT nextCommand = ID_OPERATOR_NETWORK_BASE;
-    constexpr UINT allCommand = ID_OPERATOR_ALL_NETWORKS;
-    bool nicSubmenuAttached = false;
-    for (const auto& item : model)
-    {
-        switch (item.kind)
-        {
-        case winmon::OperatorMenuItemKind::All:
-            if (!nicMenu.AppendMenu(MF_STRING, allCommand, item.label.c_str())) return 0;
-            if (item.checked) nicMenu.CheckMenuRadioItem(allCommand, allCommand, allCommand, MF_BYCOMMAND);
-            break;
-        case winmon::OperatorMenuItemKind::Nic:
-            if (!nicMenu.AppendMenu(MF_STRING, nextCommand, item.label.c_str())) return 0;
-            menuNicIds_.push_back(item.stableId);
-            if (item.checked) nicMenu.CheckMenuRadioItem(allCommand, nextCommand, nextCommand, MF_BYCOMMAND);
-            ++nextCommand;
-            break;
-        case winmon::OperatorMenuItemKind::Separator:
-            if (!nicSubmenuAttached)
-            {
-                if (!menu.AppendMenu(MF_POPUP, reinterpret_cast<UINT_PTR>(nicMenu.GetSafeHmenu()), L"Network to Monitor")) return 0;
-                nicMenu.Detach();
-                nicSubmenuAttached = true;
-            }
-            if (!menu.AppendMenu(MF_SEPARATOR)) return 0;
-            break;
-        case winmon::OperatorMenuItemKind::Autostart:
-            if (!AppendToggle(menu, ID_OPERATOR_AUTOSTART, item)) return 0;
-            break;
-        case winmon::OperatorMenuItemKind::RightClickSpeedText:
-            if (!AppendToggle(menu, ID_OPERATOR_SPEED_TEXT_MENU, item)) return 0;
-            break;
-        case winmon::OperatorMenuItemKind::CurrentFont:
-            if (!menu.AppendMenu(MF_STRING | MF_DISABLED | MF_GRAYED, ID_OPERATOR_CURRENT_FONT, item.label.c_str())) return 0;
-            break;
-        case winmon::OperatorMenuItemKind::SetFont:
-            if (!menu.AppendMenu(MF_STRING, ID_OPERATOR_SET_FONT, item.label.c_str())) return 0;
-            break;
-        case winmon::OperatorMenuItemKind::Exit:
-            if (!menu.AppendMenu(MF_STRING, ID_OPERATOR_EXIT, item.label.c_str())) return 0;
-            break;
-        }
-    }
+    if (!menu.CreatePopupMenu() || !AppendMenuItems(menu, *model)) return {};
     SetForegroundWindow();
-    const UINT command = static_cast<UINT>(::TrackPopupMenu(menu.GetSafeHmenu(), TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, cursorPosition.x, cursorPosition.y, 0, GetSafeHwnd(), nullptr));
+    const auto choiceToken = static_cast<std::uint32_t>(::TrackPopupMenu(
+        menu.GetSafeHmenu(),
+        TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
+        cursorPosition.x,
+        cursorPosition.y,
+        0,
+        GetSafeHwnd(),
+        nullptr));
     PostMessage(WM_NULL);
-    return command;
+    transaction.completed = true;
+    return core_.CompleteOperatorMenu(choiceToken);
 }
 
 void TrayMessageWindow::RequestExit()
@@ -521,6 +509,7 @@ void TrayMessageWindow::ChooseRateFont()
     {
         return;
     }
+    const RateFontSelection previousSelection = selection;
 
     CFontDialog dialog(
         &selection.logFont,
@@ -538,41 +527,41 @@ void TrayMessageWindow::ChooseRateFont()
 
     dialog.GetCurrentFont(&selection.logFont);
     selection.pointSizeTenths = dialog.GetSize();
-    if (settings::SetRateFont(selection))
+    RateFontSettingChange change{rateStrip_, previousSelection, selection};
+    if (winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RecoveryRequired)
     {
-        static_cast<void>(rateStrip_.SetRateFont(selection));
+        // The persisted value is still the previous choice. Recreate through
+        // the lifecycle so recovery keeps retrying until that choice is live.
+        shellLifecycle_.OnEnvironmentChanged();
     }
 }
 
-void TrayMessageWindow::HandleOperatorMenuCommand(UINT command)
+void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
 {
-    if (command == ID_OPERATOR_EXIT)
+    switch (action.kind)
     {
-        RequestExit();
+    case winmon::OperatorActionKind::EnableLaunchAtLogin:
+        static_cast<void>(autostart::Enable());
+        break;
+    case winmon::OperatorActionKind::DisableLaunchAtLogin:
+        static_cast<void>(autostart::Disable());
+        break;
+    case winmon::OperatorActionKind::EnableRightClickSpeedText:
+    case winmon::OperatorActionKind::DisableRightClickSpeedText:
+    {
+        const bool enabled = action.kind == winmon::OperatorActionKind::EnableRightClickSpeedText;
+        RightClickSettingChange change{rateStrip_, enabled};
+        static_cast<void>(winmon::OperatorSettingTransaction::Commit(change));
+        break;
     }
-    else if (command == ID_OPERATOR_AUTOSTART)
-    {
-        if (autostartWasEnabled_) static_cast<void>(autostart::Disable());
-        else static_cast<void>(autostart::Enable());
-    }
-    else if (command == ID_OPERATOR_SPEED_TEXT_MENU)
-    {
-        const bool enabled = !rateStrip_.IsContextMenuEnabled();
-        rateStrip_.SetContextMenuEnabled(enabled);
-        static_cast<void>(settings::SetRightClickSpeedTextEnabled(enabled));
-    }
-    else if (command == ID_OPERATOR_SET_FONT)
-    {
+    case winmon::OperatorActionKind::SetRateFont:
         ChooseRateFont();
-    }
-    else if (command == ID_OPERATOR_ALL_NETWORKS)
-    {
-        core_.SelectAll();
-    }
-    else if (command >= ID_OPERATOR_NETWORK_BASE)
-    {
-        const auto nicIndex = static_cast<std::size_t>(command - ID_OPERATOR_NETWORK_BASE);
-        if (nicIndex < menuNicIds_.size()) core_.SelectNic(menuNicIds_[nicIndex]);
+        break;
+    case winmon::OperatorActionKind::Exit:
+        RequestExit();
+        break;
+    case winmon::OperatorActionKind::None:
+        break;
     }
 }
 
@@ -580,13 +569,13 @@ LRESULT TrayMessageWindow::OnTrayNotification(WPARAM, LPARAM lParam)
 {
     const UINT notification = LOWORD(lParam);
     if (notification != WM_RBUTTONUP && notification != WM_CONTEXTMENU) return 0;
-    HandleOperatorMenuCommand(ShowOperatorMenu());
+    HandleOperatorMenuAction(ShowOperatorMenu());
     return 0;
 }
 
 LRESULT TrayMessageWindow::OnRightClickSpeedText(WPARAM, LPARAM)
 {
     if (shuttingDown_) return 0;
-    HandleOperatorMenuCommand(ShowOperatorMenu());
+    HandleOperatorMenuAction(ShowOperatorMenu());
     return 0;
 }

@@ -7,30 +7,32 @@
 #include "RateStrip.h"
 #include "../WinMonCore/WinMonCore.h"
 
-class TrayMessageWindow final : public CWnd
+class TrayMessageWindow final : public CWnd, private winmon::ShellSurface
 {
 public:
+    TrayMessageWindow() noexcept;
     [[nodiscard]] bool Initialize();
     void Shutdown() noexcept;
 
 private:
-    [[nodiscard]] bool AddTrayIcon();
+    [[nodiscard]] bool EnsureTrayIcon() override;
+    void ForgetTrayIcon() noexcept override;
+    [[nodiscard]] winmon::RateStripState RecreateRateStrip() override;
+    [[nodiscard]] winmon::RateStripState RefreshRateStrip() override;
+    void DestroyRateStrip() noexcept override;
+    void RemoveTrayIcon() noexcept override;
+    void ScheduleRecovery() noexcept override;
+    void CancelRecovery() noexcept override;
     [[nodiscard]] HICON LoadTrayIcon() const noexcept;
     void UpdateTrayIconTheme() noexcept;
-    void RemoveTrayIcon() noexcept;
-    void AttemptShellRecovery();
-    void RecoverRateStrip();
     void LoadSavedRateFont();
-    [[nodiscard]] bool ShouldRetryRateStrip() const noexcept;
-    void ScheduleShellRecoveryRetry() noexcept;
-    void CancelShellRecoveryRetry() noexcept;
 
-    [[nodiscard]] UINT ShowOperatorMenu();
+    [[nodiscard]] winmon::OperatorAction ShowOperatorMenu();
+    void HandleOperatorMenuAction(winmon::OperatorAction action);
     void RequestExit();
-    void HandleOperatorMenuCommand(UINT command);
     void ChooseRateFont();
     void SampleRates();
-    [[nodiscard]] std::vector<winmon::NicSnapshot> ReadNicSnapshots(bool classifyForMenu = false) const;
+    [[nodiscard]] winmon::NetworkObservation ReadNetworkObservation() const;
     afx_msg LRESULT OnTrayNotification(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnRightClickSpeedText(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnTaskbarCreated(WPARAM wParam, LPARAM lParam);
@@ -43,12 +45,9 @@ private:
     DECLARE_MESSAGE_MAP()
 
     RateStrip rateStrip_;
+    winmon::ShellLifecycle shellLifecycle_;
     winmon::WinMonCore core_;
-    std::vector<winmon::NicSnapshot> snapshots_;
-    std::vector<std::string> menuNicIds_;
     bool trayIconAdded_ = false;
     bool shellRecoveryTimerActive_ = false;
     bool shuttingDown_ = false;
-    bool menuOpen_ = false;
-    bool autostartWasEnabled_ = false;
 };

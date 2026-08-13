@@ -8,8 +8,150 @@
 
 namespace winmon
 {
+ShellLifecycle::ShellLifecycle(ShellSurface& surface) noexcept : surface_(surface) {}
 
-RateDisplay WinMonCore::Sample(const std::vector<NicSnapshot>& snapshots, double monotonicSeconds)
+bool ShellLifecycle::Start()
+{
+    if (!surface_.EnsureTrayIcon())
+    {
+        return false;
+    }
+    running_ = true;
+    HandleRateStripState(surface_.RecreateRateStrip());
+    return true;
+}
+
+void ShellLifecycle::OnShellCreated()
+{
+    if (!running_) return;
+    surface_.ForgetTrayIcon();
+    RestoreShellSurface();
+}
+
+void ShellLifecycle::OnEnvironmentChanged()
+{
+    if (!running_) return;
+    HandleRateStripState(surface_.RecreateRateStrip());
+}
+
+void ShellLifecycle::OnRateSample()
+{
+    if (!running_) return;
+    HandleRateStripState(surface_.RefreshRateStrip());
+}
+
+void ShellLifecycle::Retry()
+{
+    if (!running_) return;
+    RestoreShellSurface();
+}
+
+void ShellLifecycle::Shutdown() noexcept
+{
+    if (!running_) return;
+    running_ = false;
+    surface_.CancelRecovery();
+    surface_.DestroyRateStrip();
+    surface_.RemoveTrayIcon();
+}
+
+void ShellLifecycle::RestoreShellSurface()
+{
+    if (!surface_.EnsureTrayIcon())
+    {
+        surface_.ScheduleRecovery();
+        return;
+    }
+    HandleRateStripState(surface_.RecreateRateStrip());
+}
+
+void ShellLifecycle::HandleRateStripState(RateStripState state) noexcept
+{
+    if (state == RateStripState::Retry)
+    {
+        surface_.ScheduleRecovery();
+    }
+    else
+    {
+        surface_.CancelRecovery();
+    }
+}
+
+
+
+OperatorSettingOutcome OperatorSettingTransaction::Commit(OperatorSettingChange& change)
+{
+    if (!change.ApplyLive()) return OperatorSettingOutcome::LiveApplicationFailed;
+    if (change.Persist()) return OperatorSettingOutcome::Applied;
+    return change.RollbackLive()
+        ? OperatorSettingOutcome::RolledBack
+        : OperatorSettingOutcome::RecoveryRequired;
+}
+
+void WinMonCore::ObserveNetwork(NetworkObservation observation)
+{
+    snapshots_ = std::move(observation.snapshots);
+    classicClassificationAvailable_ = observation.classicClassificationAvailable;
+    ReconcileSelection(snapshots_);
+}
+
+RateDisplay WinMonCore::Sample(double monotonicSeconds)
+{
+    return SampleObserved(snapshots_, monotonicSeconds);
+}
+
+std::optional<std::vector<OperatorMenuItem>> WinMonCore::BeginOperatorMenu(
+    const OperatorMenuToggles& toggles,
+    const std::wstring& rateFontName)
+{
+    if (menuOpen_) return std::nullopt;
+    menuOpen_ = true;
+    pendingMenuChoices_.clear();
+
+    auto menuSnapshots = snapshots_;
+    if (!classicClassificationAvailable_)
+    {
+        for (auto& snapshot : menuSnapshots) snapshot.visibleInClassicConnections = true;
+    }
+    return BuildOperatorMenu(menuSnapshots, toggles, rateFontName);
+}
+
+OperatorAction WinMonCore::CompleteOperatorMenu(std::uint32_t choiceToken) noexcept
+{
+    if (!menuOpen_) return {};
+    menuOpen_ = false;
+    if (choiceToken == 0 || choiceToken > pendingMenuChoices_.size())
+    {
+        pendingMenuChoices_.clear();
+        return {};
+    }
+
+    const PendingMenuChoice choice = pendingMenuChoices_[choiceToken - 1];
+    pendingMenuChoices_.clear();
+    if (choice.selectAll)
+    {
+        SelectAll();
+    }
+    else if (!choice.selectedNicId.empty())
+    {
+        SelectNic(choice.selectedNicId);
+    }
+    return choice.action;
+}
+
+void WinMonCore::CancelOperatorMenu() noexcept
+{
+    menuOpen_ = false;
+    pendingMenuChoices_.clear();
+}
+
+void WinMonCore::AddChoice(OperatorMenuItem& item, PendingMenuChoice choice)
+{
+    pendingMenuChoices_.push_back(std::move(choice));
+    item.choiceToken = static_cast<std::uint32_t>(pendingMenuChoices_.size());
+}
+
+RateDisplay WinMonCore::SampleObserved(const std::vector<NicSnapshot>& snapshots, double monotonicSeconds)
 {
     ReconcileSelection(snapshots);
     RateDisplay display;
@@ -56,27 +198,61 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
 {
     ReconcileSelection(snapshots);
     std::vector<OperatorMenuItem> menu;
-    menu.push_back({OperatorMenuItemKind::All, {}, L"All", selectedNicId_.empty()});
+
+    OperatorMenuItem network;
+    network.label = L"Network to Monitor";
+    OperatorMenuItem all;
+    all.label = L"All";
+    all.checked = selectedNicId_.empty();
+    all.radio = true;
+    AddChoice(all, {{}, {}, true});
+    network.children.push_back(std::move(all));
     for (const auto& snapshot : snapshots)
     {
         if (snapshot.loopback || !snapshot.visibleInClassicConnections) continue;
-        menu.push_back({OperatorMenuItemKind::Nic, snapshot.stableId, DisplayName(snapshot), snapshot.stableId == selectedNicId_});
+        OperatorMenuItem nic;
+        nic.label = DisplayName(snapshot);
+        nic.checked = snapshot.stableId == selectedNicId_;
+        nic.radio = true;
+        AddChoice(nic, {{}, snapshot.stableId, false});
+        network.children.push_back(std::move(nic));
     }
-    menu.push_back({OperatorMenuItemKind::Separator, {}, {}, false});
-    menu.push_back({OperatorMenuItemKind::Autostart, {}, L"Launch at Login", toggles.autostartEnabled});
-    menu.push_back({OperatorMenuItemKind::RightClickSpeedText, {}, L"Right-Click Speed Text", toggles.rightClickSpeedTextEnabled});
-    menu.push_back({OperatorMenuItemKind::Separator, {}, {}, false});
-    menu.push_back({OperatorMenuItemKind::CurrentFont, {}, L"Font: " + rateFontName, false});
-    menu.push_back({OperatorMenuItemKind::SetFont, {}, L"Set Font...", false});
-    menu.push_back({OperatorMenuItemKind::Separator, {}, {}, false});
-    menu.push_back({OperatorMenuItemKind::Exit, {}, L"Exit", false});
+    menu.push_back(std::move(network));
+    menu.push_back({.separator = true});
+
+    OperatorMenuItem autostart;
+    autostart.label = L"Launch at Login";
+    autostart.checked = toggles.autostartEnabled;
+    AddChoice(autostart, {{toggles.autostartEnabled
+        ? OperatorActionKind::DisableLaunchAtLogin
+        : OperatorActionKind::EnableLaunchAtLogin}});
+    menu.push_back(std::move(autostart));
+
+    OperatorMenuItem rightClick;
+    rightClick.label = L"Right-Click Speed Text";
+    rightClick.checked = toggles.rightClickSpeedTextEnabled;
+    AddChoice(rightClick, {{toggles.rightClickSpeedTextEnabled
+        ? OperatorActionKind::DisableRightClickSpeedText
+        : OperatorActionKind::EnableRightClickSpeedText}});
+    menu.push_back(std::move(rightClick));
+    menu.push_back({.separator = true});
+
+    menu.push_back({L"Font: " + rateFontName, 0, false, false, false});
+    OperatorMenuItem setFont;
+    setFont.label = L"Set Font...";
+    AddChoice(setFont, {{OperatorActionKind::SetRateFont}});
+    menu.push_back(std::move(setFont));
+    menu.push_back({.separator = true});
+
+    OperatorMenuItem exit;
+    exit.label = L"Exit";
+    AddChoice(exit, {{OperatorActionKind::Exit}});
+    menu.push_back(std::move(exit));
     return menu;
 }
 
 void WinMonCore::SelectAll() noexcept { selectedNicId_.clear(); }
 void WinMonCore::SelectNic(const std::string& stableId) noexcept { selectedNicId_ = stableId; }
-bool WinMonCore::IsAllSelected() const noexcept { return selectedNicId_.empty(); }
-const std::string& WinMonCore::SelectedNicId() const noexcept { return selectedNicId_; }
 
 void WinMonCore::ReconcileSelection(const std::vector<NicSnapshot>& snapshots) noexcept
 {
@@ -95,10 +271,6 @@ void WinMonCore::ReconcileSelection(const std::vector<NicSnapshot>& snapshots) n
     }
 }
 
-bool WinMonCore::ShouldShowRateStrip(bool primaryBottomTaskbarAvailable) noexcept
-{
-    return primaryBottomTaskbarAvailable;
-}
 
 std::wstring WinMonCore::FormatRate(double bytesPerSecond)
 {

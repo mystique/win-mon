@@ -1,4 +1,5 @@
 #include "WinMonCore.h"
+#include <algorithm>
 
 #include <cmath>
 #include <iostream>
@@ -11,6 +12,14 @@ namespace
 {
 using winmon::NicSnapshot;
 using winmon::WinMonCore;
+using winmon::RateStripState;
+using winmon::ShellLifecycle;
+using winmon::ShellSurface;
+using winmon::OperatorActionKind;
+using winmon::OperatorMenuItem;
+using winmon::OperatorSettingChange;
+using winmon::OperatorSettingOutcome;
+using winmon::OperatorSettingTransaction;
 
 class CommaDecimalPunctuation final : public std::numpunct<wchar_t>
 {
@@ -43,18 +52,232 @@ void Require(bool condition, const char* message)
 {
     if (!condition) throw std::runtime_error(message);
 }
-void ClassicConnectionsLimitNicSelectionChoices()
+void RequireRate(const winmon::RateDisplay& display, double upload, double download);
+
+class FakeShellSurface final : public ShellSurface
+{
+public:
+    bool EnsureTrayIcon() override
+    {
+        ++ensureTrayCalls;
+        return trayResult;
+    }
+    void ForgetTrayIcon() noexcept override { ++forgetTrayCalls; }
+    RateStripState RecreateRateStrip() override
+    {
+        ++recreateCalls;
+        return recreateResult;
+    }
+    RateStripState RefreshRateStrip() override
+    {
+        ++refreshCalls;
+        return refreshResult;
+    }
+    void DestroyRateStrip() noexcept override { ++destroyCalls; }
+    void RemoveTrayIcon() noexcept override { ++removeTrayCalls; }
+    void ScheduleRecovery() noexcept override { recoveryScheduled = true; }
+    void CancelRecovery() noexcept override { recoveryScheduled = false; }
+
+    bool trayResult = true;
+    RateStripState recreateResult = RateStripState::Visible;
+    RateStripState refreshResult = RateStripState::Visible;
+    int ensureTrayCalls = 0;
+    int forgetTrayCalls = 0;
+    int recreateCalls = 0;
+    int refreshCalls = 0;
+    int destroyCalls = 0;
+    int removeTrayCalls = 0;
+    bool recoveryScheduled = false;
+};
+
+void ShellLifecycleOwnsRecoveryAndVisibility()
+{
+    FakeShellSurface surface;
+    ShellLifecycle lifecycle(surface);
+    Require(lifecycle.Start(), "supported shell starts");
+    Require(surface.ensureTrayCalls == 1 && surface.recreateCalls == 1, "startup creates both shell surfaces");
+
+    surface.refreshResult = RateStripState::Retry;
+    lifecycle.OnRateSample();
+    Require(surface.refreshCalls == 1 && surface.recoveryScheduled, "transient refresh loss schedules recovery");
+
+    surface.recreateResult = RateStripState::Hidden;
+    lifecycle.Retry();
+    Require(!surface.recoveryScheduled, "unsupported taskbar is hidden without retry");
+
+    surface.recreateResult = RateStripState::Visible;
+    lifecycle.OnShellCreated();
+    Require(surface.forgetTrayCalls == 1 && surface.ensureTrayCalls == 3, "shell recreation forgets stale tray ownership");
+    Require(surface.recreateCalls == 3 && !surface.recoveryScheduled, "shell recreation restores one Rate Strip");
+
+    lifecycle.OnEnvironmentChanged();
+    Require(surface.recreateCalls == 4, "DPI display setting and theme signals share recreation");
+
+    lifecycle.Shutdown();
+    Require(surface.destroyCalls == 1 && surface.removeTrayCalls == 1 && !surface.recoveryScheduled, "shutdown removes chrome and recovery");
+    lifecycle.Retry();
+    Require(surface.ensureTrayCalls == 3, "shutdown ignores pending recovery");
+}
+
+void ShellLifecycleTreatsInitialTrayFailureAsFatal()
+{
+    FakeShellSurface surface;
+    surface.trayResult = false;
+    ShellLifecycle lifecycle(surface);
+    Require(!lifecycle.Start(), "initial tray icon failure is fatal");
+    Require(surface.recreateCalls == 0 && !surface.recoveryScheduled, "failed startup does not begin background recovery");
+}
+
+const OperatorMenuItem* FindItemPointer(const std::vector<OperatorMenuItem>& items, const wchar_t* label)
+{
+    for (const auto& item : items)
+    {
+        if (item.label == label) return &item;
+        if (const auto* nested = FindItemPointer(item.children, label)) return nested;
+    }
+    return nullptr;
+}
+
+const OperatorMenuItem& FindItem(const std::vector<OperatorMenuItem>& items, const wchar_t* label)
+{
+    const auto* item = FindItemPointer(items, label);
+    Require(item != nullptr, "expected Operator Menu item");
+    return *item;
+}
+
+void NetworkSessionPresentsOneCanonicalObservation()
 {
     WinMonCore core;
-    auto ethernet = NamedNic("ethernet", L"Ethernet", L"Intel Ethernet");
-    auto internalAdapter = NamedNic("internal", L"Internal Adapter", L"Internal transport");
-    internalAdapter.visibleInClassicConnections = false;
+    auto hidden = NamedNic("internal", L"Internal", L"Internal transport");
+    hidden.visibleInClassicConnections = false;
+    core.ObserveNetwork({{NamedNic("up", L"Ethernet", L"Intel"), NamedNic("down", L"", L"Disconnected", false), hidden}, true});
+    core.Sample(1.0);
 
-    const auto menu = core.BuildOperatorMenu({ethernet, internalAdapter});
-    Require(menu.size() == 10, "only classic Network Connections NICs are offered");
-    Require(menu[0].kind == winmon::OperatorMenuItemKind::All && menu[1].stableId == "ethernet", "classic NIC remains selectable");
-    Require(menu[2].kind == winmon::OperatorMenuItemKind::Separator && menu[9].kind == winmon::OperatorMenuItemKind::Exit, "operator menu tail remains intact");
+    const auto opened = core.BeginOperatorMenu({true, false}, L"Cascadia Mono");
+    Require(opened.has_value(), "first Operator Menu transaction opens");
+    const auto& down = FindItem(*opened, L"Disconnected");
+    Require(FindItem(*opened, L"All").checked, "all is selected on launch");
+    Require(FindItemPointer(*opened, L"Internal") == nullptr, "classic classification filters menu choices");
+    Require(!core.BeginOperatorMenu({}, L"").has_value(), "nested Operator Menu is rejected");
+    Require(core.CompleteOperatorMenu(down.choiceToken).kind == OperatorActionKind::None, "network choice is completed inside transaction");
+
+    auto observedUp = NamedNic("up", L"Ethernet", L"Intel");
+    observedUp.inOctets = 1000;
+    observedUp.outOctets = 1000;
+    auto observedDown = NamedNic("down", L"", L"Disconnected", false);
+    observedDown.inOctets = 2000;
+    observedDown.outOctets = 3000;
+    core.ObserveNetwork({{observedUp, observedDown}, true});
+    RequireRate(core.Sample(2.0), 0.0, 0.0);
+    const auto downMenu = core.BeginOperatorMenu({}, L"Consolas");
+    Require(FindItem(*downMenu, L"Disconnected").checked, "available down NIC remains selected");
+    core.CancelOperatorMenu();
+
+    observedUp.inOctets = 2000;
+    observedUp.outOctets = 4000;
+    core.ObserveNetwork({{observedUp}, true});
+    RequireRate(core.Sample(3.0), 3000.0, 1000.0);
+    const auto fallbackMenu = core.BeginOperatorMenu({}, L"Consolas");
+    Require(FindItem(*fallbackMenu, L"All").checked, "disappearance reconciles to all before rates and menu");
+    core.CancelOperatorMenu();
 }
+
+void ClassificationUnavailableRetainsEnumeratedNics()
+{
+    WinMonCore core;
+    auto otherwiseHidden = NamedNic("internal", L"Internal", L"Internal transport");
+    otherwiseHidden.visibleInClassicConnections = false;
+    core.ObserveNetwork({{otherwiseHidden}, false});
+    const auto menu = core.BeginOperatorMenu({}, L"Segoe UI");
+    FindItem(*menu, L"Internal");
+    core.CancelOperatorMenu();
+}
+
+void OperatorMenuTransactionCorrelatesEveryAction()
+{
+    WinMonCore core;
+    core.ObserveNetwork({{NamedNic("a", L"Alpha", L"A desc")}, true});
+    auto menu = core.BeginOperatorMenu({false, true}, L"Cascadia Mono");
+    Require(!FindItem(*menu, L"Launch at Login").checked, "Launch at Login reflects live state");
+    Require(FindItem(*menu, L"Right-Click Speed Text").checked, "Right-Click Speed Text reflects live state");
+    FindItem(*menu, L"Font: Cascadia Mono");
+    Require(std::count_if(menu->begin(), menu->end(), [](const OperatorMenuItem& item) {
+        return item.separator;
+    }) == 3, "Operator Menu preserves network toggle font and Exit groups");
+    const auto& autostart = FindItem(*menu, L"Launch at Login");
+    Require(core.CompleteOperatorMenu(autostart.choiceToken).kind == OperatorActionKind::EnableLaunchAtLogin, "autostart choice meaning");
+
+    menu = core.BeginOperatorMenu({true, true}, L"Cascadia Mono");
+    const auto& rightClick = FindItem(*menu, L"Right-Click Speed Text");
+    Require(core.CompleteOperatorMenu(rightClick.choiceToken).kind == OperatorActionKind::DisableRightClickSpeedText, "right-click choice meaning");
+
+    menu = core.BeginOperatorMenu({}, L"Cascadia Mono");
+    const auto& setFont = FindItem(*menu, L"Set Font...");
+    Require(core.CompleteOperatorMenu(setFont.choiceToken).kind == OperatorActionKind::SetRateFont, "font choice meaning");
+
+    menu = core.BeginOperatorMenu({}, L"Cascadia Mono");
+    const auto& exit = FindItem(*menu, L"Exit");
+    Require(core.CompleteOperatorMenu(exit.choiceToken).kind == OperatorActionKind::Exit, "exit choice meaning");
+}
+class FakeOperatorSettingChange final : public OperatorSettingChange
+{
+public:
+    bool ApplyLive() override
+    {
+        ++applyCalls;
+        return applyResult;
+    }
+    bool Persist() override
+    {
+        ++persistCalls;
+        return persistResult;
+    }
+    bool RollbackLive() override
+    {
+        ++rollbackCalls;
+        return rollbackResult;
+    }
+
+    bool applyResult = true;
+    bool persistResult = true;
+    bool rollbackResult = true;
+    int applyCalls = 0;
+    int persistCalls = 0;
+    int rollbackCalls = 0;
+};
+
+void OperatorSettingTransactionPreservesPreviousChoice()
+{
+    FakeOperatorSettingChange change;
+    change.applyResult = false;
+    Require(
+        OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::LiveApplicationFailed,
+        "live failure rejects setting before persistence");
+    Require(change.persistCalls == 0 && change.rollbackCalls == 0, "live failure leaves storage untouched");
+
+    change = {};
+    change.persistResult = false;
+    Require(
+        OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::RolledBack,
+        "storage failure restores previous live setting");
+    Require(change.applyCalls == 1 && change.persistCalls == 1 && change.rollbackCalls == 1, "rollback transaction order");
+
+    change = {};
+    change.persistResult = false;
+    change.rollbackResult = false;
+    Require(
+        OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::RecoveryRequired,
+        "failed rollback requests recreation from persisted truth");
+
+    change = {};
+    Require(
+        OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::Applied,
+        "successful change applies and persists exactly once");
+    Require(change.rollbackCalls == 0, "successful change needs no rollback");
+}
+
+
+
 
 void RequireRate(const winmon::RateDisplay& display, double upload, double download)
 {
@@ -72,7 +295,8 @@ void RequireRate(const winmon::RateDisplay& display, double upload, double downl
 void FirstSampleIsZero()
 {
     WinMonCore core;
-    const auto display = core.Sample({Nic("a", true, 100, 200)}, 10.0);
+    core.ObserveNetwork({{Nic("a", true, 100, 200)}, false});
+    const auto display = core.Sample(10.0);
     RequireRate(display, 0.0, 0.0);
     Require(display.uploadText == L"0.0K/s" && display.downloadText == L"0.0K/s", "first sample formatting");
 }
@@ -80,105 +304,66 @@ void FirstSampleIsZero()
 void SingleNicUsesActualElapsedTimeAndCounterDirections()
 {
     WinMonCore core;
-    core.Sample({Nic("a", true, 1000, 2000)}, 3.0);
-    const auto display = core.Sample({Nic("a", true, 5000, 5000)}, 5.0);
+    core.ObserveNetwork({{Nic("a", true, 1000, 2000)}, false});
+    core.Sample(3.0);
+    core.ObserveNetwork({{Nic("a", true, 5000, 5000)}, false});
+    const auto display = core.Sample(5.0);
     RequireRate(display, 1500.0, 2000.0);
 }
 
 void AllNicsSumsOnlyUpNonLoopback()
 {
     WinMonCore core;
-    core.Sample({Nic("a", true, 0, 0), Nic("b", true, 0, 0), Nic("down", false, 0, 0), Nic("loop", true, 0, 0, true)}, 1.0);
-    const auto display = core.Sample({Nic("a", true, 1000, 2000), Nic("b", true, 3000, 7000), Nic("down", false, 100000, 100000), Nic("loop", true, 900000, 900000, true)}, 2.0);
+    core.ObserveNetwork({{Nic("a", true, 0, 0), Nic("b", true, 0, 0), Nic("down", false, 0, 0), Nic("loop", true, 0, 0, true)}, false});
+    core.Sample(1.0);
+    core.ObserveNetwork({{Nic("a", true, 1000, 2000), Nic("b", true, 3000, 7000), Nic("down", false, 100000, 100000), Nic("loop", true, 900000, 900000, true)}, false});
+    const auto display = core.Sample(2.0);
     RequireRate(display, 9000.0, 4000.0);
 }
 
 void EmptyAndNoUpAreZero()
 {
     WinMonCore core;
-    core.Sample({Nic("a", true, 10, 20)}, 1.0);
-    auto display = core.Sample({}, 2.0);
+    core.ObserveNetwork({{Nic("a", true, 10, 20)}, false});
+    core.Sample(1.0);
+    core.ObserveNetwork({{}, false});
+    auto display = core.Sample(2.0);
     RequireRate(display, 0.0, 0.0);
-    display = core.Sample({Nic("a", false, 20, 30)}, 3.0);
+    core.ObserveNetwork({{Nic("a", false, 20, 30)}, false});
+    display = core.Sample(3.0);
     RequireRate(display, 0.0, 0.0);
 }
 
 void BackwardCountersAndDisappearingNicsAreZero()
 {
     WinMonCore core;
-    core.Sample({Nic("a", true, 100, 100), Nic("gone", true, 100, 100)}, 1.0);
-    auto display = core.Sample({Nic("a", true, 50, 200)}, 2.0);
+    core.ObserveNetwork({{Nic("a", true, 100, 100), Nic("gone", true, 100, 100)}, false});
+    core.Sample(1.0);
+    core.ObserveNetwork({{Nic("a", true, 50, 200)}, false});
+    auto display = core.Sample(2.0);
     RequireRate(display, 100.0, 0.0);
-    display = core.Sample({Nic("a", true, 150, 300)}, 3.0);
+    core.ObserveNetwork({{Nic("a", true, 150, 300)}, false});
+    display = core.Sample(3.0);
     RequireRate(display, 100.0, 100.0);
 }
 
 
-void MenuAndSelectionFollowEnumeration()
-{
-    WinMonCore core;
-    const std::vector<NicSnapshot> nics = {NamedNic("a", L"Alpha", L"A desc"), NamedNic("down", L"", L"Down description", false), Nic("loop", true, 0, 0, true)};
-    auto menu = core.BuildOperatorMenu(nics);
-    Require(menu.size() == 11 && menu[0].label == L"All" && menu[0].checked, "default all menu");
-    Require(menu[1].label == L"Alpha" && menu[2].label == L"Down description" && menu[2].checked == false, "menu order and fallback");
-    Require(menu[3].kind == winmon::OperatorMenuItemKind::Separator && menu[10].kind == winmon::OperatorMenuItemKind::Exit, "menu tail");
-    core.SelectNic("down");
-    menu = core.BuildOperatorMenu(nics);
-    Require(menu[2].checked && !menu[0].checked, "selected down checked");
-    core.SelectAll();
-    Require(core.IsAllSelected(), "select all");
-    core.SelectNic("missing");
-    menu = core.BuildOperatorMenu(nics);
-    Require(core.IsAllSelected() && menu[0].checked, "missing selected NIC falls back before menu presentation");
-}
 
 
-void SelectedNicOnlyAndChurnFallback()
-{
-    WinMonCore core;
-    core.Sample({Nic("a", true, 0, 0), Nic("b", true, 0, 0)}, 1.0);
-    core.SelectNic("b");
-    auto display = core.Sample({Nic("a", true, 1000, 1000), Nic("b", true, 2000, 3000)}, 2.0);
-    RequireRate(display, 3000.0, 2000.0);
-    display = core.Sample({Nic("a", true, 2000, 2000), Nic("b", false, 3000, 5000)}, 3.0);
-    RequireRate(display, 0.0, 0.0);
-    display = core.Sample({Nic("a", true, 3000, 3000)}, 4.0);
-    RequireRate(display, 1000.0, 1000.0);
-    Require(core.IsAllSelected(), "disappeared selected falls back all");
-}
 void NonpositiveElapsedIsZero()
 {
     WinMonCore core;
-    core.Sample({Nic("a", true, 100, 100)}, 4.0);
-    auto display = core.Sample({Nic("a", true, 200, 200)}, 4.0);
+    core.ObserveNetwork({{Nic("a", true, 100, 100)}, false});
+    core.Sample(4.0);
+    core.ObserveNetwork({{Nic("a", true, 200, 200)}, false});
+    auto display = core.Sample(4.0);
     RequireRate(display, 0.0, 0.0);
-    display = core.Sample({Nic("a", true, 300, 300)}, 3.0);
+    core.ObserveNetwork({{Nic("a", true, 300, 300)}, false});
+    display = core.Sample(3.0);
     RequireRate(display, 0.0, 0.0);
 }
 
-void RateStripVisibilityFollowsPrimaryBottomAvailability()
-{
-    Require(WinMonCore::ShouldShowRateStrip(true), "primary bottom taskbar shows strip");
-    Require(!WinMonCore::ShouldShowRateStrip(false), "missing or unsupported taskbar hides strip");
-}
 
-void OperatorMenuGroupsControlsAndFontActions()
-{
-    WinMonCore core;
-    const std::vector<NicSnapshot> nics = {NamedNic("a", L"Alpha", L"A desc")};
-    const auto menu = core.BuildOperatorMenu(nics, {true, false}, L"Cascadia Mono");
-    Require(menu.size() == 10, "font actions join the operator menu tail");
-    Require(menu[3].kind == winmon::OperatorMenuItemKind::Autostart && menu[3].checked, "autostart state is checked");
-    Require(menu[4].kind == winmon::OperatorMenuItemKind::RightClickSpeedText && !menu[4].checked, "speed text toggle state is unchecked");
-    Require(menu[5].kind == winmon::OperatorMenuItemKind::Separator, "font actions begin a separate group");
-    Require(menu[6].kind == winmon::OperatorMenuItemKind::CurrentFont && menu[6].label == L"Font: Cascadia Mono", "current font is shown above the action");
-    Require(menu[7].kind == winmon::OperatorMenuItemKind::SetFont && menu[7].label == L"Set Font...", "font chooser action follows the current font");
-    Require(menu[8].kind == winmon::OperatorMenuItemKind::Separator && menu[9].kind == winmon::OperatorMenuItemKind::Exit, "font group is separated from Exit");
-
-    const auto toggled = core.BuildOperatorMenu(nics, {false, true}, L"Consolas");
-    Require(!toggled[3].checked && toggled[4].checked, "toggle marks follow persisted settings");
-    Require(toggled[6].label == L"Font: Consolas", "current font label follows live Rate Strip state");
-}
 
 void FormatsBase1000BoundariesAndMinimumK()
 {
@@ -201,6 +386,12 @@ int main()
 {
     try
     {
+        ShellLifecycleOwnsRecoveryAndVisibility();
+        ShellLifecycleTreatsInitialTrayFailureAsFatal();
+        NetworkSessionPresentsOneCanonicalObservation();
+        ClassificationUnavailableRetainsEnumeratedNics();
+        OperatorMenuTransactionCorrelatesEveryAction();
+        OperatorSettingTransactionPreservesPreviousChoice();
         FirstSampleIsZero();
         SingleNicUsesActualElapsedTimeAndCounterDirections();
         AllNicsSumsOnlyUpNonLoopback();
@@ -208,11 +399,6 @@ int main()
         BackwardCountersAndDisappearingNicsAreZero();
         NonpositiveElapsedIsZero();
         FormatsBase1000BoundariesAndMinimumK();
-        RateStripVisibilityFollowsPrimaryBottomAvailability();
-        MenuAndSelectionFollowEnumeration();
-        OperatorMenuGroupsControlsAndFontActions();
-        ClassicConnectionsLimitNicSelectionChoices();
-        SelectedNicOnlyAndChurnFallback();
     }
     catch (const std::exception& error)
     {
