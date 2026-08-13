@@ -375,8 +375,8 @@ bool RateStrip::Render() noexcept
     bottomLineRect.top = midpoint;
     const std::wstring topLine = uploadText_ + L" \u2191";
     const std::wstring bottomLine = downloadText_ + L" \u2193";
-    ::DrawTextW(memoryDc, topLine.c_str(), -1, &topLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
-    ::DrawTextW(memoryDc, bottomLine.c_str(), -1, &bottomLineRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    ::DrawTextW(memoryDc, topLine.c_str(), -1, &topLineRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    ::DrawTextW(memoryDc, bottomLine.c_str(), -1, &bottomLineRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
 
     auto* const pixels = static_cast<DWORD*>(bitmapBits);
     const DWORD red = GetRValue(textColor_);
