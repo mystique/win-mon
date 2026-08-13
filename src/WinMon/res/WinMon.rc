@@ -5,6 +5,8 @@
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 
 IDI_WINMON ICON "WinMon.ico"
+IDI_WINMON_TRAY_LIGHT ICON "WinMonTrayLight.ico"
+IDI_WINMON_TRAY_DARK ICON "WinMonTrayDark.ico"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION 1,0,0,0
@@ -23,10 +25,11 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "CompanyName", "Win Mon\0"
-            VALUE "FileDescription", "Win Mon\0"
+            VALUE "CompanyName", "mk2.app\0"
+            VALUE "FileDescription", "Win Mon - Taskbar Network Rate Monitor\0"
             VALUE "FileVersion", "1.0.0.0\0"
             VALUE "InternalName", "WinMon\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 mk2.app. All rights reserved.\0"
             VALUE "OriginalFilename", "WinMon.exe\0"
             VALUE "ProductName", "Win Mon\0"
             VALUE "ProductVersion", "1.0.0.0\0"

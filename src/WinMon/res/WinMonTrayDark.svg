@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- 100% Transparent Background - Pure Streamlined Parallel Arrows -->
+
+  <!-- Left: Upload Arrow (↑) -->
+  <path d="M 9 3 L 2 11 L 6 11 L 6 23 L 12 23 L 12 11 L 16 11 Z" fill="#FFFFFF" />
+  
+  <!-- Right: Download Arrow (↓) -->
+  <path d="M 23 29 L 30 21 L 26 21 L 26 9 L 20 9 L 20 21 L 16 21 Z" fill="#FFFFFF" />
+
+  <!-- Subtle Network Activity Pulse Points -->
+  <circle cx="9" cy="27" r="1.5" fill="#FFFFFF" />
+  <circle cx="23" cy="5" r="1.5" fill="#FFFFFF" />
+</svg>

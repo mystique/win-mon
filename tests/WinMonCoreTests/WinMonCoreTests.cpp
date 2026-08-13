@@ -1,4 +1,4 @@
-#include "../src/WinMonCore/WinMonCore.h"
+#include "WinMonCore.h"
 
 #include <cmath>
 #include <iostream>

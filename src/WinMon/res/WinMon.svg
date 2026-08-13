@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <!-- Background Card Gradients -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="45%" stop-color="#1E293B" />
+      <stop offset="100%" stop-color="#0284C7" />
+    </linearGradient>
+
+    <linearGradient id="glassHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.32" />
+      <stop offset="25%" stop-color="#FFFFFF" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.0" />
+    </linearGradient>
+
+    <linearGradient id="cardBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.85" />
+      <stop offset="50%" stop-color="#0284C7" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.9" />
+    </linearGradient>
+
+    <!-- Upload Arrow Gradient (Emerald / Teal) -->
+    <linearGradient id="upGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="50%" stop-color="#10B981" />
+      <stop offset="100%" stop-color="#34D399" />
+    </linearGradient>
+
+    <!-- Download Arrow Gradient (Electric Blue / Cyan) -->
+    <linearGradient id="downGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0284C7" />
+      <stop offset="50%" stop-color="#06B6D4" />
+      <stop offset="100%" stop-color="#22D3EE" />
+    </linearGradient>
+
+    <!-- Rate Bar Gradients -->
+    <linearGradient id="upBarGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#34D399" stop-opacity="0.2" />
+    </linearGradient>
+
+    <linearGradient id="downBarGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06B6D4" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#22D3EE" stop-opacity="0.2" />
+    </linearGradient>
+
+    <filter id="glowUp" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#10B981" flood-opacity="0.55" />
+    </filter>
+
+    <filter id="glowDown" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#06B6D4" flood-opacity="0.55" />
+    </filter>
+  </defs>
+
+  <!-- Base Card Surface (Clean Rounded Squircle - NO outer drop shadow halo) -->
+  <rect x="16" y="16" width="224" height="224" rx="52" fill="url(#bgGradient)" stroke="url(#cardBorder)" stroke-width="3" />
+
+  <!-- Glass Top Reflection -->
+  <rect x="16" y="16" width="224" height="112" rx="52" fill="url(#glassHighlight)" />
+
+  <!-- Subtle Network Graph Mesh Background -->
+  <path d="M 38 180 Q 80 155 125 172 T 218 148" fill="none" stroke="#38BDF8" stroke-width="2" opacity="0.16" stroke-dasharray="4 4" />
+  <path d="M 38 196 Q 90 182 142 188 T 218 166" fill="none" stroke="#34D399" stroke-width="2" opacity="0.14" />
+
+  <!-- Rate Strip Display Screen Frame -->
+  <rect x="40" y="42" width="176" height="172" rx="24" fill="#020617" fill-opacity="0.55" stroke="#38BDF8" stroke-opacity="0.25" stroke-width="1.5" />
+
+  <!-- TOP LINE: UPLOAD RATE MONITOR (↑) -->
+  <g filter="url(#glowUp)">
+    <!-- Upload Arrow -->
+    <path d="M 76 106 L 76 72 L 64 84 L 56 74 L 84 48 L 112 74 L 104 84 L 92 72 L 92 106 Z" fill="url(#upGradient)" />
+    <!-- Mini Rate Strip Speed Bars -->
+    <rect x="122" y="60" width="76" height="11" rx="5.5" fill="url(#upBarGradient)" />
+    <rect x="122" y="77" width="54" height="8" rx="4" fill="#10B981" fill-opacity="0.38" />
+    <circle cx="204" cy="65.5" r="4.5" fill="#34D399" />
+  </g>
+
+  <!-- BOTTOM LINE: DOWNLOAD RATE MONITOR (↓) -->
+  <g filter="url(#glowDown)">
+    <!-- Download Arrow -->
+    <path d="M 180 150 L 180 184 L 192 172 L 200 182 L 172 208 L 144 182 L 152 172 L 164 184 L 164 150 Z" fill="url(#downGradient)" />
+    <!-- Mini Rate Strip Speed Bars -->
+    <rect x="58" y="185" width="76" height="11" rx="5.5" fill="url(#downBarGradient)" />
+    <rect x="80" y="169" width="54" height="8" rx="4" fill="#06B6D4" fill-opacity="0.38" />
+    <circle cx="50" cy="190.5" r="4.5" fill="#22D3EE" />
+  </g>
+
+  <!-- Center Interlocking Data Wave / Bridge -->
+  <path d="M 92 128 L 164 128" stroke="#38BDF8" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 6" opacity="0.55" />
+  <circle cx="128" cy="128" r="5.5" fill="#38BDF8" opacity="0.85" />
+  <circle cx="128" cy="128" r="2.5" fill="#FFFFFF" />
+</svg>

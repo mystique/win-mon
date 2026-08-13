@@ -1,6 +1,6 @@
 #include "TrayMessageWindow.h"
 
-#include "resource.h"
+#include "res/resource.h"
 
 #include <shellapi.h>
 #include <iphlpapi.h>
@@ -266,11 +266,13 @@ void TrayMessageWindow::OnDisplayChange(UINT, int, int)
 
 void TrayMessageWindow::OnSettingChange(UINT, LPCTSTR)
 {
+    UpdateTrayIconTheme();
     RecoverRateStrip();
 }
 
 LRESULT TrayMessageWindow::OnThemeChanged()
 {
+    UpdateTrayIconTheme();
     RecoverRateStrip();
     return 0;
 }
@@ -311,6 +313,48 @@ void TrayMessageWindow::OnTimer(UINT_PTR timerId)
     CWnd::OnTimer(timerId);
 }
 
+HICON TrayMessageWindow::LoadTrayIcon() const noexcept
+{
+    DWORD value = 1;
+    DWORD size = sizeof(value);
+    const LSTATUS status = RegGetValueW(
+        HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        L"AppsUseLightTheme",
+        RRF_RT_REG_DWORD,
+        nullptr,
+        &value,
+        &size);
+    const int resourceId = status == ERROR_SUCCESS && value != 0
+        ? IDI_WINMON_TRAY_LIGHT
+        : IDI_WINMON_TRAY_DARK;
+    return static_cast<HICON>(::LoadImageW(
+        AfxGetResourceHandle(),
+        MAKEINTRESOURCEW(resourceId),
+        IMAGE_ICON,
+        0,
+        0,
+        LR_DEFAULTSIZE | LR_SHARED));
+}
+
+void TrayMessageWindow::UpdateTrayIconTheme() noexcept
+{
+    if (!trayIconAdded_)
+    {
+        return;
+    }
+    NOTIFYICONDATAW iconData{};
+    iconData.cbSize = sizeof(iconData);
+    iconData.hWnd = GetSafeHwnd();
+    iconData.uID = kTrayIconId;
+    iconData.uFlags = NIF_ICON;
+    iconData.hIcon = LoadTrayIcon();
+    if (iconData.hIcon != nullptr)
+    {
+        Shell_NotifyIconW(NIM_MODIFY, &iconData);
+    }
+}
+
 bool TrayMessageWindow::AddTrayIcon()
 {
     NOTIFYICONDATAW iconData{};
@@ -319,13 +363,7 @@ bool TrayMessageWindow::AddTrayIcon()
     iconData.uID = kTrayIconId;
     iconData.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP;
     iconData.uCallbackMessage = kTrayNotificationMessage;
-    iconData.hIcon = static_cast<HICON>(::LoadImageW(
-        AfxGetResourceHandle(),
-        MAKEINTRESOURCEW(IDI_WINMON),
-        IMAGE_ICON,
-        0,
-        0,
-        LR_DEFAULTSIZE | LR_SHARED));
+    iconData.hIcon = LoadTrayIcon();
 
     if (iconData.hIcon == nullptr)
     {

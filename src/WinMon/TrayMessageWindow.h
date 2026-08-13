@@ -15,6 +15,8 @@ public:
 
 private:
     [[nodiscard]] bool AddTrayIcon();
+    [[nodiscard]] HICON LoadTrayIcon() const noexcept;
+    void UpdateTrayIconTheme() noexcept;
     void RemoveTrayIcon() noexcept;
     void AttemptShellRecovery();
     void RecoverRateStrip();

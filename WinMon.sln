@@ -4,7 +4,9 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "WinMon", "src\WinMon\WinMon.vcxproj", "{967980A6-ABCD-4B7D-9F6A-F94D68B2A8EF}"
 EndProject
-Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "WinMonCoreTests", "tests\WinMonCoreTests.vcxproj", "{3C8C3B12-5B8E-4AF8-AB9A-7D572EEA9E03}"
+Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "WinMonCore", "src\WinMonCore\WinMonCore.vcxproj", "{F1E2D3C4-B5A6-4789-8FED-CBA987654321}"
+EndProject
+Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "WinMonCoreTests", "tests\WinMonCoreTests\WinMonCoreTests.vcxproj", "{3C8C3B12-5B8E-4AF8-AB9A-7D572EEA9E03}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -16,10 +18,14 @@ Global
 		{967980A6-ABCD-4B7D-9F6A-F94D68B2A8EF}.Debug|x64.Build.0 = Debug|x64
 		{967980A6-ABCD-4B7D-9F6A-F94D68B2A8EF}.Release|x64.ActiveCfg = Release|x64
 		{967980A6-ABCD-4B7D-9F6A-F94D68B2A8EF}.Release|x64.Build.0 = Release|x64
-    {3C8C3B12-5B8E-4AF8-AB9A-7D572EEA9E03}.Debug|x64.ActiveCfg = Debug|x64
-    {3C8C3B12-5B8E-4AF8-AB9A-7D572EEA9E03}.Debug|x64.Build.0 = Debug|x64
-    {3C8C3B12-5B8E-4AF8-AB9A-7D572EEA9E03}.Release|x64.ActiveCfg = Release|x64
-    {3C8C3B12-5B8E-4AF8-AB9A-7D572EEA9E03}.Release|x64.Build.0 = Release|x64
+		{F1E2D3C4-B5A6-4789-8FED-CBA987654321}.Debug|x64.ActiveCfg = Debug|x64
+		{F1E2D3C4-B5A6-4789-8FED-CBA987654321}.Debug|x64.Build.0 = Debug|x64
+		{F1E2D3C4-B5A6-4789-8FED-CBA987654321}.Release|x64.ActiveCfg = Release|x64
+		{F1E2D3C4-B5A6-4789-8FED-CBA987654321}.Release|x64.Build.0 = Release|x64
+		{3C8C3B12-5B8E-4AF8-AB9A-7D572EEA9E03}.Debug|x64.ActiveCfg = Debug|x64
+		{3C8C3B12-5B8E-4AF8-AB9A-7D572EEA9E03}.Debug|x64.Build.0 = Debug|x64
+		{3C8C3B12-5B8E-4AF8-AB9A-7D572EEA9E03}.Release|x64.ActiveCfg = Release|x64
+		{3C8C3B12-5B8E-4AF8-AB9A-7D572EEA9E03}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

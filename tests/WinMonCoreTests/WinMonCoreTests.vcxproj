@@ -12,9 +12,9 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
-    <Keyword>MFCProj</Keyword>
-    <ProjectGuid>{967980A6-ABCD-4B7D-9F6A-F94D68B2A8EF}</ProjectGuid>
-    <RootNamespace>WinMon</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{3C8C3B12-5B8E-4AF8-AB9A-7D572EEA9E03}</ProjectGuid>
+    <RootNamespace>WinMonCoreTests</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -23,7 +23,6 @@
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
-    <UseOfMfc>Dynamic</UseOfMfc>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -31,7 +30,6 @@
     <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
-    <UseOfMfc>Dynamic</UseOfMfc>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings" />
@@ -44,9 +42,9 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
-    <TargetName>WinMon</TargetName>
+    <TargetName>WinMonCoreTests</TargetName>
     <OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir>
-    <IntDir>$(SolutionDir)obj\WinMon\$(Platform)\$(Configuration)\</IntDir>
+    <IntDir>$(SolutionDir)obj\WinMonCoreTests\$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -56,19 +54,12 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;WINVER=0x0A00;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir)src\WinMonCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
-    <Manifest>
-      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
-    </Manifest>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>Shell32.lib;Iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <GenerateManifest>true</GenerateManifest>
-      <EnableUAC>true</EnableUAC>
-      <UACExecutionLevel>AsInvoker</UACExecutionLevel>
-      <UACUIAccess>false</UACUIAccess>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -79,44 +70,23 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;WINVER=0x0A00;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir)src\WinMonCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
     </ClCompile>
-    <Manifest>
-      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
-    </Manifest>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>Shell32.lib;Iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <GenerateManifest>true</GenerateManifest>
-      <EnableUAC>true</EnableUAC>
-      <UACExecutionLevel>AsInvoker</UACExecutionLevel>
-      <UACUIAccess>false</UACUIAccess>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="res\resource.h" />
-    <ClInclude Include="TrayMessageWindow.h" />
-    <ClInclude Include="RateStrip.h" />
-    <ClInclude Include="WinMonApp.h" />
+    <ClCompile Include="WinMonCoreTests.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="TrayMessageWindow.cpp" />
-    <ClCompile Include="RateStrip.cpp" />
-    <ClCompile Include="WinMonApp.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ResourceCompile Include="res\WinMon.rc" />
-  </ItemGroup>
-  <ItemGroup>
-    <Image Include="res\WinMon.ico" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\WinMonCore\WinMonCore.vcxproj">
+    <ProjectReference Include="..\..\src\WinMonCore\WinMonCore.vcxproj">
       <Project>{F1E2D3C4-B5A6-4789-8FED-CBA987654321}</Project>
     </ProjectReference>
   </ItemGroup>
