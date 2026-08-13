@@ -1,6 +1,3 @@
-# TrafficMonitor (外部项目，不纳入版本管理)
-TrafficMonitor/
-
 # Visual Studio
 *.suo
 *.user
