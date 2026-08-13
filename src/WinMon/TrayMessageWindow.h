@@ -30,7 +30,7 @@ private:
     void SampleRates();
     [[nodiscard]] std::vector<winmon::NicSnapshot> ReadNicSnapshots(bool classifyForMenu = false) const;
     afx_msg LRESULT OnTrayNotification(WPARAM wParam, LPARAM lParam);
-    afx_msg LRESULT OnRateStripContextMenu(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnRightClickSpeedText(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnTaskbarCreated(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnDpiChanged(WPARAM wParam, LPARAM lParam);
     afx_msg void OnDisplayChange(UINT bitsPerPixel, int horizontalPixels, int verticalPixels);

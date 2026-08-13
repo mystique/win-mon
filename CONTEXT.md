@@ -25,7 +25,7 @@ Operator Menu check item that registers or removes Win Mon's `HKCU\...\CurrentVe
 _Avoid_: autostart (as label), startup entry
 
 **Right-Click Speed Text**:
-Operator Menu check item that decides whether the Rate Strip answers a right-click by opening the Operator Menu. Off by default. Persisted as the `RateStripContextMenu` DWORD under `HKCU\Software\Win Mon` and applied at launch, so the choice survives a restart. While off, the strip stays display-only and clicks fall through to the taskbar. The registry value keeps its original name so an existing saved choice still loads.
+Operator Menu check item that decides whether the Rate Strip answers a right-click by opening the Operator Menu. Off by default. Persisted as the `RightClickSpeedText` DWORD under `HKCU\Software\Win Mon` and applied at launch, so the choice survives a restart. While off, the strip stays display-only and clicks fall through to the taskbar. A value saved under the former name `RateStripContextMenu` is migrated on first read.
 _Avoid_: Rate Strip Right-Click Menu, Right-Click Speed Text for This Menu (former labels), enable clicks, interactive mode, hotspot
 
 **Exit**:

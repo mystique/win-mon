@@ -18,7 +18,7 @@ namespace
 {
 constexpr UINT kTrayIconId = 1;
 constexpr UINT kTrayNotificationMessage = WM_APP + 1;
-constexpr UINT kRateStripContextMenuMessage = WM_APP + 2;
+constexpr UINT kRightClickSpeedTextMessage = WM_APP + 2;
 constexpr wchar_t kTrayTooltip[] = L"Win Mon";
 constexpr UINT_PTR kRateSampleTimer = 1;
 constexpr UINT_PTR kShellRecoveryTimer = 2;
@@ -103,7 +103,7 @@ struct MenuOpenScope final
 
 BEGIN_MESSAGE_MAP(TrayMessageWindow, CWnd)
     ON_MESSAGE(kTrayNotificationMessage, &TrayMessageWindow::OnTrayNotification)
-    ON_MESSAGE(kRateStripContextMenuMessage, &TrayMessageWindow::OnRateStripContextMenu)
+    ON_MESSAGE(kRightClickSpeedTextMessage, &TrayMessageWindow::OnRightClickSpeedText)
     ON_REGISTERED_MESSAGE(kTaskbarCreatedMessage, &TrayMessageWindow::OnTaskbarCreated)
     ON_MESSAGE(WM_DPICHANGED, &TrayMessageWindow::OnDpiChanged)
     ON_WM_DISPLAYCHANGE()
@@ -142,8 +142,8 @@ bool TrayMessageWindow::Initialize()
     }
 
     shuttingDown_ = false;
-    rateStrip_.SetContextMenuOwner(GetSafeHwnd(), kRateStripContextMenuMessage);
-    rateStrip_.SetContextMenuEnabled(settings::IsRateStripContextMenuEnabled());
+    rateStrip_.SetContextMenuOwner(GetSafeHwnd(), kRightClickSpeedTextMessage);
+    rateStrip_.SetContextMenuEnabled(settings::IsRightClickSpeedTextEnabled());
     static_cast<void>(rateStrip_.Embed(
         core_.ShouldShowRateStrip(RateStrip::IsPrimaryBottomTaskbarAvailable())));
     if (ShouldRetryRateStrip())
@@ -469,7 +469,7 @@ UINT TrayMessageWindow::ShowOperatorMenu()
         case winmon::OperatorMenuItemKind::Autostart:
             if (!AppendToggle(menu, ID_OPERATOR_AUTOSTART, item)) return 0;
             break;
-        case winmon::OperatorMenuItemKind::RateStripContextMenu:
+        case winmon::OperatorMenuItemKind::RightClickSpeedText:
             if (!AppendToggle(menu, ID_OPERATOR_SPEED_TEXT_MENU, item)) return 0;
             break;
         case winmon::OperatorMenuItemKind::Exit:
@@ -503,7 +503,7 @@ void TrayMessageWindow::HandleOperatorMenuCommand(UINT command)
     {
         const bool enabled = !rateStrip_.IsContextMenuEnabled();
         rateStrip_.SetContextMenuEnabled(enabled);
-        static_cast<void>(settings::SetRateStripContextMenuEnabled(enabled));
+        static_cast<void>(settings::SetRightClickSpeedTextEnabled(enabled));
     }
     else if (command == ID_OPERATOR_ALL_NETWORKS)
     {
@@ -524,7 +524,7 @@ LRESULT TrayMessageWindow::OnTrayNotification(WPARAM, LPARAM lParam)
     return 0;
 }
 
-LRESULT TrayMessageWindow::OnRateStripContextMenu(WPARAM, LPARAM)
+LRESULT TrayMessageWindow::OnRightClickSpeedText(WPARAM, LPARAM)
 {
     if (shuttingDown_) return 0;
     HandleOperatorMenuCommand(ShowOperatorMenu());

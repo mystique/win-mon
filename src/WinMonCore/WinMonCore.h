@@ -12,7 +12,7 @@ enum class OperatorMenuItemKind
     Nic,
     Separator,
     Autostart,
-    RateStripContextMenu,
+    RightClickSpeedText,
     Exit,
 };
 
@@ -20,7 +20,7 @@ enum class OperatorMenuItemKind
 struct OperatorMenuToggles final
 {
     bool autostartEnabled = false;
-    bool rateStripContextMenuEnabled = false;
+    bool rightClickSpeedTextEnabled = false;
 };
 
 struct NicSnapshot final

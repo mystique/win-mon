@@ -169,7 +169,7 @@ void OperatorMenuGroupsPersistedTogglesWithoutSeparator()
     const auto menu = core.BuildOperatorMenu(nics, {true, false});
     Require(menu.size() == 7, "toggles join the operator menu tail");
     Require(menu[3].kind == winmon::OperatorMenuItemKind::Autostart && menu[3].checked, "autostart state is checked");
-    Require(menu[4].kind == winmon::OperatorMenuItemKind::RateStripContextMenu && !menu[4].checked, "rate strip toggle state is unchecked");
+    Require(menu[4].kind == winmon::OperatorMenuItemKind::RightClickSpeedText && !menu[4].checked, "speed text toggle state is unchecked");
     Require(menu[5].kind == winmon::OperatorMenuItemKind::Separator, "only one separator before Exit");
     Require(menu[3].label == L"Launch at Login", "autostart keeps its plain label");
     Require(menu[4].label == L"Right-Click Speed Text", "speed text toggle stays plain and short");

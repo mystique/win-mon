@@ -63,7 +63,7 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
     }
     menu.push_back({OperatorMenuItemKind::Separator, {}, {}, false});
     menu.push_back({OperatorMenuItemKind::Autostart, {}, L"Launch at Login", toggles.autostartEnabled});
-    menu.push_back({OperatorMenuItemKind::RateStripContextMenu, {}, L"Right-Click Speed Text", toggles.rateStripContextMenuEnabled});
+    menu.push_back({OperatorMenuItemKind::RightClickSpeedText, {}, L"Right-Click Speed Text", toggles.rightClickSpeedTextEnabled});
     menu.push_back({OperatorMenuItemKind::Separator, {}, {}, false});
     menu.push_back({OperatorMenuItemKind::Exit, {}, L"Exit", false});
     return menu;
