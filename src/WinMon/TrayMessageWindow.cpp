@@ -289,6 +289,10 @@ void TrayMessageWindow::OnTimer(UINT_PTR timerId)
     if (timerId == kRateSampleTimer)
     {
         SampleRates();
+        if (rateStrip_.GetSafeHwnd() != nullptr)
+        {
+            static_cast<void>(rateStrip_.Refresh());
+        }
         if ((!trayIconAdded_ || ShouldRetryRateStrip()) && !shellRecoveryTimerActive_)
         {
             AttemptShellRecovery();

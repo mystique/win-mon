@@ -130,6 +130,44 @@ bool RateStrip::Embed(bool shouldShow)
     ShowWindow(SW_SHOWNOACTIVATE);
     return Render();
 }
+bool RateStrip::Refresh()
+{
+    if (GetSafeHwnd() == nullptr)
+    {
+        return false;
+    }
+
+    const HWND taskbar = FindPrimaryBottomTaskbar();
+    const HWND notificationArea = taskbar == nullptr ? nullptr : FindNotificationArea(taskbar);
+    if (notificationArea == nullptr)
+    {
+        Shutdown();
+        return false;
+    }
+
+    if (taskbar_ != taskbar || !IsWindow(taskbar_))
+    {
+        Shutdown();
+        return false;
+    }
+
+    ShowWindow(SW_HIDE);
+    const COLORREF previousTextColor = textColor_;
+    if (!PlaceBesideNotificationArea(taskbar, notificationArea))
+    {
+        Shutdown();
+        return false;
+    }
+
+    if (previousTextColor != textColor_ && !Render())
+    {
+        Shutdown();
+        return false;
+    }
+
+    ShowWindow(SW_SHOWNOACTIVATE);
+    return true;
+}
 
 bool RateStrip::Relayout(HWND taskbar, HWND notificationArea) noexcept
 {
@@ -290,7 +328,7 @@ bool RateStrip::PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea)
                y,
                size_.cx,
                size_.cy,
-               SWP_NOACTIVATE | SWP_SHOWWINDOW) != FALSE;
+               SWP_NOACTIVATE) != FALSE;
 }
 
 
