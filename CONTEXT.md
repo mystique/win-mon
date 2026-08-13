@@ -1,6 +1,6 @@
 # Win Mon
 
-A Win11-only tray utility named **Win Mon** that shows live NIC upload/download rates as a two-line strip on the primary taskbar. UI copy is English only, and menu labels stay plain: internal terms like NIC and Rate Strip never appear in them. There is no main window. Operator toggles persist in the registry (see ADR-0007); the Rate Font and Network to Monitor choices do not. MFC is used only as a thin host for this surface (see ADR-0003), not as a general application framework feature set.
+A Win11-only tray utility named **Win Mon** that shows live NIC upload/download rates as a two-line strip on the primary taskbar. UI copy is English only, and menu labels stay plain: internal terms like NIC and Rate Strip never appear in them. There is no main window. Operator settings persist in the registry (see ADR-0007), except Network to Monitor, which resets each launch. MFC is used only as a thin host for this surface (see ADR-0003), not as a general application framework feature set.
 
 ## Language
 
@@ -9,7 +9,7 @@ The product and process the user runs. Tray tooltip and identity string are `Win
 _Avoid_: win-mon (except repo/folder), TrafficMonitor (reference tree only — ADR-0006), bandwidth monitor
 
 **Rate Strip**:
-The two-line Upload/Download Rate text embedded on the primary bottom taskbar only (see ADRs). Upload on top with ↑, download below with ↓. Text is right-aligned. It ignores the mouse unless **Right-Click Speed Text** is on, and even then its only response is opening the Operator Menu — no click command, no tooltip. Hidden when that taskbar is missing or not bottom-aligned; not shown on secondary taskbars. Width is stable (sized for a wide sample such as `999.9G/s` in the active font), starts with DPI-aware 9-point Consolas, and uses the Rate Font selected for the current run; text color follows taskbar/system theme. While running, Win Mon refreshes the strip position and theme color once per Rate Sample so changes in the notification area do not cause overlap or stale contrast. If embed fails while the Tray Icon is up, the process stays alive and retries (including via Shell Recovery). "Rate Strip" is an internal term: no menu label uses it.
+The two-line Upload/Download Rate text embedded on the primary bottom taskbar only (see ADRs). Upload on top with ↑, download below with ↓. Text is right-aligned. It ignores the mouse unless **Right-Click Speed Text** is on, and even then its only response is opening the Operator Menu — no click command, no tooltip. Hidden when that taskbar is missing or not bottom-aligned; not shown on secondary taskbars. Width is stable (sized for a wide sample such as `999.9G/s` in the active font), starts with the DPI-aware Windows UI message font, and uses the persisted Rate Font when one has been selected; text color follows taskbar/system theme. While running, Win Mon refreshes the strip position and theme color once per Rate Sample so changes in the notification area do not cause overlap or stale contrast. If embed fails while the Tray Icon is up, the process stays alive and retries (including via Shell Recovery). "Rate Strip" is an internal term: no menu label uses it.
 _Avoid_: taskbar window, widget, HUD, overlay (unless contrasting implementation), main UI
 
 **Tray Icon**:
@@ -25,13 +25,13 @@ Operator Menu check item that registers or removes Win Mon's `HKCU\...\CurrentVe
 _Avoid_: autostart (as label), startup entry
 
 **Right-Click Speed Text**:
-Operator Menu check item that decides whether the Rate Strip answers a right-click by opening the Operator Menu. Off by default. Persisted as the `RightClickSpeedText` DWORD under `HKCU\Software\Win Mon` and applied at launch, so the choice survives a restart. While off, the strip stays display-only and clicks fall through to the taskbar. A value saved under the former name `RateStripContextMenu` is migrated on first read.
-_Avoid_: Rate Strip Right-Click Menu, Right-Click Speed Text for This Menu (former labels), enable clicks, interactive mode, hotspot
+Operator Menu check item that decides whether the Rate Strip answers a right-click by opening the Operator Menu. Off by default. Persisted as the `RightClickSpeedText` DWORD under `HKCU\Software\Win Mon` and applied at launch, so the choice survives a restart. While off, the strip stays display-only and clicks fall through to the taskbar.
+_Avoid_: enable clicks, interactive mode, hotspot
 
 
 **Rate Font**:
-The font used for both Rate Strip lines. It starts as DPI-aware 9-point Consolas each launch. The Operator Menu shows the active face as a disabled `Font: <name>` item; **Set Font...** opens the standard Windows screen-font chooser (sizes 6–12 points, which fit the two-line taskbar surface) and applies the selected face, style, and size immediately. The choice remains in memory for the current run and survives Rate Strip relayout and Shell Recovery, but is not persisted.
-_Avoid_: text font, display font, system UI font (the former fixed behavior)
+The font used for both Rate Strip lines. With no saved choice, it uses the current DPI-aware Windows UI message font reported by `SPI_GETNONCLIENTMETRICS`. The Operator Menu shows the active face as a disabled `Font: <name>` item; **Set Font...** opens the standard Windows screen-font chooser (sizes 6–12 points, which fit the two-line taskbar surface) and applies the selected face, style, and size immediately. The accepted face, style, and size are stored as the versioned `RateFont` value under `HKCU\Software\Win Mon`, loaded at startup and re-read before Rate Strip recreation during relayout or Shell Recovery. Invalid or unreadable data falls back to the Windows UI font.
+_Avoid_: text font, display font
 
 **Exit**:
 Operator Menu command that removes the Tray Icon, destroys the Rate Strip, and ends the process without leaving shell chrome behind and without altering other taskbar children.
@@ -55,7 +55,7 @@ _Avoid_: poll, tick (unless implementation)
 
 **Network to Monitor**:
 Menu label for which NIC (or All NICs) feeds the Rate Strip. Default each launch: All NICs. Not persisted. If the selected NIC disappears from the system, selection falls back to All NICs; if it remains but is down, keep selection and show zero rates. Under All NICs with nothing up (or no NICs), both rates show as zero.
-_Avoid_: NIC Selection (former label), connection preference, remembered adapter
+_Avoid_: connection preference, remembered adapter
 
 **Single Instance**:
 At most one Win Mon process owns the Tray Icon and Rate Strip. A second launch exits silently without feedback.
