@@ -99,12 +99,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Autostart.h" />
     <ClInclude Include="res\resource.h" />
     <ClInclude Include="TrayMessageWindow.h" />
     <ClInclude Include="RateStrip.h" />
     <ClInclude Include="WinMonApp.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Autostart.cpp" />
     <ClCompile Include="TrayMessageWindow.cpp" />
     <ClCompile Include="RateStrip.cpp" />
     <ClCompile Include="WinMonApp.cpp" />

@@ -1,4 +1,5 @@
 #include "TrayMessageWindow.h"
+#include "Autostart.h"
 
 #include "res/resource.h"
 
@@ -434,9 +435,13 @@ UINT TrayMessageWindow::ShowOperatorMenu()
             nicMenu.Detach();
             if (!menu.AppendMenu(MF_SEPARATOR)) return 0;
         }
-        else if (item.kind == winmon::OperatorMenuItemKind::Exit && !menu.AppendMenu(MF_STRING, exitCommand, item.label.c_str()))
+        else if (item.kind == winmon::OperatorMenuItemKind::Exit)
         {
-            return 0;
+            autostartWasEnabled_ = autostart::IsEnabled();
+            const UINT autostartFlags = MF_STRING | (autostartWasEnabled_ ? MF_CHECKED : MF_UNCHECKED);
+            if (!menu.AppendMenu(autostartFlags, ID_OPERATOR_AUTOSTART, L"Launch at Login")) return 0;
+            if (!menu.AppendMenu(MF_SEPARATOR)) return 0;
+            if (!menu.AppendMenu(MF_STRING, exitCommand, item.label.c_str())) return 0;
         }
     }
     SetForegroundWindow();
@@ -456,7 +461,11 @@ LRESULT TrayMessageWindow::OnTrayNotification(WPARAM, LPARAM lParam)
     if (notification != WM_RBUTTONUP && notification != WM_CONTEXTMENU) return 0;
     const UINT command = ShowOperatorMenu();
     if (command == ID_OPERATOR_EXIT) RequestExit();
-    else if (command == ID_OPERATOR_ALL) core_.SelectAll();
+    else if (command == ID_OPERATOR_AUTOSTART)
+    {
+        if (autostartWasEnabled_) static_cast<void>(autostart::Disable());
+        else static_cast<void>(autostart::Enable());
+    }
     else if (command >= ID_OPERATOR_NIC_BASE)
     {
         const auto nicIndex = static_cast<std::size_t>(command - ID_OPERATOR_NIC_BASE);

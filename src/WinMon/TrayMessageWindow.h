@@ -45,4 +45,5 @@ private:
     bool trayIconAdded_ = false;
     bool shellRecoveryTimerActive_ = false;
     bool shuttingDown_ = false;
+    bool autostartWasEnabled_ = false;
 };
