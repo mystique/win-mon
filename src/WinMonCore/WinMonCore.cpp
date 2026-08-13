@@ -49,7 +49,9 @@ std::wstring WinMonCore::DisplayName(const NicSnapshot& snapshot)
     return snapshot.description;
 }
 
-std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(const std::vector<NicSnapshot>& snapshots)
+std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
+    const std::vector<NicSnapshot>& snapshots,
+    const OperatorMenuToggles& toggles)
 {
     ReconcileSelection(snapshots);
     std::vector<OperatorMenuItem> menu;
@@ -59,6 +61,9 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(const std::vector<Ni
         if (snapshot.loopback || !snapshot.visibleInClassicConnections) continue;
         menu.push_back({OperatorMenuItemKind::Nic, snapshot.stableId, DisplayName(snapshot), snapshot.stableId == selectedNicId_});
     }
+    menu.push_back({OperatorMenuItemKind::Separator, {}, {}, false});
+    menu.push_back({OperatorMenuItemKind::Autostart, {}, L"Launch at Login", toggles.autostartEnabled});
+    menu.push_back({OperatorMenuItemKind::RateStripContextMenu, {}, L"Rate Strip Right-Click Menu", toggles.rateStripContextMenuEnabled});
     menu.push_back({OperatorMenuItemKind::Separator, {}, {}, false});
     menu.push_back({OperatorMenuItemKind::Exit, {}, L"Exit", false});
     return menu;

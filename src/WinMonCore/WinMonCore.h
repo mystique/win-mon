@@ -11,7 +11,16 @@ enum class OperatorMenuItemKind
     All,
     Nic,
     Separator,
+    Autostart,
+    RateStripContextMenu,
     Exit,
+};
+
+// Persisted operator settings that the Operator Menu renders as check marks.
+struct OperatorMenuToggles final
+{
+    bool autostartEnabled = false;
+    bool rateStripContextMenuEnabled = false;
 };
 
 struct NicSnapshot final
@@ -47,7 +56,9 @@ class WinMonCore final
 {
 public:
     RateDisplay Sample(const std::vector<NicSnapshot>& snapshots, double monotonicSeconds);
-    std::vector<OperatorMenuItem> BuildOperatorMenu(const std::vector<NicSnapshot>& snapshots);
+    std::vector<OperatorMenuItem> BuildOperatorMenu(
+        const std::vector<NicSnapshot>& snapshots,
+        const OperatorMenuToggles& toggles = {});
     void SelectAll() noexcept;
     void SelectNic(const std::string& stableId) noexcept;
     [[nodiscard]] bool IsAllSelected() const noexcept;

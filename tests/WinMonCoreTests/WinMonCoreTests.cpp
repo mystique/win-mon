@@ -51,9 +51,9 @@ void ClassicConnectionsLimitNicSelectionChoices()
     internalAdapter.visibleInClassicConnections = false;
 
     const auto menu = core.BuildOperatorMenu({ethernet, internalAdapter});
-    Require(menu.size() == 4, "only classic Network Connections NICs are offered");
+    Require(menu.size() == 7, "only classic Network Connections NICs are offered");
     Require(menu[0].kind == winmon::OperatorMenuItemKind::All && menu[1].stableId == "ethernet", "classic NIC remains selectable");
-    Require(menu[2].kind == winmon::OperatorMenuItemKind::Separator && menu[3].kind == winmon::OperatorMenuItemKind::Exit, "operator menu tail remains intact");
+    Require(menu[2].kind == winmon::OperatorMenuItemKind::Separator && menu[6].kind == winmon::OperatorMenuItemKind::Exit, "operator menu tail remains intact");
 }
 
 void RequireRate(const winmon::RateDisplay& display, double upload, double download)
@@ -119,9 +119,9 @@ void MenuAndSelectionFollowEnumeration()
     WinMonCore core;
     const std::vector<NicSnapshot> nics = {NamedNic("a", L"Alpha", L"A desc"), NamedNic("down", L"", L"Down description", false), Nic("loop", true, 0, 0, true)};
     auto menu = core.BuildOperatorMenu(nics);
-    Require(menu.size() == 5 && menu[0].label == L"All" && menu[0].checked, "default all menu");
+    Require(menu.size() == 8 && menu[0].label == L"All" && menu[0].checked, "default all menu");
     Require(menu[1].label == L"Alpha" && menu[2].label == L"Down description" && menu[2].checked == false, "menu order and fallback");
-    Require(menu[3].kind == winmon::OperatorMenuItemKind::Separator && menu[4].kind == winmon::OperatorMenuItemKind::Exit, "menu tail");
+    Require(menu[3].kind == winmon::OperatorMenuItemKind::Separator && menu[7].kind == winmon::OperatorMenuItemKind::Exit, "menu tail");
     core.SelectNic("down");
     menu = core.BuildOperatorMenu(nics);
     Require(menu[2].checked && !menu[0].checked, "selected down checked");
@@ -162,6 +162,21 @@ void RateStripVisibilityFollowsPrimaryBottomAvailability()
     Require(!WinMonCore::ShouldShowRateStrip(false), "missing or unsupported taskbar hides strip");
 }
 
+void OperatorMenuGroupsPersistedTogglesWithoutSeparator()
+{
+    WinMonCore core;
+    const std::vector<NicSnapshot> nics = {NamedNic("a", L"Alpha", L"A desc")};
+    const auto menu = core.BuildOperatorMenu(nics, {true, false});
+    Require(menu.size() == 7, "toggles join the operator menu tail");
+    Require(menu[3].kind == winmon::OperatorMenuItemKind::Autostart && menu[3].checked, "autostart state is checked");
+    Require(menu[4].kind == winmon::OperatorMenuItemKind::RateStripContextMenu && !menu[4].checked, "rate strip toggle state is unchecked");
+    Require(menu[5].kind == winmon::OperatorMenuItemKind::Separator, "only one separator before Exit");
+    Require(!menu[3].label.empty() && !menu[4].label.empty(), "toggles carry labels");
+
+    const auto toggled = core.BuildOperatorMenu(nics, {false, true});
+    Require(!toggled[3].checked && toggled[4].checked, "toggle marks follow persisted settings");
+}
+
 void FormatsBase1000BoundariesAndMinimumK()
 {
     Require(WinMonCore::FormatRate(0.0) == L"0.0K/s", "zero format");
@@ -192,6 +207,7 @@ int main()
         FormatsBase1000BoundariesAndMinimumK();
         RateStripVisibilityFollowsPrimaryBottomAvailability();
         MenuAndSelectionFollowEnumeration();
+        OperatorMenuGroupsPersistedTogglesWithoutSeparator();
         ClassicConnectionsLimitNicSelectionChoices();
         SelectedNicOnlyAndChurnFallback();
     }

@@ -42,11 +42,33 @@ void RateStrip::SetRates(const std::wstring& uploadText, const std::wstring& dow
     }
 }
 
+void RateStrip::SetContextMenuOwner(HWND owner, UINT notificationMessage) noexcept
+{
+    contextMenuOwner_ = owner;
+    contextMenuMessage_ = notificationMessage;
+}
+
+void RateStrip::SetContextMenuEnabled(bool enabled) noexcept
+{
+    if (contextMenuEnabled_ == enabled)
+    {
+        return;
+    }
+
+    contextMenuEnabled_ = enabled;
+    // The hit-testable alpha floor changes with the setting, so repaint.
+    if (GetSafeHwnd() != nullptr)
+    {
+        static_cast<void>(Render());
+    }
+}
+
 BEGIN_MESSAGE_MAP(RateStrip, CWnd)
     ON_WM_PAINT()
     ON_WM_ERASEBKGND()
     ON_WM_MOUSEACTIVATE()
     ON_WM_NCHITTEST()
+    ON_WM_RBUTTONUP()
 END_MESSAGE_MAP()
 
 bool RateStrip::Embed(bool shouldShow)
@@ -421,10 +443,14 @@ bool RateStrip::Render() noexcept
     const DWORD green = GetGValue(textColor_);
     const DWORD blue = GetBValue(textColor_);
     const size_t pixelCount = static_cast<size_t>(size_.cx) * static_cast<size_t>(size_.cy);
+    // A layered window passes mouse input through fully transparent pixels, so
+    // an interactive strip needs a floor that is hit-testable yet unnoticeable.
+    const DWORD minimumAlpha = contextMenuEnabled_ ? 1u : 0u;
     for (size_t index = 0; index < pixelCount; ++index)
     {
         const DWORD mask = pixels[index];
-        const DWORD alpha = std::max(GetRValue(mask), std::max(GetGValue(mask), GetBValue(mask)));
+        const DWORD alpha = std::max<DWORD>(
+            minimumAlpha, std::max(GetRValue(mask), std::max(GetGValue(mask), GetBValue(mask))));
         pixels[index] =
             (alpha << 24) |
             ((red * alpha / 255) << 16) |
@@ -472,5 +498,17 @@ int RateStrip::OnMouseActivate(CWnd*, UINT, UINT)
 
 LRESULT RateStrip::OnNcHitTest(CPoint)
 {
-    return HTTRANSPARENT;
+    return contextMenuEnabled_ ? HTCLIENT : HTTRANSPARENT;
+}
+
+void RateStrip::OnRButtonUp(UINT flags, CPoint point)
+{
+    if (!contextMenuEnabled_ || contextMenuOwner_ == nullptr || contextMenuMessage_ == 0)
+    {
+        CWnd::OnRButtonUp(flags, point);
+        return;
+    }
+
+    // Post so the owner opens its menu outside this mouse message.
+    ::PostMessageW(contextMenuOwner_, contextMenuMessage_, 0, 0);
 }

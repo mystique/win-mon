@@ -1,5 +1,6 @@
 #include "TrayMessageWindow.h"
 #include "Autostart.h"
+#include "Settings.h"
 
 #include "res/resource.h"
 
@@ -17,6 +18,7 @@ namespace
 {
 constexpr UINT kTrayIconId = 1;
 constexpr UINT kTrayNotificationMessage = WM_APP + 1;
+constexpr UINT kRateStripContextMenuMessage = WM_APP + 2;
 constexpr wchar_t kTrayTooltip[] = L"Win Mon";
 constexpr UINT_PTR kRateSampleTimer = 1;
 constexpr UINT_PTR kShellRecoveryTimer = 2;
@@ -80,10 +82,28 @@ bool ContainsConnectionId(const std::vector<GUID>& ids, const GUID& candidate) n
         return InlineIsEqualGUID(id, candidate) != FALSE;
     });
 }
+
+bool AppendToggle(CMenu& menu, UINT command, const winmon::OperatorMenuItem& item)
+{
+    const UINT flags = MF_STRING | (item.checked ? MF_CHECKED : MF_UNCHECKED);
+    return menu.AppendMenu(flags, command, item.label.c_str()) != FALSE;
+}
+
+// Marks the Operator Menu as open for as long as it is being built and tracked.
+struct MenuOpenScope final
+{
+    explicit MenuOpenScope(bool& flag) noexcept : flag(flag) { flag = true; }
+    ~MenuOpenScope() noexcept { flag = false; }
+    MenuOpenScope(const MenuOpenScope&) = delete;
+    MenuOpenScope& operator=(const MenuOpenScope&) = delete;
+
+    bool& flag;
+};
 }
 
 BEGIN_MESSAGE_MAP(TrayMessageWindow, CWnd)
     ON_MESSAGE(kTrayNotificationMessage, &TrayMessageWindow::OnTrayNotification)
+    ON_MESSAGE(kRateStripContextMenuMessage, &TrayMessageWindow::OnRateStripContextMenu)
     ON_REGISTERED_MESSAGE(kTaskbarCreatedMessage, &TrayMessageWindow::OnTaskbarCreated)
     ON_MESSAGE(WM_DPICHANGED, &TrayMessageWindow::OnDpiChanged)
     ON_WM_DISPLAYCHANGE()
@@ -122,6 +142,8 @@ bool TrayMessageWindow::Initialize()
     }
 
     shuttingDown_ = false;
+    rateStrip_.SetContextMenuOwner(GetSafeHwnd(), kRateStripContextMenuMessage);
+    rateStrip_.SetContextMenuEnabled(settings::IsRateStripContextMenuEnabled());
     static_cast<void>(rateStrip_.Embed(
         core_.ShouldShowRateStrip(RateStrip::IsPrimaryBottomTaskbarAvailable())));
     if (ShouldRetryRateStrip())
@@ -404,44 +426,55 @@ void TrayMessageWindow::RemoveTrayIcon() noexcept
 
 UINT TrayMessageWindow::ShowOperatorMenu()
 {
+    // TrackPopupMenu pumps messages, so a queued open request would otherwise
+    // nest a second menu and rebuild menuNicIds_ under the outer one.
+    if (menuOpen_) return 0;
     CPoint cursorPosition;
     if (!GetCursorPos(&cursorPosition)) return 0;
+    const MenuOpenScope menuScope{menuOpen_};
     snapshots_ = ReadNicSnapshots(true);
-    const auto model = core_.BuildOperatorMenu(snapshots_);
+    autostartWasEnabled_ = autostart::IsEnabled();
+    const auto model = core_.BuildOperatorMenu(
+        snapshots_, {autostartWasEnabled_, rateStrip_.IsContextMenuEnabled()});
     CMenu menu;
     CMenu nicMenu;
     if (!menu.CreatePopupMenu() || !nicMenu.CreatePopupMenu()) return 0;
     menuNicIds_.clear();
     UINT nextCommand = ID_OPERATOR_NIC_BASE;
-    UINT allCommand = ID_OPERATOR_ALL;
-    UINT exitCommand = ID_OPERATOR_EXIT;
+    constexpr UINT allCommand = ID_OPERATOR_ALL;
+    bool nicSubmenuAttached = false;
     for (const auto& item : model)
     {
-        if (item.kind == winmon::OperatorMenuItemKind::All)
+        switch (item.kind)
         {
+        case winmon::OperatorMenuItemKind::All:
             if (!nicMenu.AppendMenu(MF_STRING, allCommand, item.label.c_str())) return 0;
             if (item.checked) nicMenu.CheckMenuRadioItem(allCommand, allCommand, allCommand, MF_BYCOMMAND);
-        }
-        else if (item.kind == winmon::OperatorMenuItemKind::Nic)
-        {
+            break;
+        case winmon::OperatorMenuItemKind::Nic:
             if (!nicMenu.AppendMenu(MF_STRING, nextCommand, item.label.c_str())) return 0;
             menuNicIds_.push_back(item.stableId);
             if (item.checked) nicMenu.CheckMenuRadioItem(allCommand, nextCommand, nextCommand, MF_BYCOMMAND);
             ++nextCommand;
-        }
-        else if (item.kind == winmon::OperatorMenuItemKind::Separator)
-        {
-            if (!menu.AppendMenu(MF_POPUP, reinterpret_cast<UINT_PTR>(nicMenu.GetSafeHmenu()), L"NIC Selection")) return 0;
-            nicMenu.Detach();
+            break;
+        case winmon::OperatorMenuItemKind::Separator:
+            if (!nicSubmenuAttached)
+            {
+                if (!menu.AppendMenu(MF_POPUP, reinterpret_cast<UINT_PTR>(nicMenu.GetSafeHmenu()), L"NIC Selection")) return 0;
+                nicMenu.Detach();
+                nicSubmenuAttached = true;
+            }
             if (!menu.AppendMenu(MF_SEPARATOR)) return 0;
-        }
-        else if (item.kind == winmon::OperatorMenuItemKind::Exit)
-        {
-            autostartWasEnabled_ = autostart::IsEnabled();
-            const UINT autostartFlags = MF_STRING | (autostartWasEnabled_ ? MF_CHECKED : MF_UNCHECKED);
-            if (!menu.AppendMenu(autostartFlags, ID_OPERATOR_AUTOSTART, L"Launch at Login")) return 0;
-            if (!menu.AppendMenu(MF_SEPARATOR)) return 0;
-            if (!menu.AppendMenu(MF_STRING, exitCommand, item.label.c_str())) return 0;
+            break;
+        case winmon::OperatorMenuItemKind::Autostart:
+            if (!AppendToggle(menu, ID_OPERATOR_AUTOSTART, item)) return 0;
+            break;
+        case winmon::OperatorMenuItemKind::RateStripContextMenu:
+            if (!AppendToggle(menu, ID_OPERATOR_RATE_STRIP_MENU, item)) return 0;
+            break;
+        case winmon::OperatorMenuItemKind::Exit:
+            if (!menu.AppendMenu(MF_STRING, ID_OPERATOR_EXIT, item.label.c_str())) return 0;
+            break;
         }
     }
     SetForegroundWindow();
@@ -455,21 +488,45 @@ void TrayMessageWindow::RequestExit()
     Shutdown();
     PostQuitMessage(0);
 }
-LRESULT TrayMessageWindow::OnTrayNotification(WPARAM, LPARAM lParam)
+void TrayMessageWindow::HandleOperatorMenuCommand(UINT command)
 {
-    const UINT notification = LOWORD(lParam);
-    if (notification != WM_RBUTTONUP && notification != WM_CONTEXTMENU) return 0;
-    const UINT command = ShowOperatorMenu();
-    if (command == ID_OPERATOR_EXIT) RequestExit();
+    if (command == ID_OPERATOR_EXIT)
+    {
+        RequestExit();
+    }
     else if (command == ID_OPERATOR_AUTOSTART)
     {
         if (autostartWasEnabled_) static_cast<void>(autostart::Disable());
         else static_cast<void>(autostart::Enable());
+    }
+    else if (command == ID_OPERATOR_RATE_STRIP_MENU)
+    {
+        const bool enabled = !rateStrip_.IsContextMenuEnabled();
+        rateStrip_.SetContextMenuEnabled(enabled);
+        static_cast<void>(settings::SetRateStripContextMenuEnabled(enabled));
+    }
+    else if (command == ID_OPERATOR_ALL)
+    {
+        core_.SelectAll();
     }
     else if (command >= ID_OPERATOR_NIC_BASE)
     {
         const auto nicIndex = static_cast<std::size_t>(command - ID_OPERATOR_NIC_BASE);
         if (nicIndex < menuNicIds_.size()) core_.SelectNic(menuNicIds_[nicIndex]);
     }
+}
+
+LRESULT TrayMessageWindow::OnTrayNotification(WPARAM, LPARAM lParam)
+{
+    const UINT notification = LOWORD(lParam);
+    if (notification != WM_RBUTTONUP && notification != WM_CONTEXTMENU) return 0;
+    HandleOperatorMenuCommand(ShowOperatorMenu());
+    return 0;
+}
+
+LRESULT TrayMessageWindow::OnRateStripContextMenu(WPARAM, LPARAM)
+{
+    if (shuttingDown_) return 0;
+    HandleOperatorMenuCommand(ShowOperatorMenu());
     return 0;
 }

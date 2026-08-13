@@ -1,6 +1,6 @@
 # Win Mon
 
-A Win11-only tray utility named **Win Mon** that shows live NIC upload/download rates as a two-line strip on the primary taskbar. UI copy is English only. There is no main window, no autostart, and no saved settings. MFC is used only as a thin host for this surface (see ADR-0003), not as a general application framework feature set.
+A Win11-only tray utility named **Win Mon** that shows live NIC upload/download rates as a two-line strip on the primary taskbar. UI copy is English only. There is no main window. Operator toggles persist in the registry (see ADR-0007); NIC Selection does not. MFC is used only as a thin host for this surface (see ADR-0003), not as a general application framework feature set.
 
 ## Language
 
@@ -9,16 +9,24 @@ The product and process the user runs. Tray tooltip and identity string are `Win
 _Avoid_: win-mon (except repo/folder), TrafficMonitor (reference tree only — ADR-0006), bandwidth monitor
 
 **Rate Strip**:
-The two-line Upload/Download Rate text embedded on the primary bottom taskbar only (see ADRs). Upload on top with ↑, download below with ↓. Text is right-aligned and display-only: not a control surface (no click, menu, or tooltip). Hidden when that taskbar is missing or not bottom-aligned; not shown on secondary taskbars. Width is stable (sized for a wide sample such as `999.9G/s`), system UI font, text color follows taskbar/system theme. While running, Win Mon refreshes the strip position and theme color once per Rate Sample so changes in the notification area do not cause overlap or stale contrast. If embed fails while the Tray Icon is up, the process stays alive and retries (including via Shell Recovery).
+The two-line Upload/Download Rate text embedded on the primary bottom taskbar only (see ADRs). Upload on top with ↑, download below with ↓. Text is right-aligned. It ignores the mouse unless **Rate Strip Right-Click Menu** is on, and even then its only response is opening the Operator Menu — no click command, no tooltip. Hidden when that taskbar is missing or not bottom-aligned; not shown on secondary taskbars. Width is stable (sized for a wide sample such as `999.9G/s`), system UI font, text color follows taskbar/system theme. While running, Win Mon refreshes the strip position and theme color once per Rate Sample so changes in the notification area do not cause overlap or stale contrast. If embed fails while the Tray Icon is up, the process stays alive and retries (including via Shell Recovery).
 _Avoid_: taskbar window, widget, HUD, overlay (unless contrasting implementation), main UI
 
 **Tray Icon**:
-The notification-area icon that is the sole operator entry (Operator Menu only). Required for a successful run; if it cannot be created at startup, Win Mon shows an error message and exits.
+The notification-area icon that is the primary operator entry (Operator Menu only). Required for a successful run; if it cannot be created at startup, Win Mon shows an error message and exits.
 _Avoid_: main window, shell icon (ambiguous)
 
 **Operator Menu**:
-The tray context menu opened only from the Tray Icon. Structure: **NIC Selection** submenu, separator, **Exit**. The submenu is a radio list with **All** first, then each NIC represented in the classic Windows Network Connections folder (friendly/alias name, else description). English labels only.
+The tray context menu, opened from the Tray Icon or — when **Rate Strip Right-Click Menu** is on — by right-clicking the Rate Strip. Structure: **NIC Selection** submenu, separator, **Launch at Login**, **Rate Strip Right-Click Menu**, separator, **Exit**. The two toggles form one group with no separator between them. The submenu is a radio list with **All** first, then each NIC represented in the classic Windows Network Connections folder (friendly/alias name, else description). English labels only.
 _Avoid_: main menu, settings dialog
+
+**Launch at Login**:
+Operator Menu check item that registers or removes Win Mon's `HKCU\...\CurrentVersion\Run` entry pointing at the current executable. Reflects the live registry state each time the menu opens.
+_Avoid_: autostart (as label), startup entry
+
+**Rate Strip Right-Click Menu**:
+Operator Menu check item that decides whether the Rate Strip answers a right-click by opening the Operator Menu. Off by default. Persisted as the `RateStripContextMenu` DWORD under `HKCU\Software\Win Mon` and applied at launch, so the choice survives a restart. While off, the strip stays display-only and clicks fall through to the taskbar.
+_Avoid_: enable clicks, interactive mode, hotspot
 
 **Exit**:
 Operator Menu command that removes the Tray Icon, destroys the Rate Strip, and ends the process without leaving shell chrome behind and without altering other taskbar children.
