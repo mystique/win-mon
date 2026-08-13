@@ -172,7 +172,7 @@ void OperatorMenuGroupsPersistedTogglesWithoutSeparator()
     Require(menu[4].kind == winmon::OperatorMenuItemKind::RateStripContextMenu && !menu[4].checked, "rate strip toggle state is unchecked");
     Require(menu[5].kind == winmon::OperatorMenuItemKind::Separator, "only one separator before Exit");
     Require(menu[3].label == L"Launch at Login", "autostart keeps its plain label");
-    Require(menu[4].label == L"Right-Click Speed Text for This Menu", "speed text toggle avoids internal jargon");
+    Require(menu[4].label == L"Right-Click Speed Text", "speed text toggle stays plain and short");
 
     const auto toggled = core.BuildOperatorMenu(nics, {false, true});
     Require(!toggled[3].checked && toggled[4].checked, "toggle marks follow persisted settings");

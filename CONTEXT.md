@@ -9,7 +9,7 @@ The product and process the user runs. Tray tooltip and identity string are `Win
 _Avoid_: win-mon (except repo/folder), TrafficMonitor (reference tree only — ADR-0006), bandwidth monitor
 
 **Rate Strip**:
-The two-line Upload/Download Rate text embedded on the primary bottom taskbar only (see ADRs). Upload on top with ↑, download below with ↓. Text is right-aligned. It ignores the mouse unless **Right-Click Speed Text for This Menu** is on, and even then its only response is opening the Operator Menu — no click command, no tooltip. Hidden when that taskbar is missing or not bottom-aligned; not shown on secondary taskbars. Width is stable (sized for a wide sample such as `999.9G/s`), system UI font, text color follows taskbar/system theme. While running, Win Mon refreshes the strip position and theme color once per Rate Sample so changes in the notification area do not cause overlap or stale contrast. If embed fails while the Tray Icon is up, the process stays alive and retries (including via Shell Recovery). "Rate Strip" is an internal term: no menu label uses it.
+The two-line Upload/Download Rate text embedded on the primary bottom taskbar only (see ADRs). Upload on top with ↑, download below with ↓. Text is right-aligned. It ignores the mouse unless **Right-Click Speed Text** is on, and even then its only response is opening the Operator Menu — no click command, no tooltip. Hidden when that taskbar is missing or not bottom-aligned; not shown on secondary taskbars. Width is stable (sized for a wide sample such as `999.9G/s`), system UI font, text color follows taskbar/system theme. While running, Win Mon refreshes the strip position and theme color once per Rate Sample so changes in the notification area do not cause overlap or stale contrast. If embed fails while the Tray Icon is up, the process stays alive and retries (including via Shell Recovery). "Rate Strip" is an internal term: no menu label uses it.
 _Avoid_: taskbar window, widget, HUD, overlay (unless contrasting implementation), main UI
 
 **Tray Icon**:
@@ -17,16 +17,16 @@ The notification-area icon that is the primary operator entry (Operator Menu onl
 _Avoid_: main window, shell icon (ambiguous)
 
 **Operator Menu**:
-The tray context menu, opened from the Tray Icon or — when **Right-Click Speed Text for This Menu** is on — by right-clicking the Rate Strip. Structure: **Network to Monitor** submenu, separator, **Launch at Login**, **Right-Click Speed Text for This Menu**, separator, **Exit**. The two toggles form one group with no separator between them. The submenu is a radio list with **All** first, then each NIC represented in the classic Windows Network Connections folder (friendly/alias name, else description). Labels are plain English, free of internal terms such as NIC or Rate Strip.
+The tray context menu, opened from the Tray Icon or — when **Right-Click Speed Text** is on — by right-clicking the Rate Strip. Structure: **Network to Monitor** submenu, separator, **Launch at Login**, **Right-Click Speed Text**, separator, **Exit**. The two toggles form one group with no separator between them. The submenu is a radio list with **All** first, then each NIC represented in the classic Windows Network Connections folder (friendly/alias name, else description). Labels are plain English, free of internal terms such as NIC or Rate Strip.
 _Avoid_: main menu, settings dialog
 
 **Launch at Login**:
 Operator Menu check item that registers or removes Win Mon's `HKCU\...\CurrentVersion\Run` entry pointing at the current executable. Reflects the live registry state each time the menu opens.
 _Avoid_: autostart (as label), startup entry
 
-**Right-Click Speed Text for This Menu**:
+**Right-Click Speed Text**:
 Operator Menu check item that decides whether the Rate Strip answers a right-click by opening the Operator Menu. Off by default. Persisted as the `RateStripContextMenu` DWORD under `HKCU\Software\Win Mon` and applied at launch, so the choice survives a restart. While off, the strip stays display-only and clicks fall through to the taskbar. The registry value keeps its original name so an existing saved choice still loads.
-_Avoid_: Rate Strip Right-Click Menu (former label), enable clicks, interactive mode, hotspot
+_Avoid_: Rate Strip Right-Click Menu, Right-Click Speed Text for This Menu (former labels), enable clicks, interactive mode, hotspot
 
 **Exit**:
 Operator Menu command that removes the Tray Icon, destroys the Rate Strip, and ends the process without leaving shell chrome behind and without altering other taskbar children.
