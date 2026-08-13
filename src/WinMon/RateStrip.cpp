@@ -10,7 +10,6 @@ constexpr wchar_t kTaskbarClassName[] = L"Shell_TrayWnd";
 constexpr wchar_t kNotificationAreaClassName[] = L"TrayNotifyWnd";
 constexpr wchar_t kMaximumTopLine[] = L"999.9G/s \u2191";
 constexpr wchar_t kMaximumBottomLine[] = L"999.9G/s \u2193";
-constexpr wchar_t kMonospaceFont[] = L"Consolas";
 
 struct NotificationAreaSearch
 {
@@ -45,7 +44,8 @@ void RateStrip::SetRates(const std::wstring& uploadText, const std::wstring& dow
 
 std::wstring RateStrip::GetRateFontName() const
 {
-    return hasSelectedFont_ ? selectedFont_.logFont.lfFaceName : kMonospaceFont;
+    RateFontSelection selection;
+    return GetRateFont(selection) ? selection.logFont.lfFaceName : L"";
 }
 
 bool RateStrip::GetRateFont(RateFontSelection& selection) const noexcept
@@ -67,6 +67,13 @@ bool RateStrip::SetRateFont(const RateFontSelection& selection) noexcept
         return false;
     }
 
+    if (hasSelectedFont_ &&
+        selectedFont_.pointSizeTenths == selection.pointSizeTenths &&
+        memcmp(&selectedFont_.logFont, &selection.logFont, sizeof(LOGFONTW)) == 0)
+    {
+        return true;
+    }
+
     const RateFontSelection previousFont = selectedFont_;
     const bool previouslySelected = hasSelectedFont_;
     selectedFont_ = selection;
@@ -86,6 +93,37 @@ bool RateStrip::SetRateFont(const RateFontSelection& selection) noexcept
 
     selectedFont_ = previousFont;
     hasSelectedFont_ = previouslySelected;
+    if (notificationArea != nullptr && taskbar_ == taskbar)
+    {
+        static_cast<void>(Relayout(taskbar, notificationArea));
+        static_cast<void>(Render());
+    }
+    return false;
+}
+
+bool RateStrip::ResetRateFont() noexcept
+{
+    if (!hasSelectedFont_)
+    {
+        return true;
+    }
+
+    const RateFontSelection previousFont = selectedFont_;
+    hasSelectedFont_ = false;
+    if (GetSafeHwnd() == nullptr)
+    {
+        return true;
+    }
+
+    const HWND taskbar = FindPrimaryBottomTaskbar();
+    const HWND notificationArea = taskbar == nullptr ? nullptr : FindNotificationArea(taskbar);
+    if (notificationArea != nullptr && taskbar_ == taskbar && Relayout(taskbar, notificationArea) && Render())
+    {
+        return true;
+    }
+
+    selectedFont_ = previousFont;
+    hasSelectedFont_ = true;
     if (notificationArea != nullptr && taskbar_ == taskbar)
     {
         static_cast<void>(Relayout(taskbar, notificationArea));
@@ -318,19 +356,24 @@ HWND RateStrip::FindNotificationArea(HWND taskbar) noexcept
 
 bool RateStrip::LoadDefaultRateFont(HWND taskbar, RateFontSelection& selection) noexcept
 {
+    const UINT dpi = taskbar == nullptr ? GetDpiForSystem() : GetDpiForWindow(taskbar);
     NONCLIENTMETRICSW metrics{};
     metrics.cbSize = sizeof(metrics);
-    if (!SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0))
+    if (!SystemParametersInfoForDpi(
+            SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0, dpi))
     {
         return false;
     }
 
     selection.logFont = metrics.lfMessageFont;
-    selection.logFont.lfPitchAndFamily = FIXED_PITCH | FF_MODERN;
-    wcscpy_s(selection.logFont.lfFaceName, kMonospaceFont);
-    selection.pointSizeTenths = 90;
-    const UINT dpi = taskbar == nullptr ? GetDpiForSystem() : GetDpiForWindow(taskbar);
-    selection.logFont.lfHeight = -MulDiv(selection.pointSizeTenths, static_cast<int>(dpi), 720);
+    const int logicalHeight = selection.logFont.lfHeight < 0
+        ? -selection.logFont.lfHeight
+        : selection.logFont.lfHeight;
+    selection.pointSizeTenths = MulDiv(logicalHeight, 720, static_cast<int>(dpi));
+    if (selection.logFont.lfFaceName[0] == L'\0' || selection.pointSizeTenths <= 0)
+    {
+        return false;
+    }
     return true;
 }
 

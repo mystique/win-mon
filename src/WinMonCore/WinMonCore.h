@@ -61,7 +61,7 @@ public:
     std::vector<OperatorMenuItem> BuildOperatorMenu(
         const std::vector<NicSnapshot>& snapshots,
         const OperatorMenuToggles& toggles = {},
-        const std::wstring& rateFontName = L"Consolas");
+        const std::wstring& rateFontName = L"");
     void SelectAll() noexcept;
     void SelectNic(const std::string& stableId) noexcept;
     [[nodiscard]] bool IsAllSelected() const noexcept;

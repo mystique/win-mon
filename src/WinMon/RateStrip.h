@@ -26,6 +26,7 @@ public:
     [[nodiscard]] std::wstring GetRateFontName() const;
     [[nodiscard]] bool GetRateFont(RateFontSelection& selection) const noexcept;
     [[nodiscard]] bool SetRateFont(const RateFontSelection& selection) noexcept;
+    [[nodiscard]] bool ResetRateFont() noexcept;
 
 private:
     [[nodiscard]] static HWND FindPrimaryBottomTaskbar() noexcept;

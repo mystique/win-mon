@@ -145,6 +145,7 @@ bool TrayMessageWindow::Initialize()
     shuttingDown_ = false;
     rateStrip_.SetContextMenuOwner(GetSafeHwnd(), kRightClickSpeedTextMessage);
     rateStrip_.SetContextMenuEnabled(settings::IsRightClickSpeedTextEnabled());
+    LoadSavedRateFont();
     static_cast<void>(rateStrip_.Embed(
         core_.ShouldShowRateStrip(RateStrip::IsPrimaryBottomTaskbarAvailable())));
     if (ShouldRetryRateStrip())
@@ -224,9 +225,23 @@ void TrayMessageWindow::CancelShellRecoveryRetry() noexcept
     shellRecoveryTimerActive_ = false;
 }
 
+void TrayMessageWindow::LoadSavedRateFont()
+{
+    RateFontSelection savedFont;
+    if (settings::GetRateFont(savedFont))
+    {
+        static_cast<void>(rateStrip_.SetRateFont(savedFont));
+    }
+    else
+    {
+        static_cast<void>(rateStrip_.ResetRateFont());
+    }
+}
+
 void TrayMessageWindow::RecoverRateStrip()
 {
     rateStrip_.Shutdown();
+    LoadSavedRateFont();
     if (!rateStrip_.Embed(core_.ShouldShowRateStrip(RateStrip::IsPrimaryBottomTaskbarAvailable())))
     {
         if (ShouldRetryRateStrip()) ScheduleShellRecoveryRetry();
@@ -250,6 +265,7 @@ void TrayMessageWindow::AttemptShellRecovery()
 
     // Embed() revalidates the parent taskbar, so an Explorer-created stale
     // child is discarded before a new child is created.
+    LoadSavedRateFont();
     if (!rateStrip_.Embed(core_.ShouldShowRateStrip(RateStrip::IsPrimaryBottomTaskbarAvailable())))
     {
         if (ShouldRetryRateStrip()) ScheduleShellRecoveryRetry();
@@ -303,6 +319,7 @@ LRESULT TrayMessageWindow::OnThemeChanged()
 
 void TrayMessageWindow::SampleRates()
 {
+    LoadSavedRateFont();
     snapshots_ = ReadNicSnapshots();
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
     const double seconds = std::chrono::duration<double>(now).count();
@@ -521,7 +538,10 @@ void TrayMessageWindow::ChooseRateFont()
 
     dialog.GetCurrentFont(&selection.logFont);
     selection.pointSizeTenths = dialog.GetSize();
-    static_cast<void>(rateStrip_.SetRateFont(selection));
+    if (settings::SetRateFont(selection))
+    {
+        static_cast<void>(rateStrip_.SetRateFont(selection));
+    }
 }
 
 void TrayMessageWindow::HandleOperatorMenuCommand(UINT command)
