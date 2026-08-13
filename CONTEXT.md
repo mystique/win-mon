@@ -1,6 +1,6 @@
 # Win Mon
 
-A Win11-only tray utility named **Win Mon** that shows live NIC upload/download rates as a two-line strip on the primary taskbar. UI copy is English only. There is no main window. Operator toggles persist in the registry (see ADR-0007); NIC Selection does not. MFC is used only as a thin host for this surface (see ADR-0003), not as a general application framework feature set.
+A Win11-only tray utility named **Win Mon** that shows live NIC upload/download rates as a two-line strip on the primary taskbar. UI copy is English only, and menu labels stay plain: internal terms like NIC and Rate Strip never appear in them. There is no main window. Operator toggles persist in the registry (see ADR-0007); the Network to Monitor choice does not. MFC is used only as a thin host for this surface (see ADR-0003), not as a general application framework feature set.
 
 ## Language
 
@@ -9,7 +9,7 @@ The product and process the user runs. Tray tooltip and identity string are `Win
 _Avoid_: win-mon (except repo/folder), TrafficMonitor (reference tree only — ADR-0006), bandwidth monitor
 
 **Rate Strip**:
-The two-line Upload/Download Rate text embedded on the primary bottom taskbar only (see ADRs). Upload on top with ↑, download below with ↓. Text is right-aligned. It ignores the mouse unless **Rate Strip Right-Click Menu** is on, and even then its only response is opening the Operator Menu — no click command, no tooltip. Hidden when that taskbar is missing or not bottom-aligned; not shown on secondary taskbars. Width is stable (sized for a wide sample such as `999.9G/s`), system UI font, text color follows taskbar/system theme. While running, Win Mon refreshes the strip position and theme color once per Rate Sample so changes in the notification area do not cause overlap or stale contrast. If embed fails while the Tray Icon is up, the process stays alive and retries (including via Shell Recovery).
+The two-line Upload/Download Rate text embedded on the primary bottom taskbar only (see ADRs). Upload on top with ↑, download below with ↓. Text is right-aligned. It ignores the mouse unless **Right-Click Speed Text for This Menu** is on, and even then its only response is opening the Operator Menu — no click command, no tooltip. Hidden when that taskbar is missing or not bottom-aligned; not shown on secondary taskbars. Width is stable (sized for a wide sample such as `999.9G/s`), system UI font, text color follows taskbar/system theme. While running, Win Mon refreshes the strip position and theme color once per Rate Sample so changes in the notification area do not cause overlap or stale contrast. If embed fails while the Tray Icon is up, the process stays alive and retries (including via Shell Recovery). "Rate Strip" is an internal term: no menu label uses it.
 _Avoid_: taskbar window, widget, HUD, overlay (unless contrasting implementation), main UI
 
 **Tray Icon**:
@@ -17,23 +17,23 @@ The notification-area icon that is the primary operator entry (Operator Menu onl
 _Avoid_: main window, shell icon (ambiguous)
 
 **Operator Menu**:
-The tray context menu, opened from the Tray Icon or — when **Rate Strip Right-Click Menu** is on — by right-clicking the Rate Strip. Structure: **NIC Selection** submenu, separator, **Launch at Login**, **Rate Strip Right-Click Menu**, separator, **Exit**. The two toggles form one group with no separator between them. The submenu is a radio list with **All** first, then each NIC represented in the classic Windows Network Connections folder (friendly/alias name, else description). English labels only.
+The tray context menu, opened from the Tray Icon or — when **Right-Click Speed Text for This Menu** is on — by right-clicking the Rate Strip. Structure: **Network to Monitor** submenu, separator, **Launch at Login**, **Right-Click Speed Text for This Menu**, separator, **Exit**. The two toggles form one group with no separator between them. The submenu is a radio list with **All** first, then each NIC represented in the classic Windows Network Connections folder (friendly/alias name, else description). Labels are plain English, free of internal terms such as NIC or Rate Strip.
 _Avoid_: main menu, settings dialog
 
 **Launch at Login**:
 Operator Menu check item that registers or removes Win Mon's `HKCU\...\CurrentVersion\Run` entry pointing at the current executable. Reflects the live registry state each time the menu opens.
 _Avoid_: autostart (as label), startup entry
 
-**Rate Strip Right-Click Menu**:
-Operator Menu check item that decides whether the Rate Strip answers a right-click by opening the Operator Menu. Off by default. Persisted as the `RateStripContextMenu` DWORD under `HKCU\Software\Win Mon` and applied at launch, so the choice survives a restart. While off, the strip stays display-only and clicks fall through to the taskbar.
-_Avoid_: enable clicks, interactive mode, hotspot
+**Right-Click Speed Text for This Menu**:
+Operator Menu check item that decides whether the Rate Strip answers a right-click by opening the Operator Menu. Off by default. Persisted as the `RateStripContextMenu` DWORD under `HKCU\Software\Win Mon` and applied at launch, so the choice survives a restart. While off, the strip stays display-only and clicks fall through to the taskbar. The registry value keeps its original name so an existing saved choice still loads.
+_Avoid_: Rate Strip Right-Click Menu (former label), enable clicks, interactive mode, hotspot
 
 **Exit**:
 Operator Menu command that removes the Tray Icon, destroys the Rate Strip, and ends the process without leaving shell chrome behind and without altering other taskbar children.
 _Avoid_: Quit, Close
 
 **NIC**:
-A system network interface the user may select for rate display. NIC Selection lists non-loopback NICs represented in the classic Windows Network Connections folder, whether up or down; if that classification is unavailable, it retains all enumerated non-loopback NICs.
+A system network interface the user may select for rate display. Network to Monitor lists non-loopback NICs represented in the classic Windows Network Connections folder, whether up or down; if that classification is unavailable, it retains all enumerated non-loopback NICs. NIC stays an internal term: the menu says Network.
 _Avoid_: connection, adapter (as domain term), interface (unless Windows API talk)
 
 **All NICs**:
@@ -48,14 +48,14 @@ _Avoid_: speed (alone), bandwidth, traffic, KB/s, MB/s, B/s
 One periodic measurement used to compute Upload/Download Rate. Interval: 1 second.
 _Avoid_: poll, tick (unless implementation)
 
-**NIC Selection**:
-Which NIC (or All NICs) feeds the Rate Strip. Default each launch: All NICs. Not persisted. If the selected NIC disappears from the system, selection falls back to All NICs; if it remains but is down, keep selection and show zero rates. Under All NICs with nothing up (or no NICs), both rates show as zero.
-_Avoid_: connection preference, remembered adapter
+**Network to Monitor**:
+Menu label for which NIC (or All NICs) feeds the Rate Strip. Default each launch: All NICs. Not persisted. If the selected NIC disappears from the system, selection falls back to All NICs; if it remains but is down, keep selection and show zero rates. Under All NICs with nothing up (or no NICs), both rates show as zero.
+_Avoid_: NIC Selection (former label), connection preference, remembered adapter
 
 **Single Instance**:
 At most one Win Mon process owns the Tray Icon and Rate Strip. A second launch exits silently without feedback.
 _Avoid_: mutex (implementation), singleton app
 
 **Shell Recovery**:
-After Explorer/taskbar recreation, Win Mon re-creates the Rate Strip and Tray Icon and keeps the in-memory NIC Selection and sampling state. The message sink is a hidden top-level window so it receives the registered `TaskbarCreated` broadcast. No user prompt. DPI change and primary-monitor change re-find/relayout the Rate Strip while running; the periodic refresh also tracks notification-area geometry and theme color changes.
+After Explorer/taskbar recreation, Win Mon re-creates the Rate Strip and Tray Icon and keeps the in-memory Network to Monitor choice and sampling state. The message sink is a hidden top-level window so it receives the registered `TaskbarCreated` broadcast. No user prompt. DPI change and primary-monitor change re-find/relayout the Rate Strip while running; the periodic refresh also tracks notification-area geometry and theme color changes.
 _Avoid_: restart app, relaunch

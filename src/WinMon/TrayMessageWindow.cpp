@@ -440,8 +440,8 @@ UINT TrayMessageWindow::ShowOperatorMenu()
     CMenu nicMenu;
     if (!menu.CreatePopupMenu() || !nicMenu.CreatePopupMenu()) return 0;
     menuNicIds_.clear();
-    UINT nextCommand = ID_OPERATOR_NIC_BASE;
-    constexpr UINT allCommand = ID_OPERATOR_ALL;
+    UINT nextCommand = ID_OPERATOR_NETWORK_BASE;
+    constexpr UINT allCommand = ID_OPERATOR_ALL_NETWORKS;
     bool nicSubmenuAttached = false;
     for (const auto& item : model)
     {
@@ -460,7 +460,7 @@ UINT TrayMessageWindow::ShowOperatorMenu()
         case winmon::OperatorMenuItemKind::Separator:
             if (!nicSubmenuAttached)
             {
-                if (!menu.AppendMenu(MF_POPUP, reinterpret_cast<UINT_PTR>(nicMenu.GetSafeHmenu()), L"NIC Selection")) return 0;
+                if (!menu.AppendMenu(MF_POPUP, reinterpret_cast<UINT_PTR>(nicMenu.GetSafeHmenu()), L"Network to Monitor")) return 0;
                 nicMenu.Detach();
                 nicSubmenuAttached = true;
             }
@@ -470,7 +470,7 @@ UINT TrayMessageWindow::ShowOperatorMenu()
             if (!AppendToggle(menu, ID_OPERATOR_AUTOSTART, item)) return 0;
             break;
         case winmon::OperatorMenuItemKind::RateStripContextMenu:
-            if (!AppendToggle(menu, ID_OPERATOR_RATE_STRIP_MENU, item)) return 0;
+            if (!AppendToggle(menu, ID_OPERATOR_SPEED_TEXT_MENU, item)) return 0;
             break;
         case winmon::OperatorMenuItemKind::Exit:
             if (!menu.AppendMenu(MF_STRING, ID_OPERATOR_EXIT, item.label.c_str())) return 0;
@@ -499,19 +499,19 @@ void TrayMessageWindow::HandleOperatorMenuCommand(UINT command)
         if (autostartWasEnabled_) static_cast<void>(autostart::Disable());
         else static_cast<void>(autostart::Enable());
     }
-    else if (command == ID_OPERATOR_RATE_STRIP_MENU)
+    else if (command == ID_OPERATOR_SPEED_TEXT_MENU)
     {
         const bool enabled = !rateStrip_.IsContextMenuEnabled();
         rateStrip_.SetContextMenuEnabled(enabled);
         static_cast<void>(settings::SetRateStripContextMenuEnabled(enabled));
     }
-    else if (command == ID_OPERATOR_ALL)
+    else if (command == ID_OPERATOR_ALL_NETWORKS)
     {
         core_.SelectAll();
     }
-    else if (command >= ID_OPERATOR_NIC_BASE)
+    else if (command >= ID_OPERATOR_NETWORK_BASE)
     {
-        const auto nicIndex = static_cast<std::size_t>(command - ID_OPERATOR_NIC_BASE);
+        const auto nicIndex = static_cast<std::size_t>(command - ID_OPERATOR_NETWORK_BASE);
         if (nicIndex < menuNicIds_.size()) core_.SelectNic(menuNicIds_[nicIndex]);
     }
 }
