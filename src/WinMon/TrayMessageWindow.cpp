@@ -97,17 +97,18 @@ bool TrayMessageWindow::Initialize()
     {
         return false;
     }
+    // TaskbarCreated is a system broadcast; message-only windows do not receive it.
     const CString windowClass = AfxRegisterWndClass(0);
     if (!CreateEx(
             0,
             windowClass,
             L"Win Mon Message Sink",
+            WS_POPUP,
             0,
             0,
             0,
             0,
-            0,
-            HWND_MESSAGE,
+            nullptr,
             nullptr))
     {
         return false;
