@@ -1,4 +1,5 @@
 #include "RateStrip.h"
+#include "Theme.h"
 
 #include <algorithm>
 #include <cwchar>
@@ -465,7 +466,9 @@ bool RateStrip::PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea)
     const int x = notificationRect.left - size_.cx - margin;
     const int y = taskbarClientRect.top + (availableHeight - size_.cy) / 2;
 
-    textColor_ = ChooseTextColor(taskbar, notificationArea);
+    textColor_ = theme::ReadMode() == theme::Mode::Light
+        ? RGB(24, 24, 24)
+        : RGB(255, 255, 255);
     return ::SetWindowPos(
                GetSafeHwnd(),
                HWND_TOP,
@@ -475,38 +478,6 @@ bool RateStrip::PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea)
                size_.cy,
                SWP_NOACTIVATE) != FALSE;
 }
-
-
-COLORREF RateStrip::ChooseTextColor(HWND taskbar, HWND notificationArea) const noexcept
-{
-    RECT notificationRect{};
-    RECT taskbarRect{};
-    if (!::GetWindowRect(notificationArea, &notificationRect) ||
-        !::GetWindowRect(taskbar, &taskbarRect))
-    {
-        return GetSysColor(COLOR_MENUTEXT);
-    }
-
-    const HDC screen = ::GetDC(nullptr);
-    if (screen == nullptr)
-    {
-        return GetSysColor(COLOR_MENUTEXT);
-    }
-
-    const int sampleX = notificationRect.left - size_.cx / 2;
-    const int sampleY = taskbarRect.top + (taskbarRect.bottom - taskbarRect.top) / 2;
-    const COLORREF background = ::GetPixel(screen, sampleX, sampleY);
-    ::ReleaseDC(nullptr, screen);
-    if (background == CLR_INVALID)
-    {
-        return GetSysColor(COLOR_MENUTEXT);
-    }
-
-    const int luminance =
-        (299 * GetRValue(background) + 587 * GetGValue(background) + 114 * GetBValue(background)) / 1000;
-    return luminance >= 140 ? RGB(24, 24, 24) : RGB(255, 255, 255);
-}
-
 bool RateStrip::Render() noexcept
 {
     if (GetSafeHwnd() == nullptr || size_.cx <= 0 || size_.cy <= 0 || font_.GetSafeHandle() == nullptr)

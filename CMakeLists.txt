@@ -40,6 +40,8 @@ add_executable(WinMon WIN32
     src/WinMon/RateStrip.h
     src/WinMon/Settings.cpp
     src/WinMon/Settings.h
+    src/WinMon/Theme.cpp
+    src/WinMon/Theme.h
     src/WinMon/TrayMessageWindow.cpp
     src/WinMon/TrayMessageWindow.h
     src/WinMon/WinMonApp.cpp

@@ -36,7 +36,6 @@ private:
     [[nodiscard]] CSize MeasureSize(HWND taskbar) const;
     [[nodiscard]] bool PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea) noexcept;
     [[nodiscard]] bool Render() noexcept;
-    [[nodiscard]] COLORREF ChooseTextColor(HWND taskbar, HWND notificationArea) const noexcept;
     [[nodiscard]] bool Relayout(HWND taskbar, HWND notificationArea) noexcept;
 
     afx_msg void OnPaint();

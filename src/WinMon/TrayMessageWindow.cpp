@@ -1,6 +1,7 @@
 #include "TrayMessageWindow.h"
 #include "Autostart.h"
 #include "Settings.h"
+#include "Theme.h"
 
 #include "res/resource.h"
 
@@ -324,17 +325,7 @@ void TrayMessageWindow::OnTimer(UINT_PTR timerId)
 
 HICON TrayMessageWindow::LoadTrayIcon() const noexcept
 {
-    DWORD value = 1;
-    DWORD size = sizeof(value);
-    const LSTATUS status = RegGetValueW(
-        HKEY_CURRENT_USER,
-        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-        L"AppsUseLightTheme",
-        RRF_RT_REG_DWORD,
-        nullptr,
-        &value,
-        &size);
-    const int resourceId = status == ERROR_SUCCESS && value != 0
+    const int resourceId = theme::ReadMode() == theme::Mode::Light
         ? IDI_WINMON_TRAY_LIGHT
         : IDI_WINMON_TRAY_DARK;
     return static_cast<HICON>(::LoadImageW(
