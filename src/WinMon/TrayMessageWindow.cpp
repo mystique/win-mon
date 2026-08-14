@@ -241,7 +241,9 @@ void TrayMessageWindow::Shutdown() noexcept
 winmon::NetworkObservation TrayMessageWindow::ReadNetworkObservation() const
 {
     MIB_IF_TABLE2* table = nullptr;
-    if (GetIfTable2(&table) != NO_ERROR || table == nullptr) return {};
+    const DWORD tableStatus = GetIfTable2(&table);
+    const auto sampledAt = std::chrono::steady_clock::now();
+    if (tableStatus != NO_ERROR || table == nullptr) return {{}, false, sampledAt};
     std::vector<winmon::NicSnapshot> snapshots;
     const auto classicConnectionIds = ReadClassicConnectionIds();
     const bool classicClassificationAvailable = classicConnectionIds.available;
@@ -262,7 +264,7 @@ winmon::NetworkObservation TrayMessageWindow::ReadNetworkObservation() const
         snapshots.push_back(std::move(snapshot));
     }
     FreeMibTable(table);
-    return {std::move(snapshots), classicClassificationAvailable};
+    return {std::move(snapshots), classicClassificationAvailable, sampledAt};
 }
 
 
@@ -299,9 +301,7 @@ LRESULT TrayMessageWindow::OnThemeChanged()
 void TrayMessageWindow::SampleRates()
 {
     core_.ObserveNetwork(ReadNetworkObservation());
-    const auto now = std::chrono::steady_clock::now().time_since_epoch();
-    const double seconds = std::chrono::duration<double>(now).count();
-    const auto display = core_.Sample(seconds);
+    const auto display = core_.Sample();
     rateStrip_.SetRates(display.uploadText, display.downloadText);
 }
 

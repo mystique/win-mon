@@ -1,6 +1,7 @@
 #include "WinMonCore.h"
 #include <algorithm>
 
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <locale>
@@ -45,6 +46,12 @@ NicSnapshot NamedNic(const char* id, const wchar_t* friendly, const wchar_t* des
     nic.friendlyName = friendly;
     nic.description = description;
     return nic;
+}
+
+std::chrono::steady_clock::time_point RateSampleAt(double seconds)
+{
+    return std::chrono::steady_clock::time_point{
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(seconds))};
 }
 
 
@@ -150,8 +157,8 @@ void NetworkSessionPresentsOneCanonicalObservation()
     WinMonCore core;
     auto hidden = NamedNic("internal", L"Internal", L"Internal transport");
     hidden.visibleInClassicConnections = false;
-    core.ObserveNetwork({{NamedNic("up", L"Ethernet", L"Intel"), NamedNic("down", L"", L"Disconnected", false), hidden}, true});
-    core.Sample(1.0);
+    core.ObserveNetwork({{NamedNic("up", L"Ethernet", L"Intel"), NamedNic("down", L"", L"Disconnected", false), hidden}, true, RateSampleAt(1.0)});
+    core.Sample();
 
     const auto opened = core.BeginOperatorMenu({true, false}, L"Cascadia Mono");
     Require(opened.has_value(), "first Operator Menu transaction opens");
@@ -167,30 +174,42 @@ void NetworkSessionPresentsOneCanonicalObservation()
     auto observedDown = NamedNic("down", L"", L"Disconnected", false);
     observedDown.inOctets = 2000;
     observedDown.outOctets = 3000;
-    core.ObserveNetwork({{observedUp, observedDown}, true});
-    RequireRate(core.Sample(2.0), 0.0, 0.0);
+    core.ObserveNetwork({{observedUp, observedDown}, true, RateSampleAt(2.0)});
+    RequireRate(core.Sample(), 0.0, 0.0);
     const auto downMenu = core.BeginOperatorMenu({}, L"Consolas");
     Require(FindItem(*downMenu, L"Disconnected").checked, "available down NIC remains selected");
     core.CancelOperatorMenu();
 
     observedUp.inOctets = 2000;
     observedUp.outOctets = 4000;
-    core.ObserveNetwork({{observedUp}, true});
-    RequireRate(core.Sample(3.0), 3000.0, 1000.0);
+    core.ObserveNetwork({{observedUp}, true, RateSampleAt(3.0)});
+    RequireRate(core.Sample(), 3000.0, 1000.0);
     const auto fallbackMenu = core.BeginOperatorMenu({}, L"Consolas");
     Require(FindItem(*fallbackMenu, L"All").checked, "disappearance reconciles to all before rates and menu");
     core.CancelOperatorMenu();
 }
 
-void ClassificationUnavailableRetainsEnumeratedNics()
+void ClassificationFallbackPreservesAllAndSelectedNicRates()
 {
     WinMonCore core;
     auto otherwiseHidden = NamedNic("internal", L"Internal", L"Internal transport");
     otherwiseHidden.visibleInClassicConnections = false;
-    core.ObserveNetwork({{otherwiseHidden}, false});
+    core.ObserveNetwork({{otherwiseHidden}, false, RateSampleAt(1.0)});
+    core.Sample();
+
+    otherwiseHidden.inOctets = 1000;
+    otherwiseHidden.outOctets = 2000;
+    core.ObserveNetwork({{otherwiseHidden}, false, RateSampleAt(2.0)});
+    RequireRate(core.Sample(), 2000.0, 1000.0);
+
     const auto menu = core.BeginOperatorMenu({}, L"Segoe UI");
-    FindItem(*menu, L"Internal");
-    core.CancelOperatorMenu();
+    const auto& internal = FindItem(*menu, L"Internal");
+    Require(core.CompleteOperatorMenu(internal.choiceToken).kind == OperatorActionKind::None, "network choice is applied");
+
+    otherwiseHidden.inOctets = 4000;
+    otherwiseHidden.outOctets = 6000;
+    core.ObserveNetwork({{otherwiseHidden}, true, RateSampleAt(3.0)});
+    RequireRate(core.Sample(), 4000.0, 3000.0);
 }
 
 void OperatorMenuTransactionCorrelatesEveryAction()
@@ -295,55 +314,60 @@ void RequireRate(const winmon::RateDisplay& display, double upload, double downl
 void FirstSampleIsZero()
 {
     WinMonCore core;
-    core.ObserveNetwork({{Nic("a", true, 100, 200)}, false});
-    const auto display = core.Sample(10.0);
+    core.ObserveNetwork({{Nic("a", true, 100, 200)}, false, RateSampleAt(10.0)});
+    const auto display = core.Sample();
     RequireRate(display, 0.0, 0.0);
     Require(display.uploadText == L"0.0K/s" && display.downloadText == L"0.0K/s", "first sample formatting");
 }
 
-void SingleNicUsesActualElapsedTimeAndCounterDirections()
+void RateSampleUsesCounterCaptureTimes()
 {
     WinMonCore core;
-    core.ObserveNetwork({{Nic("a", true, 1000, 2000)}, false});
-    core.Sample(3.0);
-    core.ObserveNetwork({{Nic("a", true, 5000, 5000)}, false});
-    const auto display = core.Sample(5.0);
+    core.ObserveNetwork({{Nic("a", true, 1000, 2000)}, false, RateSampleAt(3.0)});
+    core.Sample();
+    core.ObserveNetwork({{Nic("a", true, 5000, 5000)}, false, RateSampleAt(5.0)});
+    const auto display = core.Sample();
     RequireRate(display, 1500.0, 2000.0);
 }
 
-void AllNicsSumsOnlyUpNonLoopback()
+void AllNicsSumsOnlyVisibleUpNonLoopback()
 {
     WinMonCore core;
-    core.ObserveNetwork({{Nic("a", true, 0, 0), Nic("b", true, 0, 0), Nic("down", false, 0, 0), Nic("loop", true, 0, 0, true)}, false});
-    core.Sample(1.0);
-    core.ObserveNetwork({{Nic("a", true, 1000, 2000), Nic("b", true, 3000, 7000), Nic("down", false, 100000, 100000), Nic("loop", true, 900000, 900000, true)}, false});
-    const auto display = core.Sample(2.0);
+    auto hidden = Nic("hidden", true, 0, 0);
+    hidden.visibleInClassicConnections = false;
+    core.ObserveNetwork({{Nic("a", true, 0, 0), Nic("b", true, 0, 0), Nic("down", false, 0, 0), Nic("loop", true, 0, 0, true), hidden}, true, RateSampleAt(1.0)});
+    core.Sample();
+
+    hidden.inOctets = 500000;
+    hidden.outOctets = 600000;
+    core.ObserveNetwork({{Nic("a", true, 1000, 2000), Nic("b", true, 3000, 7000), Nic("down", false, 100000, 100000), Nic("loop", true, 900000, 900000, true), hidden}, true, RateSampleAt(2.0)});
+    const auto display = core.Sample();
     RequireRate(display, 9000.0, 4000.0);
 }
 
 void EmptyAndNoUpAreZero()
 {
     WinMonCore core;
-    core.ObserveNetwork({{Nic("a", true, 10, 20)}, false});
-    core.Sample(1.0);
-    core.ObserveNetwork({{}, false});
-    auto display = core.Sample(2.0);
+    core.ObserveNetwork({{Nic("a", true, 10, 20)}, false, RateSampleAt(1.0)});
+    core.Sample();
+    core.ObserveNetwork({{}, false, RateSampleAt(2.0)});
+    auto display = core.Sample();
     RequireRate(display, 0.0, 0.0);
-    core.ObserveNetwork({{Nic("a", false, 20, 30)}, false});
-    display = core.Sample(3.0);
+    core.ObserveNetwork({{Nic("a", false, 20, 30)}, false, RateSampleAt(3.0)});
+    display = core.Sample();
     RequireRate(display, 0.0, 0.0);
 }
 
 void BackwardCountersAndDisappearingNicsAreZero()
 {
     WinMonCore core;
-    core.ObserveNetwork({{Nic("a", true, 100, 100), Nic("gone", true, 100, 100)}, false});
-    core.Sample(1.0);
-    core.ObserveNetwork({{Nic("a", true, 50, 200)}, false});
-    auto display = core.Sample(2.0);
+    core.ObserveNetwork({{Nic("a", true, 100, 100), Nic("gone", true, 100, 100)}, false, RateSampleAt(1.0)});
+    core.Sample();
+    core.ObserveNetwork({{Nic("a", true, 50, 200)}, false, RateSampleAt(2.0)});
+    auto display = core.Sample();
     RequireRate(display, 100.0, 0.0);
-    core.ObserveNetwork({{Nic("a", true, 150, 300)}, false});
-    display = core.Sample(3.0);
+    core.ObserveNetwork({{Nic("a", true, 150, 300)}, false, RateSampleAt(3.0)});
+    display = core.Sample();
     RequireRate(display, 100.0, 100.0);
 }
 
@@ -353,13 +377,13 @@ void BackwardCountersAndDisappearingNicsAreZero()
 void NonpositiveElapsedIsZero()
 {
     WinMonCore core;
-    core.ObserveNetwork({{Nic("a", true, 100, 100)}, false});
-    core.Sample(4.0);
-    core.ObserveNetwork({{Nic("a", true, 200, 200)}, false});
-    auto display = core.Sample(4.0);
+    core.ObserveNetwork({{Nic("a", true, 100, 100)}, false, RateSampleAt(4.0)});
+    core.Sample();
+    core.ObserveNetwork({{Nic("a", true, 200, 200)}, false, RateSampleAt(4.0)});
+    auto display = core.Sample();
     RequireRate(display, 0.0, 0.0);
-    core.ObserveNetwork({{Nic("a", true, 300, 300)}, false});
-    display = core.Sample(3.0);
+    core.ObserveNetwork({{Nic("a", true, 300, 300)}, false, RateSampleAt(3.0)});
+    display = core.Sample();
     RequireRate(display, 0.0, 0.0);
 }
 
@@ -389,12 +413,12 @@ int main()
         ShellLifecycleOwnsRecoveryAndVisibility();
         ShellLifecycleTreatsInitialTrayFailureAsFatal();
         NetworkSessionPresentsOneCanonicalObservation();
-        ClassificationUnavailableRetainsEnumeratedNics();
+        ClassificationFallbackPreservesAllAndSelectedNicRates();
         OperatorMenuTransactionCorrelatesEveryAction();
         OperatorSettingTransactionPreservesPreviousChoice();
         FirstSampleIsZero();
-        SingleNicUsesActualElapsedTimeAndCounterDirections();
-        AllNicsSumsOnlyUpNonLoopback();
+        RateSampleUsesCounterCaptureTimes();
+        AllNicsSumsOnlyVisibleUpNonLoopback();
         EmptyAndNoUpAreZero();
         BackwardCountersAndDisappearingNicsAreZero();
         NonpositiveElapsedIsZero();

@@ -92,12 +92,13 @@ void WinMonCore::ObserveNetwork(NetworkObservation observation)
 {
     snapshots_ = std::move(observation.snapshots);
     classicClassificationAvailable_ = observation.classicClassificationAvailable;
+    sampledAt_ = observation.sampledAt;
     ReconcileSelection(snapshots_);
 }
 
-RateDisplay WinMonCore::Sample(double monotonicSeconds)
+RateDisplay WinMonCore::Sample()
 {
-    return SampleObserved(snapshots_, monotonicSeconds);
+    return SampleObserved(snapshots_, sampledAt_);
 }
 
 std::optional<std::vector<OperatorMenuItem>> WinMonCore::BeginOperatorMenu(
@@ -151,17 +152,22 @@ void WinMonCore::AddChoice(OperatorMenuItem& item, PendingMenuChoice choice)
     item.choiceToken = static_cast<std::uint32_t>(pendingMenuChoices_.size());
 }
 
-RateDisplay WinMonCore::SampleObserved(const std::vector<NicSnapshot>& snapshots, double monotonicSeconds)
+RateDisplay WinMonCore::SampleObserved(
+    const std::vector<NicSnapshot>& snapshots,
+    std::chrono::steady_clock::time_point sampledAt)
 {
     ReconcileSelection(snapshots);
     RateDisplay display;
-    const double elapsed = monotonicSeconds - previousTime_;
+    const double elapsed = std::chrono::duration<double>(sampledAt - previousTime_).count();
     const bool validElapsed = hasPrevious_ && elapsed > 0.0;
     if (validElapsed)
     {
         for (const auto& current : snapshots)
         {
-            if (!current.up || current.loopback || (!selectedNicId_.empty() && current.stableId != selectedNicId_)) continue;
+            const bool hiddenFromAll = selectedNicId_.empty() && classicClassificationAvailable_ &&
+                current.visibleInClassicConnections == false;
+            if (!current.up || current.loopback || hiddenFromAll ||
+                (!selectedNicId_.empty() && current.stableId != selectedNicId_)) continue;
             const auto previous = std::find_if(previous_.begin(), previous_.end(), [&current](const PreviousSample& sample) { return sample.stableId == current.stableId; });
             if (previous == previous_.end()) continue;
             if (current.inOctets >= previous->inOctets)
@@ -177,7 +183,7 @@ RateDisplay WinMonCore::SampleObserved(const std::vector<NicSnapshot>& snapshots
     previous_.clear();
     previous_.reserve(snapshots.size());
     for (const auto& snapshot : snapshots) previous_.push_back({snapshot.stableId, snapshot.inOctets, snapshot.outOctets});
-    previousTime_ = monotonicSeconds;
+    previousTime_ = sampledAt;
     hasPrevious_ = true;
     display.uploadText = FormatRate(display.uploadBytesPerSecond);
     display.downloadText = FormatRate(display.downloadBytesPerSecond);

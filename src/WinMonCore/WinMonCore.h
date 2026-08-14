@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -111,6 +112,7 @@ struct NetworkObservation final
 {
     std::vector<NicSnapshot> snapshots;
     bool classicClassificationAvailable = false;
+    std::chrono::steady_clock::time_point sampledAt{};
 };
 
 
@@ -137,7 +139,7 @@ class WinMonCore final
 {
 public:
     void ObserveNetwork(NetworkObservation observation);
-    RateDisplay Sample(double monotonicSeconds);
+    RateDisplay Sample();
     std::optional<std::vector<OperatorMenuItem>> BeginOperatorMenu(
         const OperatorMenuToggles& toggles = {},
         const std::wstring& rateFontName = L"");
@@ -152,7 +154,9 @@ private:
         std::uint64_t inOctets = 0;
         std::uint64_t outOctets = 0;
     };
-    RateDisplay SampleObserved(const std::vector<NicSnapshot>& snapshots, double monotonicSeconds);
+    RateDisplay SampleObserved(
+        const std::vector<NicSnapshot>& snapshots,
+        std::chrono::steady_clock::time_point sampledAt);
     std::vector<OperatorMenuItem> BuildOperatorMenu(
         const std::vector<NicSnapshot>& snapshots,
         const OperatorMenuToggles& toggles,
@@ -168,12 +172,13 @@ private:
     };
     void AddChoice(OperatorMenuItem& item, PendingMenuChoice choice);
     std::vector<PreviousSample> previous_;
-    double previousTime_ = 0.0;
+    std::chrono::steady_clock::time_point previousTime_{};
     bool hasPrevious_ = false;
     void ReconcileSelection(const std::vector<NicSnapshot>& snapshots) noexcept;
     std::vector<NicSnapshot> snapshots_;
     std::vector<PendingMenuChoice> pendingMenuChoices_;
     bool classicClassificationAvailable_ = false;
+    std::chrono::steady_clock::time_point sampledAt_{};
     bool menuOpen_ = false;
     std::string selectedNicId_;
 };
