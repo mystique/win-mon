@@ -42,7 +42,7 @@ A system network interface the user may select for rate display. Network to Moni
 _Avoid_: connection, adapter (as domain term), interface (unless Windows API talk)
 
 **All NICs**:
-The default aggregate selection each launch: sum of rates over NICs that are up, excluding loopback and NICs absent from the classic Windows Network Connections folder when that classification is available. If classification is unavailable, sum all enumerated up non-loopback NICs. Menu label: `All`.
+The default aggregate selection each launch: sum of rates over hardware NICs that are up, excluding loopback and NICs absent from the classic Windows Network Connections folder when that classification is available. If classification is unavailable, sum all enumerated up non-loopback hardware NICs. Virtual and tunnel NICs remain individually selectable but do not participate in All NICs. Menu label: `All`.
 _Avoid_: Auto, total speed, select all, 全部
 
 **Upload Rate** / **Download Rate**:

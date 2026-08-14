@@ -164,9 +164,10 @@ RateDisplay WinMonCore::SampleObserved(
     {
         for (const auto& current : snapshots)
         {
-            const bool hiddenFromAll = selectedNicId_.empty() && classicClassificationAvailable_ &&
-                current.visibleInClassicConnections == false;
-            if (!current.up || current.loopback || hiddenFromAll ||
+            const bool excludedFromAll = selectedNicId_.empty() &&
+                (!current.hardwareInterface ||
+                 (classicClassificationAvailable_ && !current.visibleInClassicConnections));
+            if (!current.up || current.loopback || excludedFromAll ||
                 (!selectedNicId_.empty() && current.stableId != selectedNicId_)) continue;
             const auto previous = std::find_if(previous_.begin(), previous_.end(), [&current](const PreviousSample& sample) { return sample.stableId == current.stableId; });
             if (previous == previous_.end()) continue;

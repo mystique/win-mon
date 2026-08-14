@@ -28,13 +28,20 @@ protected:
     wchar_t do_decimal_point() const override { return L','; }
 };
 
-NicSnapshot Nic(const char* id, bool up, std::uint64_t inOctets, std::uint64_t outOctets, bool loopback = false)
+NicSnapshot Nic(
+    const char* id,
+    bool up,
+    std::uint64_t inOctets,
+    std::uint64_t outOctets,
+    bool loopback = false,
+    bool hardwareInterface = true)
 {
     NicSnapshot nic;
     nic.stableId = id;
     nic.friendlyName = L"";
     nic.up = up;
     nic.loopback = loopback;
+    nic.hardwareInterface = hardwareInterface;
     nic.inOctets = inOctets;
     nic.outOctets = outOctets;
     return nic;
@@ -330,19 +337,49 @@ void RateSampleUsesCounterCaptureTimes()
     RequireRate(display, 1500.0, 2000.0);
 }
 
-void AllNicsSumsOnlyVisibleUpNonLoopback()
+void AllNicsSumsOnlyVisibleUpHardwareNonLoopback()
 {
     WinMonCore core;
     auto hidden = Nic("hidden", true, 0, 0);
     hidden.visibleInClassicConnections = false;
-    core.ObserveNetwork({{Nic("a", true, 0, 0), Nic("b", true, 0, 0), Nic("down", false, 0, 0), Nic("loop", true, 0, 0, true), hidden}, true, RateSampleAt(1.0)});
+    core.ObserveNetwork({{
+        Nic("physical-a", true, 0, 0),
+        Nic("physical-b", true, 0, 0),
+        Nic("virtual", true, 0, 0, false, false),
+        Nic("down", false, 0, 0),
+        Nic("loop", true, 0, 0, true),
+        hidden}, true, RateSampleAt(1.0)});
     core.Sample();
 
     hidden.inOctets = 500000;
     hidden.outOctets = 600000;
-    core.ObserveNetwork({{Nic("a", true, 1000, 2000), Nic("b", true, 3000, 7000), Nic("down", false, 100000, 100000), Nic("loop", true, 900000, 900000, true), hidden}, true, RateSampleAt(2.0)});
+    core.ObserveNetwork({{
+        Nic("physical-a", true, 1000, 2000),
+        Nic("physical-b", true, 3000, 7000),
+        Nic("virtual", true, 700000, 800000, false, false),
+        Nic("down", false, 100000, 100000),
+        Nic("loop", true, 900000, 900000, true),
+        hidden}, true, RateSampleAt(2.0)});
     const auto display = core.Sample();
     RequireRate(display, 9000.0, 4000.0);
+}
+
+void SelectedVirtualNicStillReportsRates()
+{
+    WinMonCore core;
+    auto virtualNic = NamedNic("virtual", L"Meta", L"Meta Tunnel");
+    virtualNic.hardwareInterface = false;
+    core.ObserveNetwork({{virtualNic}, true, RateSampleAt(1.0)});
+    RequireRate(core.Sample(), 0.0, 0.0);
+
+    const auto menu = core.BeginOperatorMenu();
+    const auto& meta = FindItem(*menu, L"Meta");
+    core.CompleteOperatorMenu(meta.choiceToken);
+
+    virtualNic.inOctets = 3000;
+    virtualNic.outOctets = 5000;
+    core.ObserveNetwork({{virtualNic}, true, RateSampleAt(2.0)});
+    RequireRate(core.Sample(), 5000.0, 3000.0);
 }
 
 void EmptyAndNoUpAreZero()
@@ -418,7 +455,8 @@ int main()
         OperatorSettingTransactionPreservesPreviousChoice();
         FirstSampleIsZero();
         RateSampleUsesCounterCaptureTimes();
-        AllNicsSumsOnlyVisibleUpNonLoopback();
+        AllNicsSumsOnlyVisibleUpHardwareNonLoopback();
+        SelectedVirtualNicStillReportsRates();
         EmptyAndNoUpAreZero();
         BackwardCountersAndDisappearingNicsAreZero();
         NonpositiveElapsedIsZero();

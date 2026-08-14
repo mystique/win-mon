@@ -259,6 +259,8 @@ winmon::NetworkObservation TrayMessageWindow::ReadNetworkObservation() const
         snapshot.visibleInClassicConnections =
             classicConnectionIds.available && ContainsConnectionId(classicConnectionIds.values, row.InterfaceGuid);
         snapshot.up = row.OperStatus == IfOperStatusUp;
+        snapshot.hardwareInterface =
+            row.InterfaceAndOperStatusFlags.HardwareInterface != FALSE;
         snapshot.inOctets = row.InOctets;
         snapshot.outOctets = row.OutOctets;
         snapshots.push_back(std::move(snapshot));
