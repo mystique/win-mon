@@ -9,7 +9,7 @@ The product and process the user runs. Tray tooltip and identity string are `Win
 _Avoid_: win-mon (except repo/folder), TrafficMonitor (reference tree only — ADR-0006), bandwidth monitor
 
 **Rate Strip**:
-The two-line Upload/Download Rate text embedded on the primary bottom taskbar only (see ADRs). Upload on top with ↑, download below with ↓. Text is right-aligned. It ignores the mouse unless **Right-Click Speed Text** is on, and even then its only response is opening the Operator Menu — no click command, no tooltip. Hidden when that taskbar is missing or not bottom-aligned; not shown on secondary taskbars. Width is stable (sized for a wide sample such as `999.9G/s` in the active font), starts with the DPI-aware Windows UI message font, and uses the persisted Rate Font when one has been selected; text color follows the same `AppsUseLightTheme` registry state as the Tray Icon. While running, Win Mon refreshes the strip position and theme color once per Rate Sample so changes in the notification area do not cause overlap or stale contrast. If embed fails while the Tray Icon is up, the process stays alive and retries (including via Shell Recovery). "Rate Strip" is an internal term: no menu label uses it.
+The two-line Upload/Download Rate text embedded on the primary bottom taskbar only (see ADRs). Upload on top with ↑, download below with ↓. Text is right-aligned. It ignores the mouse unless **Right-Click Speed Text** is on, and even then its only response is opening the Operator Menu — no click command, no tooltip. Hidden when that taskbar is missing or not bottom-aligned; not shown on secondary taskbars. Width is stable (sized for a wide sample such as `999.9 G/s` in the active font), starts with the DPI-aware Windows UI message font, and uses the persisted Rate Font when one has been selected; text color follows the same `AppsUseLightTheme` registry state as the Tray Icon. While running, Win Mon refreshes the strip position and theme color once per Rate Sample so changes in the notification area do not cause overlap or stale contrast. If embed fails while the Tray Icon is up, the process stays alive and retries (including via Shell Recovery). "Rate Strip" is an internal term: no menu label uses it.
 _Avoid_: taskbar window, widget, HUD, overlay (unless contrasting implementation), main UI
 
 **Tray Icon**:
@@ -46,7 +46,7 @@ The default aggregate selection each launch: sum of rates over hardware NICs tha
 _Avoid_: Auto, total speed, select all, 全部
 
 **Upload Rate** / **Download Rate**:
-Bytes-per-second throughput on the Rate Strip. Units auto-scale among `K/s`, `M/s`, and `G/s` (base 1000), always at least `K/s` (never bare bytes or a `B` in the unit), one decimal place — e.g. `0.0K/s`, `1.1K/s`, `12.3M/s`.
+Bytes-per-second throughput on the Rate Strip. Units auto-scale among `K/s`, `M/s`, and `G/s` (base 1000), always at least `K/s` (never bare bytes or a `B` in the unit), one decimal place — e.g. `0.0 K/s`, `1.1 K/s`, `12.3 M/s`.
 _Avoid_: speed (alone), bandwidth, traffic, KB/s, MB/s, B/s
 
 **Rate Sample**:

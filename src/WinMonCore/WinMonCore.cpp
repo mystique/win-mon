@@ -297,7 +297,7 @@ std::wstring WinMonCore::FormatRate(double bytesPerSecond)
 
     std::wostringstream text;
     text.imbue(std::locale::classic());
-    text << std::fixed << std::setprecision(1) << scaled << suffix;
+    text << std::fixed << std::setprecision(1) << scaled << L' ' << suffix;
     return text.str();
 }
 }

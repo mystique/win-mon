@@ -324,7 +324,7 @@ void FirstSampleIsZero()
     core.ObserveNetwork({{Nic("a", true, 100, 200)}, false, RateSampleAt(10.0)});
     const auto display = core.Sample();
     RequireRate(display, 0.0, 0.0);
-    Require(display.uploadText == L"0.0K/s" && display.downloadText == L"0.0K/s", "first sample formatting");
+    Require(display.uploadText == L"0.0 K/s" && display.downloadText == L"0.0 K/s", "first sample formatting");
 }
 
 void RateSampleUsesCounterCaptureTimes()
@@ -428,17 +428,17 @@ void NonpositiveElapsedIsZero()
 
 void FormatsBase1000BoundariesAndMinimumK()
 {
-    Require(WinMonCore::FormatRate(0.0) == L"0.0K/s", "zero format");
-    Require(WinMonCore::FormatRate(999.0) == L"1.0K/s", "sub kilo format");
-    Require(WinMonCore::FormatRate(1000.0) == L"1.0K/s", "K boundary");
-    Require(WinMonCore::FormatRate(12345.0) == L"12.3K/s", "K rounding");
-    Require(WinMonCore::FormatRate(1000000.0) == L"1.0M/s", "M boundary");
-    Require(WinMonCore::FormatRate(999999999.0) == L"1000.0M/s", "M upper format");
-    Require(WinMonCore::FormatRate(1000000000.0) == L"1.0G/s", "G boundary");
+    Require(WinMonCore::FormatRate(0.0) == L"0.0 K/s", "zero format");
+    Require(WinMonCore::FormatRate(999.0) == L"1.0 K/s", "sub kilo format");
+    Require(WinMonCore::FormatRate(1000.0) == L"1.0 K/s", "K boundary");
+    Require(WinMonCore::FormatRate(12345.0) == L"12.3 K/s", "K rounding");
+    Require(WinMonCore::FormatRate(1000000.0) == L"1.0 M/s", "M boundary");
+    Require(WinMonCore::FormatRate(999999999.0) == L"1000.0 M/s", "M upper format");
+    Require(WinMonCore::FormatRate(1000000000.0) == L"1.0 G/s", "G boundary");
     Require(WinMonCore::FormatRate(-1.0).find(L"B") == std::wstring::npos, "no B unit");
     const std::locale previousLocale = std::locale();
     std::locale::global(std::locale(previousLocale, new CommaDecimalPunctuation));
-    Require(WinMonCore::FormatRate(12345.0) == L"12.3K/s", "format uses product decimal point");
+    Require(WinMonCore::FormatRate(12345.0) == L"12.3 K/s", "format uses product decimal point");
     std::locale::global(previousLocale);
 }
 

@@ -50,8 +50,8 @@ private:
     RateFontSelection selectedFont_{};
     CSize naturalSize_{};
     CSize size_{};
-    std::wstring uploadText_ = L"0.0K/s";
-    std::wstring downloadText_ = L"0.0K/s";
+    std::wstring uploadText_ = L"0.0 K/s";
+    std::wstring downloadText_ = L"0.0 K/s";
     HWND taskbar_ = nullptr;
     COLORREF textColor_ = RGB(255, 255, 255);
     HWND contextMenuOwner_ = nullptr;

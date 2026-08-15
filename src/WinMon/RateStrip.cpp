@@ -9,8 +9,8 @@ namespace
 {
 constexpr wchar_t kTaskbarClassName[] = L"Shell_TrayWnd";
 constexpr wchar_t kNotificationAreaClassName[] = L"TrayNotifyWnd";
-constexpr wchar_t kMaximumTopLine[] = L"999.9G/s \u2191";
-constexpr wchar_t kMaximumBottomLine[] = L"999.9G/s \u2193";
+constexpr wchar_t kMaximumTopLine[] = L"999.9 G/s \u2191";
+constexpr wchar_t kMaximumBottomLine[] = L"999.9 G/s \u2193";
 
 struct NotificationAreaSearch
 {
