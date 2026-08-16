@@ -252,8 +252,7 @@ bool RateStrip::Refresh()
     }
 
     const HWND taskbar = FindPrimaryBottomTaskbar();
-    const HWND notificationArea = taskbar == nullptr ? nullptr : FindNotificationArea(taskbar);
-    if (notificationArea == nullptr)
+    if (taskbar == nullptr)
     {
         Shutdown();
         return false;
@@ -263,6 +262,15 @@ bool RateStrip::Refresh()
     {
         Shutdown();
         return false;
+    }
+
+    const HWND notificationArea = FindNotificationArea(taskbar);
+    if (notificationArea == nullptr)
+    {
+        // Windows 11 may temporarily make TrayNotifyWnd unavailable in the
+        // taskbar child tree while Start is open. Keep the existing strip at
+        // its last valid position; SetRates renders and the next sample retries.
+        return true;
     }
 
     ShowWindow(SW_HIDE);
