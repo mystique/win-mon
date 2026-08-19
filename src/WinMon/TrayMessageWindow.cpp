@@ -21,6 +21,7 @@ namespace
 constexpr UINT kTrayIconId = 1;
 constexpr UINT kTrayNotificationMessage = WM_APP + 1;
 constexpr UINT kRightClickSpeedTextMessage = WM_APP + 2;
+constexpr UINT kFloatingRateDisplayMovedMessage = WM_APP + 3;
 constexpr wchar_t kTrayTooltip[] = L"Win Mon";
 constexpr UINT_PTR kRateSampleTimer = 1;
 constexpr UINT_PTR kShellRecoveryTimer = 2;
@@ -157,24 +158,62 @@ class RateFontSettingChange final : public winmon::OperatorSettingChange
 public:
     RateFontSettingChange(
         RateStrip& rateStrip,
+        RateStrip& floatingRateDisplay,
         const RateFontSelection& previous,
         const RateFontSelection& selected) noexcept
-        : rateStrip_(rateStrip), previous_(previous), selected_(selected) {}
+        : rateStrip_(rateStrip), floatingRateDisplay_(floatingRateDisplay), previous_(previous), selected_(selected) {}
 
-    bool ApplyLive() override { return rateStrip_.SetRateFont(selected_); }
+    bool ApplyLive() override
+    {
+        return rateStrip_.SetRateFont(selected_) && floatingRateDisplay_.SetRateFont(selected_);
+    }
     bool Persist() override { return settings::SetRateFont(selected_); }
-    bool RollbackLive() override { return rateStrip_.SetRateFont(previous_); }
+    bool RollbackLive() override
+    {
+        return rateStrip_.SetRateFont(previous_) && floatingRateDisplay_.SetRateFont(previous_);
+    }
 
 private:
     RateStrip& rateStrip_;
+    RateStrip& floatingRateDisplay_;
     const RateFontSelection& previous_;
     const RateFontSelection& selected_;
+};
+
+class FloatingRateDisplaySettingChange final : public winmon::OperatorSettingChange
+{
+public:
+    FloatingRateDisplaySettingChange(RateStrip& display, bool previous, bool enabled) noexcept
+        : display_(display), previous_(previous), enabled_(enabled) {}
+
+    bool ApplyLive() override { return SetVisible(enabled_); }
+    bool Persist() override { return settings::SetFloatingRateDisplayEnabled(enabled_); }
+    bool RollbackLive() override { return SetVisible(previous_); }
+
+private:
+    bool SetVisible(bool visible) noexcept
+    {
+        if (!visible)
+        {
+            display_.Shutdown();
+            return true;
+        }
+        POINT position{};
+        return display_.ShowFloating(
+            position,
+            settings::GetFloatingRateDisplayPosition(position));
+    }
+
+    RateStrip& display_;
+    bool previous_;
+    bool enabled_;
 };
 }
 
 BEGIN_MESSAGE_MAP(TrayMessageWindow, CWnd)
     ON_MESSAGE(kTrayNotificationMessage, &TrayMessageWindow::OnTrayNotification)
     ON_MESSAGE(kRightClickSpeedTextMessage, &TrayMessageWindow::OnRightClickSpeedText)
+    ON_MESSAGE(kFloatingRateDisplayMovedMessage, &TrayMessageWindow::OnFloatingRateDisplayMoved)
     ON_REGISTERED_MESSAGE(kTaskbarCreatedMessage, &TrayMessageWindow::OnTaskbarCreated)
     ON_MESSAGE(WM_DPICHANGED, &TrayMessageWindow::OnDpiChanged)
     ON_WM_DISPLAYCHANGE()
@@ -212,6 +251,9 @@ bool TrayMessageWindow::Initialize()
     shuttingDown_ = false;
     rateStrip_.SetContextMenuOwner(GetSafeHwnd(), kRightClickSpeedTextMessage);
     rateStrip_.SetContextMenuEnabled(settings::IsRightClickSpeedTextEnabled());
+    floatingRateDisplay_.SetContextMenuOwner(GetSafeHwnd(), kRightClickSpeedTextMessage);
+    floatingRateDisplay_.SetContextMenuEnabled(true);
+    floatingRateDisplay_.SetPositionChangedOwner(GetSafeHwnd(), kFloatingRateDisplayMovedMessage);
     if (!shellLifecycle_.Start())
     {
         DestroyWindow();
@@ -222,6 +264,16 @@ bool TrayMessageWindow::Initialize()
         Shutdown();
         return false;
     }
+    if (settings::IsFloatingRateDisplayEnabled())
+    {
+        POINT position{};
+        if (floatingRateDisplay_.ShowFloating(
+                position,
+                settings::GetFloatingRateDisplayPosition(position)))
+        {
+            SaveFloatingRateDisplayPosition();
+        }
+    }
     return true;
 }
 
@@ -229,6 +281,7 @@ void TrayMessageWindow::Shutdown() noexcept
 {
     shuttingDown_ = true;
     KillTimer(kRateSampleTimer);
+    floatingRateDisplay_.Shutdown();
     shellLifecycle_.Shutdown();
 
     if (GetSafeHwnd() != nullptr)
@@ -306,6 +359,7 @@ void TrayMessageWindow::SampleRates()
     core_.ObserveNetwork(ReadNetworkObservation());
     const auto display = core_.Sample();
     rateStrip_.SetRates(display.uploadText, display.downloadText);
+    floatingRateDisplay_.SetRates(display.uploadText, display.downloadText);
 }
 
 void TrayMessageWindow::OnTimer(UINT_PTR timerId)
@@ -409,10 +463,21 @@ void TrayMessageWindow::LoadSavedRateFont()
     if (settings::GetRateFont(savedFont))
     {
         static_cast<void>(rateStrip_.SetRateFont(savedFont));
+        static_cast<void>(floatingRateDisplay_.SetRateFont(savedFont));
     }
     else
     {
         static_cast<void>(rateStrip_.ResetRateFont());
+        static_cast<void>(floatingRateDisplay_.ResetRateFont());
+    }
+}
+
+void TrayMessageWindow::SaveFloatingRateDisplayPosition()
+{
+    if (floatingRateDisplay_.GetSafeHwnd() != nullptr)
+    {
+        static_cast<void>(settings::SetFloatingRateDisplayPosition(
+            floatingRateDisplay_.GetFloatingPosition()));
     }
 }
 
@@ -469,7 +534,7 @@ winmon::OperatorAction TrayMessageWindow::ShowOperatorMenu()
     if (!GetCursorPos(&cursorPosition)) return {};
     core_.ObserveNetwork(ReadNetworkObservation());
     const auto model = core_.BeginOperatorMenu(
-        {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled()},
+        {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled(), settings::IsFloatingRateDisplayEnabled()},
         rateStrip_.GetRateFontName());
     if (!model.has_value()) return {};
     OperatorMenuScope transaction{core_};
@@ -520,7 +585,7 @@ void TrayMessageWindow::ChooseRateFont()
 
     dialog.GetCurrentFont(&selection.logFont);
     selection.pointSizeTenths = dialog.GetSize();
-    RateFontSettingChange change{rateStrip_, previousSelection, selection};
+    RateFontSettingChange change{rateStrip_, floatingRateDisplay_, previousSelection, selection};
     if (winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RecoveryRequired)
     {
         // The persisted value is still the previous choice. Recreate through
@@ -547,6 +612,18 @@ void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
         static_cast<void>(winmon::OperatorSettingTransaction::Commit(change));
         break;
     }
+    case winmon::OperatorActionKind::EnableFloatingRateDisplay:
+    case winmon::OperatorActionKind::DisableFloatingRateDisplay:
+    {
+        const bool enabled = action.kind == winmon::OperatorActionKind::EnableFloatingRateDisplay;
+        FloatingRateDisplaySettingChange change{
+            floatingRateDisplay_, settings::IsFloatingRateDisplayEnabled(), enabled};
+        if (winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::Applied)
+        {
+            SaveFloatingRateDisplayPosition();
+        }
+        break;
+    }
     case winmon::OperatorActionKind::SetRateFont:
         ChooseRateFont();
         break;
@@ -570,5 +647,11 @@ LRESULT TrayMessageWindow::OnRightClickSpeedText(WPARAM, LPARAM)
 {
     if (shuttingDown_) return 0;
     HandleOperatorMenuAction(ShowOperatorMenu());
+    return 0;
+}
+
+LRESULT TrayMessageWindow::OnFloatingRateDisplayMoved(WPARAM, LPARAM)
+{
+    SaveFloatingRateDisplayPosition();
     return 0;
 }

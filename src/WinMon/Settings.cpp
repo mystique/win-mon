@@ -9,6 +9,8 @@ namespace
 {
 constexpr wchar_t kProductKey[] = L"Software\\Win Mon";
 constexpr wchar_t kRightClickSpeedTextValue[] = L"RightClickSpeedText";
+constexpr wchar_t kFloatingRateDisplayValue[] = L"FloatingRateDisplay";
+constexpr wchar_t kFloatingRateDisplayPositionValue[] = L"FloatingRateDisplayPosition";
 constexpr wchar_t kRateFontValue[] = L"RateFont";
 constexpr DWORD kRateFontVersion = 1;
 constexpr int kMinimumPointSizeTenths = 60;
@@ -68,6 +70,41 @@ bool IsRightClickSpeedTextEnabled() noexcept
 bool SetRightClickSpeedTextEnabled(bool enabled) noexcept
 {
     return WriteFlag(kRightClickSpeedTextValue, enabled);
+}
+
+bool IsFloatingRateDisplayEnabled() noexcept
+{
+    bool enabled = false;
+    return ReadFlag(kFloatingRateDisplayValue, enabled) && enabled;
+}
+
+bool SetFloatingRateDisplayEnabled(bool enabled) noexcept
+{
+    return WriteFlag(kFloatingRateDisplayValue, enabled);
+}
+
+bool GetFloatingRateDisplayPosition(POINT& position) noexcept
+{
+    DWORD size = sizeof(position);
+    return RegGetValueW(
+               HKEY_CURRENT_USER,
+               kProductKey,
+               kFloatingRateDisplayPositionValue,
+               RRF_RT_REG_BINARY,
+               nullptr,
+               &position,
+               &size) == ERROR_SUCCESS && size == sizeof(position);
+}
+
+bool SetFloatingRateDisplayPosition(POINT position) noexcept
+{
+    return RegSetKeyValueW(
+               HKEY_CURRENT_USER,
+               kProductKey,
+               kFloatingRateDisplayPositionValue,
+               REG_BINARY,
+               &position,
+               sizeof(position)) == ERROR_SUCCESS;
 }
 
 bool GetRateFont(RateFontSelection& selection) noexcept

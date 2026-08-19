@@ -242,6 +242,14 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
         ? OperatorActionKind::DisableRightClickSpeedText
         : OperatorActionKind::EnableRightClickSpeedText}});
     menu.push_back(std::move(rightClick));
+
+    OperatorMenuItem floatingDisplay;
+    floatingDisplay.label = L"Show Floating Display";
+    floatingDisplay.checked = toggles.floatingRateDisplayEnabled;
+    AddChoice(floatingDisplay, {{toggles.floatingRateDisplayEnabled
+        ? OperatorActionKind::DisableFloatingRateDisplay
+        : OperatorActionKind::EnableFloatingRateDisplay}});
+    menu.push_back(std::move(floatingDisplay));
     menu.push_back({.separator = true});
 
     menu.push_back({L"Font: " + rateFontName, 0, false, false, false});

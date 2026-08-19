@@ -1,5 +1,7 @@
 #pragma once
 
+#include <windows.h>
+
 struct RateFontSelection;
 
 namespace settings
@@ -11,6 +13,16 @@ namespace settings
 // Persists the Right-Click Speed Text setting under the product key.
 // Returns true on success.
 bool SetRightClickSpeedTextEnabled(bool enabled) noexcept;
+
+// Returns true when the Floating Rate Display should be shown at launch.
+[[nodiscard]] bool IsFloatingRateDisplayEnabled() noexcept;
+
+bool SetFloatingRateDisplayEnabled(bool enabled) noexcept;
+
+// Returns false when the saved desktop position is absent or unreadable.
+[[nodiscard]] bool GetFloatingRateDisplayPosition(POINT& position) noexcept;
+
+bool SetFloatingRateDisplayPosition(POINT position) noexcept;
 
 // Reads the persisted Rate Font. Returns false when absent or invalid.
 [[nodiscard]] bool GetRateFont(RateFontSelection& selection) noexcept;

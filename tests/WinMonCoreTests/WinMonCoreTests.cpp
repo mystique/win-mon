@@ -223,9 +223,10 @@ void OperatorMenuTransactionCorrelatesEveryAction()
 {
     WinMonCore core;
     core.ObserveNetwork({{NamedNic("a", L"Alpha", L"A desc")}, true});
-    auto menu = core.BeginOperatorMenu({false, true}, L"Cascadia Mono");
+    auto menu = core.BeginOperatorMenu({false, true, false}, L"Cascadia Mono");
     Require(!FindItem(*menu, L"Launch at Login").checked, "Launch at Login reflects live state");
     Require(FindItem(*menu, L"Right-Click Speed Text").checked, "Right-Click Speed Text reflects live state");
+    Require(!FindItem(*menu, L"Show Floating Display").checked, "Floating Rate Display reflects live state");
     FindItem(*menu, L"Font: Cascadia Mono");
     Require(std::count_if(menu->begin(), menu->end(), [](const OperatorMenuItem& item) {
         return item.separator;
@@ -233,9 +234,13 @@ void OperatorMenuTransactionCorrelatesEveryAction()
     const auto& autostart = FindItem(*menu, L"Launch at Login");
     Require(core.CompleteOperatorMenu(autostart.choiceToken).kind == OperatorActionKind::EnableLaunchAtLogin, "autostart choice meaning");
 
-    menu = core.BeginOperatorMenu({true, true}, L"Cascadia Mono");
+    menu = core.BeginOperatorMenu({true, true, true}, L"Cascadia Mono");
     const auto& rightClick = FindItem(*menu, L"Right-Click Speed Text");
     Require(core.CompleteOperatorMenu(rightClick.choiceToken).kind == OperatorActionKind::DisableRightClickSpeedText, "right-click choice meaning");
+
+    menu = core.BeginOperatorMenu({false, false, true}, L"Cascadia Mono");
+    const auto& floatingDisplay = FindItem(*menu, L"Show Floating Display");
+    Require(core.CompleteOperatorMenu(floatingDisplay.choiceToken).kind == OperatorActionKind::DisableFloatingRateDisplay, "floating display choice meaning");
 
     menu = core.BeginOperatorMenu({}, L"Cascadia Mono");
     const auto& setFont = FindItem(*menu, L"Set Font...");

@@ -26,6 +26,7 @@ private:
     [[nodiscard]] HICON LoadTrayIcon() const noexcept;
     void UpdateTrayIconTheme() noexcept;
     void LoadSavedRateFont();
+    void SaveFloatingRateDisplayPosition();
 
     [[nodiscard]] winmon::OperatorAction ShowOperatorMenu();
     void HandleOperatorMenuAction(winmon::OperatorAction action);
@@ -35,6 +36,7 @@ private:
     [[nodiscard]] winmon::NetworkObservation ReadNetworkObservation() const;
     afx_msg LRESULT OnTrayNotification(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnRightClickSpeedText(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnFloatingRateDisplayMoved(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnTaskbarCreated(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnDpiChanged(WPARAM wParam, LPARAM lParam);
     afx_msg void OnDisplayChange(UINT bitsPerPixel, int horizontalPixels, int verticalPixels);
@@ -45,6 +47,7 @@ private:
     DECLARE_MESSAGE_MAP()
 
     RateStrip rateStrip_;
+    RateStrip floatingRateDisplay_;
     winmon::ShellLifecycle shellLifecycle_;
     winmon::WinMonCore core_;
     bool trayIconAdded_ = false;

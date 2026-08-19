@@ -17,6 +17,12 @@ struct NotificationAreaSearch
     HWND notificationArea = nullptr;
 };
 
+struct FloatingVisibilitySearch
+{
+    RECT target{};
+    bool visible = false;
+};
+
 BOOL CALLBACK FindNotificationAreaChild(HWND child, LPARAM parameter)
 {
     auto* const search = reinterpret_cast<NotificationAreaSearch*>(parameter);
@@ -30,6 +36,49 @@ BOOL CALLBACK FindNotificationAreaChild(HWND child, LPARAM parameter)
     }
 
     return TRUE;
+}
+
+BOOL CALLBACK FindVisibleFloatingArea(HMONITOR monitor, HDC, LPRECT, LPARAM parameter)
+{
+    auto* const search = reinterpret_cast<FloatingVisibilitySearch*>(parameter);
+    MONITORINFO monitorInfo{ sizeof(monitorInfo) };
+    if (!GetMonitorInfoW(monitor, &monitorInfo))
+    {
+        return TRUE;
+    }
+
+    RECT intersection{};
+    if (IntersectRect(&intersection, &search->target, &monitorInfo.rcWork) &&
+        intersection.right - intersection.left >= 48 &&
+        intersection.bottom - intersection.top >= 48)
+    {
+        search->visible = true;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+bool IsFloatingPositionVisible(POINT position, CSize size) noexcept
+{
+    FloatingVisibilitySearch search{
+        {position.x, position.y, position.x + size.cx, position.y + size.cy}};
+    EnumDisplayMonitors(nullptr, nullptr, FindVisibleFloatingArea, reinterpret_cast<LPARAM>(&search));
+    return search.visible;
+}
+
+POINT DefaultFloatingPosition(CSize size) noexcept
+{
+    MONITORINFO monitorInfo{ sizeof(monitorInfo) };
+    const HMONITOR monitor = MonitorFromPoint({}, MONITOR_DEFAULTTOPRIMARY);
+    if (monitor == nullptr || !GetMonitorInfoW(monitor, &monitorInfo))
+    {
+        return {};
+    }
+
+    const int margin = MulDiv(12, static_cast<int>(GetDpiForSystem()), 96);
+    return {
+        std::max(monitorInfo.rcWork.left, monitorInfo.rcWork.right - size.cx - margin),
+        monitorInfo.rcWork.top + margin};
 }
 }
 void RateStrip::SetRates(const std::wstring& uploadText, const std::wstring& downloadText) noexcept
@@ -85,6 +134,11 @@ bool RateStrip::SetRateFont(const RateFontSelection& selection) noexcept
         return true;
     }
 
+    if (floating_ && RelayoutFloating() && Render())
+    {
+        return true;
+    }
+
     const HWND taskbar = FindPrimaryBottomTaskbar();
     const HWND notificationArea = taskbar == nullptr ? nullptr : FindNotificationArea(taskbar);
     if (notificationArea != nullptr && taskbar_ == taskbar && Relayout(taskbar, notificationArea) && Render())
@@ -94,7 +148,12 @@ bool RateStrip::SetRateFont(const RateFontSelection& selection) noexcept
 
     selectedFont_ = previousFont;
     hasSelectedFont_ = previouslySelected;
-    if (notificationArea != nullptr && taskbar_ == taskbar)
+    if (floating_)
+    {
+        static_cast<void>(RelayoutFloating());
+        static_cast<void>(Render());
+    }
+    else if (notificationArea != nullptr && taskbar_ == taskbar)
     {
         static_cast<void>(Relayout(taskbar, notificationArea));
         static_cast<void>(Render());
@@ -116,6 +175,11 @@ bool RateStrip::ResetRateFont() noexcept
         return true;
     }
 
+    if (floating_ && RelayoutFloating() && Render())
+    {
+        return true;
+    }
+
     const HWND taskbar = FindPrimaryBottomTaskbar();
     const HWND notificationArea = taskbar == nullptr ? nullptr : FindNotificationArea(taskbar);
     if (notificationArea != nullptr && taskbar_ == taskbar && Relayout(taskbar, notificationArea) && Render())
@@ -125,7 +189,12 @@ bool RateStrip::ResetRateFont() noexcept
 
     selectedFont_ = previousFont;
     hasSelectedFont_ = true;
-    if (notificationArea != nullptr && taskbar_ == taskbar)
+    if (floating_)
+    {
+        static_cast<void>(RelayoutFloating());
+        static_cast<void>(Render());
+    }
+    else if (notificationArea != nullptr && taskbar_ == taskbar)
     {
         static_cast<void>(Relayout(taskbar, notificationArea));
         static_cast<void>(Render());
@@ -137,6 +206,12 @@ void RateStrip::SetContextMenuOwner(HWND owner, UINT notificationMessage) noexce
 {
     contextMenuOwner_ = owner;
     contextMenuMessage_ = notificationMessage;
+}
+
+void RateStrip::SetPositionChangedOwner(HWND owner, UINT notificationMessage) noexcept
+{
+    positionChangedOwner_ = owner;
+    positionChangedMessage_ = notificationMessage;
 }
 
 void RateStrip::SetContextMenuEnabled(bool enabled) noexcept
@@ -160,6 +235,8 @@ BEGIN_MESSAGE_MAP(RateStrip, CWnd)
     ON_WM_MOUSEACTIVATE()
     ON_WM_NCHITTEST()
     ON_WM_RBUTTONUP()
+    ON_WM_LBUTTONDOWN()
+    ON_WM_EXITSIZEMOVE()
 END_MESSAGE_MAP()
 
 bool RateStrip::Embed(bool shouldShow)
@@ -168,6 +245,10 @@ bool RateStrip::Embed(bool shouldShow)
     {
         Shutdown();
         return false;
+    }
+    if (floating_)
+    {
+        Shutdown();
     }
     const HWND taskbar = FindPrimaryBottomTaskbar();
     if (taskbar == nullptr)
@@ -244,11 +325,71 @@ bool RateStrip::Embed(bool shouldShow)
     ShowWindow(SW_SHOWNOACTIVATE);
     return Render();
 }
+
+bool RateStrip::ShowFloating(POINT position, bool restorePosition)
+{
+    if (GetSafeHwnd() != nullptr)
+    {
+        if (!floating_)
+        {
+            Shutdown();
+        }
+        else
+        {
+            ShowWindow(SW_SHOWNOACTIVATE);
+            return true;
+        }
+    }
+
+    if (!CreateRateFont(nullptr))
+    {
+        return false;
+    }
+    naturalSize_ = MeasureSize(nullptr);
+    size_ = naturalSize_;
+    if (size_.cx <= 0 || size_.cy <= 0)
+    {
+        font_.DeleteObject();
+        return false;
+    }
+    if (!restorePosition || !IsFloatingPositionVisible(position, size_))
+    {
+        position = DefaultFloatingPosition(size_);
+    }
+
+    const CString windowClass = AfxRegisterWndClass(0, LoadCursorW(nullptr, IDC_ARROW), nullptr, nullptr);
+    if (!CreateEx(
+            WS_EX_TOOLWINDOW | WS_EX_LAYERED,
+            windowClass,
+            nullptr,
+            WS_POPUP,
+            CRect(position.x, position.y, position.x + size_.cx, position.y + size_.cy),
+            nullptr,
+            0))
+    {
+        font_.DeleteObject();
+        return false;
+    }
+
+    floating_ = true;
+    if (::SetWindowPos(
+            GetSafeHwnd(), HWND_TOPMOST, position.x, position.y, size_.cx, size_.cy, SWP_NOACTIVATE) == FALSE)
+    {
+        Shutdown();
+        return false;
+    }
+    ShowWindow(SW_SHOWNOACTIVATE);
+    return Render();
+}
 bool RateStrip::Refresh()
 {
     if (GetSafeHwnd() == nullptr)
     {
         return false;
+    }
+    if (floating_)
+    {
+        return Render();
     }
 
     const HWND taskbar = FindPrimaryBottomTaskbar();
@@ -309,6 +450,29 @@ bool RateStrip::Relayout(HWND taskbar, HWND notificationArea) noexcept
     }
     return PlaceBesideNotificationArea(taskbar, notificationArea);
 }
+
+bool RateStrip::RelayoutFloating() noexcept
+{
+    RECT windowRect{};
+    if (GetSafeHwnd() == nullptr || !::GetWindowRect(GetSafeHwnd(), &windowRect))
+    {
+        return false;
+    }
+    if (font_.GetSafeHandle() != nullptr)
+    {
+        font_.DeleteObject();
+    }
+    if (!CreateRateFont(nullptr))
+    {
+        return false;
+    }
+    naturalSize_ = MeasureSize(nullptr);
+    size_ = naturalSize_;
+    return size_.cx > 0 && size_.cy > 0 &&
+        ::SetWindowPos(
+            GetSafeHwnd(), HWND_TOPMOST, windowRect.left, windowRect.top, size_.cx, size_.cy, SWP_NOACTIVATE) != FALSE;
+}
+
 void RateStrip::Shutdown() noexcept
 {
     if (GetSafeHwnd() != nullptr)
@@ -324,6 +488,7 @@ void RateStrip::Shutdown() noexcept
 
     taskbar_ = nullptr;
     size_ = {};
+    floating_ = false;
 }
 
 bool RateStrip::IsPrimaryBottomTaskbarAvailable() noexcept
@@ -398,7 +563,7 @@ bool RateStrip::CreateRateFont(HWND taskbar) noexcept
         return false;
     }
 
-    const UINT dpi = GetDpiForWindow(taskbar);
+    const UINT dpi = taskbar == nullptr ? GetDpiForSystem() : GetDpiForWindow(taskbar);
     selection.logFont.lfHeight = -MulDiv(selection.pointSizeTenths, static_cast<int>(dpi), 720);
     return font_.CreateFontIndirectW(&selection.logFont) != FALSE;
 }
@@ -440,7 +605,7 @@ CSize RateStrip::MeasureSize(HWND taskbar) const
         return {};
     }
 
-    const UINT dpi = GetDpiForWindow(taskbar);
+    const UINT dpi = taskbar == nullptr ? GetDpiForSystem() : GetDpiForWindow(taskbar);
     const int horizontalPadding = MulDiv(8, static_cast<int>(dpi), 96);
     const int verticalPadding = MulDiv(3, static_cast<int>(dpi), 96);
     const int widestLine = topSize.cx > bottomSize.cx ? topSize.cx : bottomSize.cx;
@@ -526,9 +691,29 @@ bool RateStrip::Render() noexcept
     const HGDIOBJ previousBitmap = ::SelectObject(memoryDc, bitmap);
     const HGDIOBJ previousFont = ::SelectObject(memoryDc, font_.GetSafeHandle());
     const RECT clientRect{ 0, 0, size_.cx, size_.cy };
-    ::PatBlt(memoryDc, 0, 0, size_.cx, size_.cy, BLACKNESS);
+    if (floating_)
+    {
+        textColor_ = theme::ReadMode() == theme::Mode::Light ? RGB(24, 24, 24) : RGB(255, 255, 255);
+        const HBRUSH background = CreateSolidBrush(
+            theme::ReadMode() == theme::Mode::Light ? RGB(255, 255, 255) : RGB(0, 0, 0));
+        if (background == nullptr)
+        {
+            ::SelectObject(memoryDc, previousFont);
+            ::SelectObject(memoryDc, previousBitmap);
+            ::DeleteObject(bitmap);
+            ::DeleteDC(memoryDc);
+            ::ReleaseDC(nullptr, screenDc);
+            return false;
+        }
+        FillRect(memoryDc, &clientRect, background);
+        DeleteObject(background);
+    }
+    else
+    {
+        ::PatBlt(memoryDc, 0, 0, size_.cx, size_.cy, BLACKNESS);
+    }
     ::SetBkMode(memoryDc, TRANSPARENT);
-    ::SetTextColor(memoryDc, RGB(255, 255, 255));
+    ::SetTextColor(memoryDc, floating_ ? textColor_ : RGB(255, 255, 255));
 
     const int midpoint = size_.cy / 2;
     RECT topLineRect = clientRect;
@@ -545,19 +730,29 @@ bool RateStrip::Render() noexcept
     const DWORD green = GetGValue(textColor_);
     const DWORD blue = GetBValue(textColor_);
     const size_t pixelCount = static_cast<size_t>(size_.cx) * static_cast<size_t>(size_.cy);
-    // A layered window passes mouse input through fully transparent pixels, so
-    // an interactive strip needs a floor that is hit-testable yet unnoticeable.
-    const DWORD minimumAlpha = contextMenuEnabled_ ? 1u : 0u;
-    for (size_t index = 0; index < pixelCount; ++index)
+    if (floating_)
     {
-        const DWORD mask = pixels[index];
-        const DWORD alpha = std::max<DWORD>(
-            minimumAlpha, std::max(GetRValue(mask), std::max(GetGValue(mask), GetBValue(mask))));
-        pixels[index] =
-            (alpha << 24) |
-            ((red * alpha / 255) << 16) |
-            ((green * alpha / 255) << 8) |
-            (blue * alpha / 255);
+        for (size_t index = 0; index < pixelCount; ++index)
+        {
+            pixels[index] |= 0xff000000u;
+        }
+    }
+    else
+    {
+        // A layered window passes mouse input through fully transparent pixels, so
+        // an interactive strip needs a floor that is hit-testable yet unnoticeable.
+        const DWORD minimumAlpha = contextMenuEnabled_ ? 1u : 0u;
+        for (size_t index = 0; index < pixelCount; ++index)
+        {
+            const DWORD mask = pixels[index];
+            const DWORD alpha = std::max<DWORD>(
+                minimumAlpha, std::max(GetRValue(mask), std::max(GetGValue(mask), GetBValue(mask))));
+            pixels[index] =
+                (alpha << 24) |
+                ((red * alpha / 255) << 16) |
+                ((green * alpha / 255) << 8) |
+                (blue * alpha / 255);
+        }
     }
 
     POINT source{};
@@ -600,7 +795,7 @@ int RateStrip::OnMouseActivate(CWnd*, UINT, UINT)
 
 LRESULT RateStrip::OnNcHitTest(CPoint)
 {
-    return contextMenuEnabled_ ? HTCLIENT : HTTRANSPARENT;
+    return floating_ || contextMenuEnabled_ ? HTCLIENT : HTTRANSPARENT;
 }
 
 void RateStrip::OnRButtonUp(UINT flags, CPoint point)
@@ -613,4 +808,33 @@ void RateStrip::OnRButtonUp(UINT flags, CPoint point)
 
     // Post so the owner opens its menu outside this mouse message.
     ::PostMessageW(contextMenuOwner_, contextMenuMessage_, 0, 0);
+}
+
+void RateStrip::OnLButtonDown(UINT flags, CPoint point)
+{
+    if (!floating_)
+    {
+        CWnd::OnLButtonDown(flags, point);
+        return;
+    }
+    ClientToScreen(&point);
+    ReleaseCapture();
+    SendMessageW(WM_NCLBUTTONDOWN, HTCAPTION, MAKELPARAM(point.x, point.y));
+}
+
+void RateStrip::OnExitSizeMove()
+{
+    if (floating_ && positionChangedOwner_ != nullptr && positionChangedMessage_ != 0)
+    {
+        ::PostMessageW(positionChangedOwner_, positionChangedMessage_, 0, 0);
+    }
+    CWnd::OnExitSizeMove();
+}
+
+POINT RateStrip::GetFloatingPosition() const noexcept
+{
+    RECT windowRect{};
+    return GetSafeHwnd() != nullptr && ::GetWindowRect(GetSafeHwnd(), &windowRect)
+        ? POINT{windowRect.left, windowRect.top}
+        : POINT{};
 }

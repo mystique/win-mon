@@ -12,12 +12,16 @@ _Avoid_: win-mon (except repo/folder), TrafficMonitor (reference tree only — A
 The two-line Upload/Download Rate text embedded on the primary bottom taskbar only (see ADRs). Upload on top with ↑, download below with ↓. Text is right-aligned. It ignores the mouse unless **Right-Click Speed Text** is on, and even then its only response is opening the Operator Menu — no click command, no tooltip. Hidden when that taskbar is missing or not bottom-aligned; not shown on secondary taskbars. Width is stable (sized for a wide sample such as `999.9 G/s` in the active font), starts with the DPI-aware Windows UI message font, and uses the persisted Rate Font when one has been selected; text color follows the same `AppsUseLightTheme` registry state as the Tray Icon. While running, Win Mon refreshes the strip position and theme color once per Rate Sample so changes in the notification area do not cause overlap or stale contrast. If embed fails while the Tray Icon is up, the process stays alive and retries (including via Shell Recovery). "Rate Strip" is an internal term: no menu label uses it.
 _Avoid_: taskbar window, widget, HUD, overlay (unless contrasting implementation), main UI
 
+**Floating Rate Display**:
+An optional, borderless, always-on-top desktop display of the same two Rate Strip lines. It has no taskbar or Alt-Tab entry, uses the Rate Font and system-theme text color, can be dragged with the left mouse button, and always opens the Operator Menu on right-click; it remains available while the Rate Strip is hidden. Its visibility and absolute desktop position persist; first use and an off-screen restored position place it at the primary work area's upper-right corner.
+_Avoid_: floating window, dashboard, overlay, main window
+
 **Tray Icon**:
 The notification-area icon that is the primary operator entry (Operator Menu only). Required for a successful run; if it cannot be created at startup, Win Mon shows an error message and exits.
 _Avoid_: main window, shell icon (ambiguous)
 
 **Operator Menu**:
-The tray context menu, opened from the Tray Icon or — when **Right-Click Speed Text** is on — by right-clicking the Rate Strip. Structure: **Network to Monitor** submenu, separator, **Launch at Login**, **Right-Click Speed Text**, separator, disabled `Font: <name>`, **Set Font...**, separator, **Exit**. The two toggles form one group with no separator between them; the font summary and action form the next group. The submenu is a radio list with **All** first, then each NIC represented in the classic Windows Network Connections folder (friendly/alias name, else description). Labels are plain English, free of internal terms such as NIC or Rate Strip.
+The tray context menu, opened from the Tray Icon, from the Rate Strip when **Right-Click Speed Text** is on, or from the Floating Rate Display. Structure: **Network to Monitor** submenu, separator, **Launch at Login**, **Right-Click Speed Text**, **Show Floating Display**, separator, disabled `Font: <name>`, **Set Font...**, separator, **Exit**. The three toggles form one group with no separator between them; the font summary and action form the next group. The submenu is a radio list with **All** first, then each NIC represented in the classic Windows Network Connections folder (friendly/alias name, else description). Labels are plain English, free of internal terms such as NIC or Rate Strip.
 _Avoid_: main menu, settings dialog
 
 **Launch at Login**:
@@ -25,16 +29,20 @@ Operator Menu check item that registers or removes Win Mon's `HKCU\...\CurrentVe
 _Avoid_: autostart (as label), startup entry
 
 **Right-Click Speed Text**:
-Operator Menu check item that decides whether the Rate Strip answers a right-click by opening the Operator Menu. Off by default. Persisted as the `RightClickSpeedText` DWORD under `HKCU\Software\Win Mon` and applied at launch, so the choice survives a restart. While off, the strip stays display-only and clicks fall through to the taskbar.
+Operator Menu check item that decides whether the Rate Strip answers a right-click by opening the Operator Menu. Off by default. Persisted as the `RightClickSpeedText` DWORD under `HKCU\Software\Win Mon` and applied at launch, so the choice survives a restart. While off, the strip stays display-only and clicks fall through to the taskbar. It does not affect the Floating Rate Display.
 _Avoid_: enable clicks, interactive mode, hotspot
+
+**Show Floating Display**:
+Operator Menu check item that shows or hides the Floating Rate Display. Off by default and persisted as the `FloatingRateDisplay` DWORD under `HKCU\Software\Win Mon` across restarts.
+_Avoid_: show window, floating display toggle
 
 
 **Rate Font**:
-The font used for both Rate Strip lines. With no saved choice, it uses the current DPI-aware Windows UI message font reported by `SPI_GETNONCLIENTMETRICS`. The Operator Menu shows the active face as a disabled `Font: <name>` item; **Set Font...** opens the standard Windows screen-font chooser (sizes 6–12 points, which fit the two-line taskbar surface) and applies the selected face, style, and size immediately. The accepted face, style, and size are stored as the versioned `RateFont` value under `HKCU\Software\Win Mon`, loaded at startup and re-read before Rate Strip recreation during relayout or Shell Recovery. Invalid or unreadable data falls back to the Windows UI font.
+The font used for both Rate Strip and Floating Rate Display lines. With no saved choice, it uses the current DPI-aware Windows UI message font reported by `SPI_GETNONCLIENTMETRICS`. The Operator Menu shows the active face as a disabled `Font: <name>` item; **Set Font...** opens the standard Windows screen-font chooser (sizes 6–12 points, which fit the two-line taskbar surface) and applies the selected face, style, and size immediately. The accepted face, style, and size are stored as the versioned `RateFont` value under `HKCU\Software\Win Mon`, loaded at startup and re-read before Rate Strip recreation during relayout or Shell Recovery. Invalid or unreadable data falls back to the Windows UI font.
 _Avoid_: text font, display font
 
 **Exit**:
-Operator Menu command that removes the Tray Icon, destroys the Rate Strip, and ends the process without leaving shell chrome behind and without altering other taskbar children.
+Operator Menu command that removes the Tray Icon, destroys the Rate Strip and Floating Rate Display, and ends the process without leaving shell chrome behind and without altering other taskbar children.
 _Avoid_: Quit, Close
 
 **NIC**:
