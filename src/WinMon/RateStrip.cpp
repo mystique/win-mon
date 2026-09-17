@@ -2,6 +2,8 @@
 #include "Theme.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cwchar>
 #include <iterator>
 
@@ -11,6 +13,15 @@ constexpr wchar_t kTaskbarClassName[] = L"Shell_TrayWnd";
 constexpr wchar_t kNotificationAreaClassName[] = L"TrayNotifyWnd";
 constexpr wchar_t kMaximumTopLine[] = L"999.9 G/s \u2191";
 constexpr wchar_t kMaximumBottomLine[] = L"999.9 G/s \u2193";
+constexpr double kRateSmoothing = 0.35;
+
+constexpr double SmoothRate(double previous, double sample, bool firstSample) noexcept
+{
+    return firstSample ? sample : previous + (sample - previous) * kRateSmoothing;
+}
+
+static_assert(SmoothRate(10.0, 20.0, true) == 20.0);
+static_assert(SmoothRate(10.0, 20.0, false) > 10.0 && SmoothRate(10.0, 20.0, false) < 20.0);
 
 struct NotificationAreaSearch
 {
@@ -81,10 +92,24 @@ POINT DefaultFloatingPosition(CSize size) noexcept
         monitorInfo.rcWork.top + margin};
 }
 }
-void RateStrip::SetRates(const std::wstring& uploadText, const std::wstring& downloadText) noexcept
+void RateStrip::SetRates(
+    const std::wstring& uploadText,
+    const std::wstring& downloadText,
+    double uploadBytesPerSecond,
+    double downloadBytesPerSecond) noexcept
 {
     uploadText_ = uploadText;
     downloadText_ = downloadText;
+    const bool firstSample = rateHistoryCount_ == 0;
+    smoothedUploadBytesPerSecond_ = SmoothRate(
+        smoothedUploadBytesPerSecond_, std::max(0.0, uploadBytesPerSecond), firstSample);
+    smoothedDownloadBytesPerSecond_ = SmoothRate(
+        smoothedDownloadBytesPerSecond_, std::max(0.0, downloadBytesPerSecond), firstSample);
+    std::rotate(uploadHistory_.begin(), uploadHistory_.begin() + 1, uploadHistory_.end());
+    std::rotate(downloadHistory_.begin(), downloadHistory_.begin() + 1, downloadHistory_.end());
+    uploadHistory_.back() = smoothedUploadBytesPerSecond_;
+    downloadHistory_.back() = smoothedDownloadBytesPerSecond_;
+    rateHistoryCount_ = std::min(rateHistoryCount_ + 1, kRateHistorySize);
     if (GetSafeHwnd() != nullptr)
     {
         static_cast<void>(Render());
@@ -564,12 +589,22 @@ bool RateStrip::CreateRateFont(HWND taskbar) noexcept
     }
 
     const UINT dpi = taskbar == nullptr ? GetDpiForSystem() : GetDpiForWindow(taskbar);
-    selection.logFont.lfHeight = -MulDiv(selection.pointSizeTenths, static_cast<int>(dpi), 720);
+    const int pointSizeTenths = taskbar == nullptr
+        ? std::clamp(selection.pointSizeTenths, 80, 90)
+        : selection.pointSizeTenths;
+    selection.logFont.lfHeight = -MulDiv(pointSizeTenths, static_cast<int>(dpi), 720);
     return font_.CreateFontIndirectW(&selection.logFont) != FALSE;
 }
 
 CSize RateStrip::MeasureSize(HWND taskbar) const
 {
+    if (taskbar == nullptr)
+    {
+        const int dpi = static_cast<int>(GetDpiForSystem());
+        const int diameter = MulDiv(128, dpi, 96);
+        return {diameter, diameter};
+    }
+
     const HDC deviceContext = ::GetDC(taskbar);
     if (deviceContext == nullptr)
     {
@@ -605,7 +640,7 @@ CSize RateStrip::MeasureSize(HWND taskbar) const
         return {};
     }
 
-    const UINT dpi = taskbar == nullptr ? GetDpiForSystem() : GetDpiForWindow(taskbar);
+    const UINT dpi = GetDpiForWindow(taskbar);
     const int horizontalPadding = MulDiv(8, static_cast<int>(dpi), 96);
     const int verticalPadding = MulDiv(3, static_cast<int>(dpi), 96);
     const int widestLine = topSize.cx > bottomSize.cx ? topSize.cx : bottomSize.cx;
@@ -691,13 +726,27 @@ bool RateStrip::Render() noexcept
     const HGDIOBJ previousBitmap = ::SelectObject(memoryDc, bitmap);
     const HGDIOBJ previousFont = ::SelectObject(memoryDc, font_.GetSafeHandle());
     const RECT clientRect{ 0, 0, size_.cx, size_.cy };
+    auto* const pixels = static_cast<DWORD*>(bitmapBits);
+    const size_t pixelCount = static_cast<size_t>(size_.cx) * static_cast<size_t>(size_.cy);
+    std::fill_n(pixels, pixelCount, 0u);
     if (floating_)
     {
-        textColor_ = theme::ReadMode() == theme::Mode::Light ? RGB(24, 24, 24) : RGB(255, 255, 255);
-        const HBRUSH background = CreateSolidBrush(
-            theme::ReadMode() == theme::Mode::Light ? RGB(255, 255, 255) : RGB(0, 0, 0));
-        if (background == nullptr)
+        const UINT dpi = GetDpiForWindow(GetSafeHwnd());
+        const auto scaled = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi), 96); };
+        const COLORREF panelColor = RGB(8, 18, 27);
+        const COLORREF panelEdgeColor = RGB(31, 68, 82);
+        const COLORREF uploadColor = RGB(91, 224, 177);
+        const COLORREF downloadColor = RGB(66, 183, 231);
+        textColor_ = RGB(224, 238, 244);
+
+        const HRGN panel = CreateEllipticRgn(0, 0, size_.cx + 1, size_.cy + 1);
+        const HBRUSH background = CreateSolidBrush(panelColor);
+        const HBRUSH edge = CreateSolidBrush(panelEdgeColor);
+        if (panel == nullptr || background == nullptr || edge == nullptr)
         {
+            if (panel != nullptr) DeleteObject(panel);
+            if (background != nullptr) DeleteObject(background);
+            if (edge != nullptr) DeleteObject(edge);
             ::SelectObject(memoryDc, previousFont);
             ::SelectObject(memoryDc, previousBitmap);
             ::DeleteObject(bitmap);
@@ -705,36 +754,145 @@ bool RateStrip::Render() noexcept
             ::ReleaseDC(nullptr, screenDc);
             return false;
         }
-        FillRect(memoryDc, &clientRect, background);
+        FillRgn(memoryDc, panel, background);
+        FrameRgn(memoryDc, panel, edge, scaled(1), scaled(1));
+        SelectClipRgn(memoryDc, panel);
+
+        const int centerX = size_.cx / 2;
+        const int centerY = size_.cy / 2;
+        const HPEN guidePen = CreatePen(PS_SOLID, scaled(1), RGB(20, 42, 53));
+        if (guidePen != nullptr)
+        {
+            const HGDIOBJ previousPen = SelectObject(memoryDc, guidePen);
+            const HGDIOBJ previousBrush = SelectObject(memoryDc, GetStockObject(HOLLOW_BRUSH));
+            Ellipse(memoryDc, scaled(10), scaled(10), size_.cx - scaled(10), size_.cy - scaled(10));
+            Ellipse(memoryDc, scaled(17), scaled(17), size_.cx - scaled(17), size_.cy - scaled(17));
+            SelectObject(memoryDc, previousBrush);
+            SelectObject(memoryDc, previousPen);
+            DeleteObject(guidePen);
+        }
+
+        const HFONT labelFont = CreateFontW(
+            -scaled(9), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+            DEFAULT_PITCH, L"Segoe UI Variable Text");
+        if (labelFont != nullptr) SelectObject(memoryDc, labelFont);
+        SetBkMode(memoryDc, TRANSPARENT);
+        SetTextColor(memoryDc, uploadColor);
+        RECT uploadLabel{scaled(29), scaled(34), scaled(48), scaled(52)};
+        DrawTextW(memoryDc, L"UL", -1, &uploadLabel,
+            DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+        SetTextColor(memoryDc, downloadColor);
+        RECT downloadLabel{scaled(29), scaled(73), scaled(48), scaled(91)};
+        DrawTextW(memoryDc, L"DL", -1, &downloadLabel,
+            DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+
+        SelectObject(memoryDc, font_.GetSafeHandle());
+        SetTextColor(memoryDc, textColor_);
+        RECT uploadValue{scaled(49), scaled(31), size_.cx - scaled(27), scaled(54)};
+        DrawTextW(memoryDc, uploadText_.c_str(), -1, &uploadValue,
+            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
+        RECT downloadValue{scaled(49), scaled(70), size_.cx - scaled(27), scaled(93)};
+        DrawTextW(memoryDc, downloadText_.c_str(), -1, &downloadValue,
+            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
+
+        const HPEN dividerPen = CreatePen(PS_SOLID, scaled(1), RGB(25, 52, 63));
+        if (dividerPen != nullptr)
+        {
+            const HGDIOBJ previousPen = SelectObject(memoryDc, dividerPen);
+            MoveToEx(memoryDc, scaled(31), scaled(63), nullptr);
+            LineTo(memoryDc, size_.cx - scaled(31), scaled(63));
+            SelectObject(memoryDc, previousPen);
+            DeleteObject(dividerPen);
+        }
+
+        constexpr std::size_t visibleSamples = 16;
+        const std::size_t sampleCount = std::min(rateHistoryCount_, visibleSamples);
+        const std::size_t first = kRateHistorySize - sampleCount;
+        double maximum = 1024.0;
+        for (std::size_t index = first; index < kRateHistorySize; ++index)
+        {
+            maximum = std::max(maximum, std::max(uploadHistory_[index], downloadHistory_[index]));
+        }
+        constexpr double pi = 3.14159265358979323846;
+        const auto drawOrbit = [&](const auto& history, double startDegrees, COLORREF glow, COLORREF color) {
+            if (sampleCount == 0) return;
+            const HPEN glowPen = CreatePen(PS_SOLID, scaled(5), glow);
+            const HPEN signalPen = CreatePen(PS_SOLID, scaled(2), color);
+            if (glowPen == nullptr || signalPen == nullptr)
+            {
+                if (glowPen != nullptr) DeleteObject(glowPen);
+                if (signalPen != nullptr) DeleteObject(signalPen);
+                return;
+            }
+            for (std::size_t index = 0; index < sampleCount; ++index)
+            {
+                const double angle = (startDegrees + 140.0 * index / (visibleSamples - 1)) * pi / 180.0;
+                const double ratio = std::sqrt(std::clamp(history[first + index] / maximum, 0.0, 1.0));
+                const double outerRadius = static_cast<double>(scaled(58));
+                const double innerRadius = static_cast<double>(scaled(52)) - scaled(8) * ratio;
+                const POINT inner{
+                    centerX + static_cast<LONG>(std::cos(angle) * innerRadius),
+                    centerY + static_cast<LONG>(std::sin(angle) * innerRadius)};
+                const POINT outer{
+                    centerX + static_cast<LONG>(std::cos(angle) * outerRadius),
+                    centerY + static_cast<LONG>(std::sin(angle) * outerRadius)};
+                HGDIOBJ previousPen = SelectObject(memoryDc, glowPen);
+                MoveToEx(memoryDc, inner.x, inner.y, nullptr);
+                LineTo(memoryDc, outer.x, outer.y);
+                SelectObject(memoryDc, signalPen);
+                MoveToEx(memoryDc, inner.x, inner.y, nullptr);
+                LineTo(memoryDc, outer.x, outer.y);
+                SelectObject(memoryDc, previousPen);
+            }
+            DeleteObject(signalPen);
+            DeleteObject(glowPen);
+        };
+        drawOrbit(uploadHistory_, 110.0, RGB(19, 72, 62), uploadColor);
+        drawOrbit(downloadHistory_, -70.0, RGB(18, 61, 82), downloadColor);
+
+        SelectClipRgn(memoryDc, nullptr);
+        if (labelFont != nullptr) DeleteObject(labelFont);
+        DeleteObject(edge);
         DeleteObject(background);
+        DeleteObject(panel);
     }
     else
     {
         ::PatBlt(memoryDc, 0, 0, size_.cx, size_.cy, BLACKNESS);
     }
-    ::SetBkMode(memoryDc, TRANSPARENT);
-    ::SetTextColor(memoryDc, floating_ ? textColor_ : RGB(255, 255, 255));
+    if (!floating_)
+    {
+        ::SetBkMode(memoryDc, TRANSPARENT);
+        ::SetTextColor(memoryDc, RGB(255, 255, 255));
+        const int midpoint = size_.cy / 2;
+        RECT topLineRect = clientRect;
+        topLineRect.bottom = midpoint;
+        RECT bottomLineRect = clientRect;
+        bottomLineRect.top = midpoint;
+        const std::wstring topLine = uploadText_ + L" \u2191";
+        const std::wstring bottomLine = downloadText_ + L" \u2193";
+        ::DrawTextW(memoryDc, topLine.c_str(), -1, &topLineRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+        ::DrawTextW(memoryDc, bottomLine.c_str(), -1, &bottomLineRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    }
 
-    const int midpoint = size_.cy / 2;
-    RECT topLineRect = clientRect;
-    topLineRect.bottom = midpoint;
-    RECT bottomLineRect = clientRect;
-    bottomLineRect.top = midpoint;
-    const std::wstring topLine = uploadText_ + L" \u2191";
-    const std::wstring bottomLine = downloadText_ + L" \u2193";
-    ::DrawTextW(memoryDc, topLine.c_str(), -1, &topLineRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
-    ::DrawTextW(memoryDc, bottomLine.c_str(), -1, &bottomLineRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
-
-    auto* const pixels = static_cast<DWORD*>(bitmapBits);
     const DWORD red = GetRValue(textColor_);
     const DWORD green = GetGValue(textColor_);
     const DWORD blue = GetBValue(textColor_);
-    const size_t pixelCount = static_cast<size_t>(size_.cx) * static_cast<size_t>(size_.cy);
     if (floating_)
     {
+        constexpr DWORD alpha = 224u;
         for (size_t index = 0; index < pixelCount; ++index)
         {
-            pixels[index] |= 0xff000000u;
+            const DWORD pixel = pixels[index] & 0x00ffffffu;
+            if (pixel != 0)
+            {
+                pixels[index] =
+                    (alpha << 24) |
+                    (((pixel >> 16) & 0xffu) * alpha / 255u << 16) |
+                    (((pixel >> 8) & 0xffu) * alpha / 255u << 8) |
+                    ((pixel & 0xffu) * alpha / 255u);
+            }
         }
     }
     else

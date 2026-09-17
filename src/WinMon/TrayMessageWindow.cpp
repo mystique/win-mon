@@ -358,8 +358,16 @@ void TrayMessageWindow::SampleRates()
 {
     core_.ObserveNetwork(ReadNetworkObservation());
     const auto display = core_.Sample();
-    rateStrip_.SetRates(display.uploadText, display.downloadText);
-    floatingRateDisplay_.SetRates(display.uploadText, display.downloadText);
+    rateStrip_.SetRates(
+        display.uploadText,
+        display.downloadText,
+        display.uploadBytesPerSecond,
+        display.downloadBytesPerSecond);
+    floatingRateDisplay_.SetRates(
+        display.uploadText,
+        display.downloadText,
+        display.uploadBytesPerSecond,
+        display.downloadBytesPerSecond);
 }
 
 void TrayMessageWindow::OnTimer(UINT_PTR timerId)

@@ -2,6 +2,8 @@
 
 #include <afxwin.h>
 
+#include <array>
+#include <cstddef>
 #include <string>
 
 struct RateFontSelection final
@@ -18,7 +20,11 @@ public:
     [[nodiscard]] bool Refresh();
     void Shutdown() noexcept;
     [[nodiscard]] static bool IsPrimaryBottomTaskbarAvailable() noexcept;
-    void SetRates(const std::wstring& uploadText, const std::wstring& downloadText) noexcept;
+    void SetRates(
+        const std::wstring& uploadText,
+        const std::wstring& downloadText,
+        double uploadBytesPerSecond,
+        double downloadBytesPerSecond) noexcept;
     // Routes a Rate Strip right-click to owner as notificationMessage.
     void SetContextMenuOwner(HWND owner, UINT notificationMessage) noexcept;
     void SetPositionChangedOwner(HWND owner, UINT notificationMessage) noexcept;
@@ -58,6 +64,12 @@ private:
     CSize size_{};
     std::wstring uploadText_ = L"0.0 K/s";
     std::wstring downloadText_ = L"0.0 K/s";
+    static constexpr std::size_t kRateHistorySize = 48;
+    std::array<double, kRateHistorySize> uploadHistory_{};
+    std::array<double, kRateHistorySize> downloadHistory_{};
+    std::size_t rateHistoryCount_ = 0;
+    double smoothedUploadBytesPerSecond_ = 0.0;
+    double smoothedDownloadBytesPerSecond_ = 0.0;
     HWND taskbar_ = nullptr;
     COLORREF textColor_ = RGB(255, 255, 255);
     HWND contextMenuOwner_ = nullptr;
