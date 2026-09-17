@@ -26,32 +26,21 @@ add_compile_definitions(
 )
 add_compile_options(/W4 /sdl /permissive-)
 
-add_library(WinMonCore STATIC
-    src/WinMonCore/WinMonCore.cpp
-    src/WinMonCore/WinMonCore.h
+file(GLOB WINMONCORE_SOURCES CONFIGURE_DEPENDS
+    src/WinMonCore/*.cpp
+    src/WinMonCore/*.h
 )
+add_library(WinMonCore STATIC ${WINMONCORE_SOURCES})
 target_include_directories(WinMonCore PUBLIC src/WinMonCore)
 set_property(TARGET WinMonCore PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 
-add_executable(WinMon WIN32
-    src/WinMon/Autostart.cpp
-    src/WinMon/Autostart.h
-    src/WinMon/RateStrip.cpp
-    src/WinMon/RateStrip.h
-    src/WinMon/Settings.cpp
-    src/WinMon/Settings.h
-    src/WinMon/Theme.cpp
-    src/WinMon/Theme.h
-    src/WinMon/TrayMessageWindow.cpp
-    src/WinMon/TrayMessageWindow.h
-    src/WinMon/WinMonApp.cpp
-    src/WinMon/WinMonApp.h
-    src/WinMon/res/resource.h
-    src/WinMon/res/WinMon.ico
-    src/WinMon/res/WinMonTrayDark.ico
-    src/WinMon/res/WinMonTrayLight.ico
-    src/WinMon/res/WinMon.rc
+file(GLOB_RECURSE WINMON_SOURCES CONFIGURE_DEPENDS
+    src/WinMon/*.cpp
+    src/WinMon/*.h
+    src/WinMon/res/*.ico
+    src/WinMon/res/*.rc
 )
+add_executable(WinMon WIN32 ${WINMON_SOURCES})
 target_link_libraries(WinMon PRIVATE WinMonCore Shell32 Iphlpapi)
 set_target_properties(WinMon PROPERTIES
     VS_DPI_AWARE "PerMonitor"
@@ -60,9 +49,10 @@ set_target_properties(WinMon PROPERTIES
 
 include(CTest)
 if(BUILD_TESTING)
-    add_executable(WinMonCoreTests
-        tests/WinMonCoreTests/WinMonCoreTests.cpp
+    file(GLOB WINMONCORETESTS_SOURCES CONFIGURE_DEPENDS
+        tests/WinMonCoreTests/*.cpp
     )
+    add_executable(WinMonCoreTests ${WINMONCORETESTS_SOURCES})
     target_link_libraries(WinMonCoreTests PRIVATE WinMonCore)
     set_property(TARGET WinMonCoreTests PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
     add_test(NAME WinMonCoreTests COMMAND WinMonCoreTests)
