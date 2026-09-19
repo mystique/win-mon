@@ -1,6 +1,6 @@
 # Win Mon
 
-A Win11-only tray utility named **Win Mon** that shows live NIC upload/download rates as a two-line strip on the primary taskbar. UI copy is English only, and menu labels stay plain: internal terms like NIC and Rate Strip never appear in them. There is no main window. Operator settings persist in the registry (see ADR-0007), except Network to Monitor, which resets each launch. MFC is used only as a thin host for this surface (see ADR-0003), not as a general application framework feature set.
+A Win11-only tray utility named **Win Mon** that shows live NIC upload/download rates as a two-line strip on the primary taskbar and in an optional Floating Rate Display. UI copy is English only, and menu labels stay plain: internal terms like NIC and Rate Strip never appear in them. There is no main window. Operator settings persist in the registry (see ADR-0007), except Network to Monitor, which resets each launch. MFC is used only as a thin host for this surface (see ADR-0003), not as a general application framework feature set.
 
 ## Language
 
@@ -54,7 +54,7 @@ The default aggregate selection each launch: sum of rates over hardware NICs tha
 _Avoid_: Auto, total speed, select all, 全部
 
 **Upload Rate** / **Download Rate**:
-Bytes-per-second throughput on the Rate Strip. Units auto-scale among `K/s`, `M/s`, and `G/s` (base 1000), always at least `K/s` (never bare bytes or a `B` in the unit), one decimal place — e.g. `0.0 K/s`, `1.1 K/s`, `12.3 M/s`.
+Bytes-per-second throughput shown by the Rate Strip and Floating Rate Display. Units auto-scale among `K/s`, `M/s`, and `G/s` (base 1000), always at least `K/s` (never bare bytes or a `B` in the unit), one decimal place — e.g. `0.0 K/s`, `1.1 K/s`, `12.3 M/s`.
 _Avoid_: speed (alone), bandwidth, traffic, KB/s, MB/s, B/s
 
 **Rate Sample**:
@@ -62,11 +62,11 @@ One periodic measurement used to compute Upload/Download Rate. Interval: 1 secon
 _Avoid_: poll, tick (unless implementation)
 
 **Network to Monitor**:
-Menu label for which NIC (or All NICs) feeds the Rate Strip. Default each launch: All NICs. Not persisted. If the selected NIC disappears from the system, selection falls back to All NICs; if it remains but is down, keep selection and show zero rates. Under All NICs with nothing up (or no NICs), both rates show as zero.
+Menu label for which NIC (or All NICs) feeds both the Rate Strip and Floating Rate Display. Default each launch: All NICs. Not persisted. If the selected NIC disappears from the system, selection falls back to All NICs; if it remains but is down, keep selection and show zero rates. Under All NICs with nothing up (or no NICs), both rates show as zero.
 _Avoid_: connection preference, remembered adapter
 
 **Single Instance**:
-At most one Win Mon process owns the Tray Icon and Rate Strip. A second launch exits silently without feedback.
+At most one Win Mon process owns the Tray Icon, Rate Strip and Floating Rate Display. A second launch exits silently without feedback.
 _Avoid_: mutex (implementation), singleton app
 
 **Shell Recovery**:
