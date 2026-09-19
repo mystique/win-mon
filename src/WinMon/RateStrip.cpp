@@ -236,6 +236,8 @@ void RateStrip::SetContextMenuEnabled(bool enabled) noexcept
 
 BEGIN_MESSAGE_MAP(RateStrip, CWnd)
     ON_WM_PAINT()
+    ON_WM_MOUSEMOVE()
+    ON_WM_MOUSELEAVE()
     ON_WM_TIMER()
     ON_WM_SETTINGCHANGE()
     ON_WM_ERASEBKGND()
@@ -490,6 +492,8 @@ void RateStrip::Shutdown() noexcept
     if (GetSafeHwnd() && pulseTimerActive_) KillTimer(1);
     pulseTimerActive_ = false;
     pulsePhase_ = 0;
+    hovering_ = false;
+    textOpacity_ = 0;
     if (GetSafeHwnd() != nullptr)
     {
         DestroyWindow();
@@ -678,7 +682,7 @@ bool RateStrip::Render() noexcept
         RateFontSelection selection;
         return GetSafeHwnd() != nullptr && GetRateFont(selection) &&
             floatingRenderer_.Render(uploadText_, downloadText_, selection.logFont,
-                GetDpiForWindow(GetSafeHwnd()), pulseTimerActive_ ? pulsePhase_ : 0.5) && floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd());
+                GetDpiForWindow(GetSafeHwnd()), pulseTimerActive_ ? pulsePhase_ : 0.5, textOpacity_) && floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd());
     }
     if (GetSafeHwnd() == nullptr || size_.cx <= 0 || size_.cy <= 0 || font_.GetSafeHandle() == nullptr)
     {
@@ -887,7 +891,10 @@ void RateStrip::UpdatePulseTimer() noexcept
     if (!floating_ || !GetSafeHwnd()) return;
     BOOL animations = FALSE;
     SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
-    const bool animate = IsWindowVisible() && animations && floatingRenderer_.Activity() > 0;
+    const float targetOpacity = hovering_ ? 1.0f : 0.0f;
+    if (!animations) textOpacity_ = targetOpacity;
+    const bool animate = IsWindowVisible() && animations &&
+        (floatingRenderer_.Activity() > 0 || textOpacity_ != targetOpacity);
     if (animate && !pulseTimerActive_)
     {
         pulseTick_ = GetTickCount64();
@@ -905,15 +912,18 @@ void RateStrip::OnTimer(UINT_PTR timer)
 {
     if (timer == 1 && floating_ && pulseTimerActive_)
     {
-        if (!IsWindowVisible() || floatingRenderer_.Activity() == 0)
+        if (!IsWindowVisible())
         {
             UpdatePulseTimer();
             return;
         }
         const ULONGLONG now = GetTickCount64();
+        const float step = static_cast<float>(now - pulseTick_) / (hovering_ ? 180.0f : 220.0f);
+        textOpacity_ = hovering_ ? std::min(1.0f, textOpacity_ + step) : std::max(0.0f, textOpacity_ - step);
         const double period = 2200 - 1200 * floatingRenderer_.Activity();
         pulsePhase_ = std::fmod(pulsePhase_ + (now - pulseTick_) / period, 1.0);
         pulseTick_ = now;
+        UpdatePulseTimer();
         static_cast<void>(Render());
         return;
     }
@@ -925,4 +935,30 @@ void RateStrip::OnSettingChange(UINT flags, LPCTSTR section)
     UpdatePulseTimer();
     if (floating_ && IsWindowVisible()) static_cast<void>(Render());
     CWnd::OnSettingChange(flags, section);
+}
+
+void RateStrip::OnMouseMove(UINT flags, CPoint point)
+{
+    if (floating_ && !hovering_)
+    {
+        TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, GetSafeHwnd(), 0};
+        if (::TrackMouseEvent(&tracking))
+        {
+            hovering_ = true;
+            UpdatePulseTimer();
+            static_cast<void>(Render());
+        }
+    }
+    CWnd::OnMouseMove(flags, point);
+}
+
+void RateStrip::OnMouseLeave()
+{
+    if (floating_)
+    {
+        hovering_ = false;
+        UpdatePulseTimer();
+        static_cast<void>(Render());
+    }
+    CWnd::OnMouseLeave();
 }

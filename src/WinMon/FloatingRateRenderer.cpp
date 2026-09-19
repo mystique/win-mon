@@ -82,7 +82,7 @@ void FloatingRateRenderer::ReleaseTarget() noexcept
 }
 
 bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring& download,
-    const LOGFONTW& font, UINT dpi, double pulsePhase) noexcept
+    const LOGFONTW& font, UINT dpi, double pulsePhase, float textOpacity) noexcept
 {
     try
     {
@@ -227,6 +227,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             trend(uploadHistory_, 0x61e5b7);
             trend(downloadHistory_, 0x32bdeb);
         }
+        textOpacity = std::isfinite(textOpacity) ? std::clamp(textOpacity, 0.0f, 1.0f) : 0;
         const auto text = [&](const std::wstring& value, size_t style, D2D1_RECT_F rect, UINT32 rgb, DWRITE_TEXT_ALIGNMENT alignment)
         {
             ComPtr<IDWriteTextLayout> layout;
@@ -243,11 +244,11 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             if (scale < 1)
                 Check(layout->SetFontSize(formats_[style]->GetFontSize() * scale * 0.98f, {0, length}));
             // A narrow glyph halo keeps overlapping trends from crossing the readings.
-            color(0x222e34);
+            color(0x222e34, textOpacity);
             for (const auto offset : {D2D1::Point2F(-0.75f, 0), D2D1::Point2F(0.75f, 0),
                 D2D1::Point2F(0, -0.75f), D2D1::Point2F(0, 0.75f)})
                 target_->DrawTextLayout(D2D1::Point2F(rect.left + offset.x, rect.top + offset.y), layout.Get(), brush_.Get());
-            color(rgb);
+            color(rgb, textOpacity);
             target_->DrawTextLayout(D2D1::Point2F(rect.left, rect.top), layout.Get(), brush_.Get());
             Check(layout->GetMetrics(&metrics));
             return metrics.widthIncludingTrailingWhitespace;
@@ -268,8 +269,8 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                 rgb, DWRITE_TEXT_ALIGNMENT_LEADING);
             text(unit, style, D2D1::RectF(59 + width, top, 113, bottom), rgb, DWRITE_TEXT_ALIGNMENT_LEADING);
         };
-        rateLine(upload, L"\u2191", 2, 7, 23, 0x96b6ae);
-        rateLine(download, L"\u2193", 0, 23, 43, 0xf0f5f7);
+        rateLine(upload, L"\u2191", 2, 7, 23, 0x61e5b7);
+        rateLine(download, L"\u2193", 0, 23, 43, 0x32bdeb);
         Check(target_->EndDraw());
         auto body = copyPixels();
         auto pixels = body;

@@ -53,6 +53,8 @@ private:
     void UpdatePulseTimer() noexcept;
     afx_msg void OnTimer(UINT_PTR timer);
     afx_msg void OnSettingChange(UINT flags, LPCTSTR section);
+    afx_msg void OnMouseMove(UINT flags, CPoint point);
+    afx_msg void OnMouseLeave();
     afx_msg void OnPaint();
     afx_msg BOOL OnEraseBkgnd(CDC* deviceContext);
     afx_msg int OnMouseActivate(CWnd* desktopWindow, UINT hitTest, UINT message);
@@ -84,6 +86,8 @@ private:
     bool hasSelectedFont_ = false;
     bool floating_ = false;
     bool pulseTimerActive_ = false;
+    bool hovering_ = false;
+    float textOpacity_ = 0;
     double pulsePhase_ = 0;
     ULONGLONG pulseTick_ = 0;
 };

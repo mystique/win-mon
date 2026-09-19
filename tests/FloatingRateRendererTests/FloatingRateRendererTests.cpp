@@ -137,7 +137,7 @@ int main(int argc, char** argv)
         for (int x = 60; x < 70; ++x)
         {
             const DWORD p = renderer.Pixels()[y * 138 + x];
-            nearbyReading |= ((p >> 16) & 255) > 110 && ((p >> 8) & 255) > 150 && (p & 255) > 140;
+            nearbyReading |= ((p >> 16) & 255) > 65 && ((p >> 8) & 255) > 150 && (p & 255) > 140;
         }
     Require(nearbyReading, "short upload stays beside arrow instead of aligning to far right");
     renderer.ResetHistory();
@@ -176,6 +176,14 @@ int main(int argc, char** argv)
             blueCurve |= b > r + 15 && b > g + 8;
         }
     Require(greenCurve && blueCurve, "both color-coded curves use the upper area too");
+    Require(renderer.Render(L"0.6 K/s", L"8.4 M/s", font, 96, 0.5, 0), "hidden text frame");
+    const auto hiddenText = renderer.Pixels();
+    Require(renderer.Render(L"999.9 G/s", L"999.9 G/s", font, 96, 0.5, 0), "hidden text ignores readings");
+    Require(hiddenText == renderer.Pixels(), "hidden glyphs and halos leave curves untouched");
+    Require(renderer.Render(L"0.6 K/s", L"8.4 M/s", font, 96, 0.5, 0.5), "half visible text");
+    const auto halfText = renderer.Pixels();
+    Require(renderer.Render(L"0.6 K/s", L"8.4 M/s", font, 96, 0.5, 1), "visible text");
+    Require(halfText != hiddenText && halfText != renderer.Pixels(), "fade has intermediate opacity");
     const auto evidence = argc > 1 ? std::filesystem::path(argv[1]) : std::filesystem::path{};
     if (!evidence.empty()) std::filesystem::create_directories(evidence);
     for (UINT dpi : {96u, 120u, 144u, 192u})
