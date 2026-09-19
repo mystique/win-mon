@@ -221,8 +221,33 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                     return D2D1::Point2F(47 + 66.0f * static_cast<float>(i) / 47,
                         40 - 31 * static_cast<float>(history[i] / maximum));
                 };
-                for (size_t i = 49 - count_; i < 48; ++i)
-                    target_->DrawLine(point(i - 1), point(i), brush_.Get(), 1.0f, stroke_.Get());
+                const size_t first = 48 - count_;
+                const auto tangent = [&](size_t i)
+                {
+                    if (i == first) return point(i + 1).y - point(i).y;
+                    if (i == 47) return point(i).y - point(i - 1).y;
+                    const float before = point(i).y - point(i - 1).y;
+                    const float after = point(i + 1).y - point(i).y;
+                    // Monotone Hermite slopes retain every sampled peak and valley,
+                    // without interpolation overshoot or additional rate smoothing.
+                    return before * after > 0 ? 2 * before * after / (before + after) : 0.0f;
+                };
+                ComPtr<ID2D1PathGeometry> path;
+                ComPtr<ID2D1GeometrySink> sink;
+                Check(factory_->CreatePathGeometry(&path));
+                Check(path->Open(&sink));
+                sink->BeginFigure(point(first), D2D1_FIGURE_BEGIN_HOLLOW);
+                for (size_t i = first + 1; i < 48; ++i)
+                {
+                    const auto from = point(i - 1), to = point(i);
+                    const float third = (to.x - from.x) / 3;
+                    sink->AddBezier(D2D1::BezierSegment(
+                        D2D1::Point2F(from.x + third, from.y + tangent(i - 1) / 3),
+                        D2D1::Point2F(to.x - third, to.y - tangent(i) / 3), to));
+                }
+                sink->EndFigure(D2D1_FIGURE_END_OPEN);
+                Check(sink->Close());
+                target_->DrawGeometry(path.Get(), brush_.Get(), 1.6f, stroke_.Get());
             };
             trend(uploadHistory_, 0x61e5b7);
             trend(downloadHistory_, 0x32bdeb);

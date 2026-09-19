@@ -184,6 +184,24 @@ int main(int argc, char** argv)
     const auto halfText = renderer.Pixels();
     Require(renderer.Render(L"0.6 K/s", L"8.4 M/s", font, 96, 0.5, 1), "visible text");
     Require(halfText != hiddenText && halfText != renderer.Pixels(), "fade has intermediate opacity");
+    renderer.ResetHistory();
+    for (int i = 0; i < 46; ++i) renderer.AddSample(0, 0);
+    renderer.AddSample(0, 1000);
+    renderer.AddSample(0, 0);
+    Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 96, 0.5, 0), "isolated trend peak");
+    bool retainedPeak = false;
+    for (int y = 5; y < 50; ++y)
+        for (int x = 52; x < 126; ++x)
+        {
+            const DWORD p = renderer.Pixels()[y * 138 + x];
+            const int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            if (b > r + 15 && b > g + 8)
+            {
+                Require(y >= 30 && y <= 45, "smooth trend stays inside sampled range plus stroke coverage");
+                retainedPeak |= x >= 119 && y <= 33;
+            }
+        }
+    Require(retainedPeak, "smoothing preserves the isolated sampled peak");
     const auto evidence = argc > 1 ? std::filesystem::path(argv[1]) : std::filesystem::path{};
     if (!evidence.empty()) std::filesystem::create_directories(evidence);
     for (UINT dpi : {96u, 120u, 144u, 192u})
