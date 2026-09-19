@@ -48,3 +48,7 @@ Compact Floating Rate Display — Direct2D / DirectWrite 实现规格及其中�
 - Standards / Spec 双轴审查：初审阴影跨进程穿透问题已用独立 `WS_EX_TRANSPARENT` 分层阴影修复；复审均无剩余发现。
 - [验证报告及待人工验收清单](../validation.md)。勾选项表示实现和相应自动检查已完成，不代表未执行的设备场景已人工通过。
 - 状态 `ready-for-human`：代码实现完成，保留人工验收项，不将 ticket 虚标为全部验收完成。
+
+### 视觉反馈修订
+
+按用户反馈将主体放大到 144×48 DIP；暗轨道和亮弧的左右连接处均留约 2 DIP 圆头间隙。四种 DPI 的空闲／满值间隙像素回归通过，Release 构建及 3/3 CTest 通过。原待人工验收状态不变。

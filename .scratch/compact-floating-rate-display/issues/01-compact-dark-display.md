@@ -5,7 +5,7 @@ Implementation: complete
 Acceptance: pending manual Windows scenarios
 Blocked by: None (can start immediately)
 
-**What to build:** 用户启用 Show Floating Display 后，实际看到一个 132×44 DIP 的平滑深色胶囊，左侧显示实时 Download Rate，右上显示实时 Upload Rate，并可继续拖动及使用 Operator Menu。完成从现有 Rate Sample 到新绘图路径再到实际分层窗口的完整链路。
+**What to build:** 用户启用 Show Floating Display 后，实际看到一个 144×48 DIP 的平滑深色胶囊，左侧显示实时 Download Rate，右上显示实时 Upload Rate，并可继续拖动及使用 Operator Menu。完成从现有 Rate Sample 到新绘图路径再到实际分层窗口的完整链路。
 
 ## Parent
 
@@ -21,8 +21,8 @@ Compact Floating Rate Display — Direct2D / DirectWrite 实现规格。采用�
 
 ## Acceptance criteria
 
-- [x] 启用 Show Floating Display 后，主体为 132×44 DIP、圆角约 22 DIP 的深色胶囊，主色以 #222E34 为基准，文字近白，上传青绿、下载青蓝。
-- [x] 左侧圆轨道外径约 36 DIP，线宽约 1.5 DIP；下载数字在环内，下方显示向下箭头和单位；右上显示向上箭头和完整上传读数。没有 CPU、百分比、加号或图外说明文字。
+- [x] 启用 Show Floating Display 后，主体为 144×48 DIP、圆角约 24 DIP 的深色胶囊，主色以 #222E34 为基准，文字近白，上传青绿、下载青蓝。
+- [x] 左侧圆轨道外径约 39 DIP，线宽约 1.64 DIP；下载数字在环内，下方显示向下箭头和单位；右上显示向上箭头和完整上传读数。没有 CPU、百分比、加号或图外说明文字。
 - [x] 实际 Rate Sample 每秒更新读数；数值与 Rate Strip 一致，采用基数 1000、K/s／M/s／G/s、至少 K/s、一位小数，例如 128.0 K/s。
 - [x] 默认字体下左右区域固定且不随数值跳动；0.0 K/s、999.9 K/s、999.9 G/s 及更长读数不省略数值或单位。复用字体测量，必要时只缩小相应数字字号。
 - [x] 起始文字大小约为下载 15 DIP、单位 9 DIP、上传 12 DIP，以真实尺寸可读性校准。当前目标 DPI 下直接绘制，不拉伸低分辨率截图。
@@ -51,3 +51,7 @@ Compact Floating Rate Display — Direct2D / DirectWrite 实现规格。采用�
 - Standards / Spec 双轴审查：初审阴影跨进程穿透问题已用独立 `WS_EX_TRANSPARENT` 分层阴影修复；复审均无剩余发现。
 - [验证报告及待人工验收清单](../validation.md)。勾选项表示实现和相应自动检查已完成，不代表未执行的设备场景已人工通过。
 - 状态 `ready-for-human`：代码实现完成，保留人工验收项，不将 ticket 虚标为全部验收完成。
+
+### 视觉反馈修订
+
+按用户反馈将主体放大到 144×48 DIP；暗轨道和亮弧的左右连接处均留约 2 DIP 圆头间隙。四种 DPI 的空闲／满值间隙像素回归通过，Release 构建及 3/3 CTest 通过。原待人工验收状态不变。

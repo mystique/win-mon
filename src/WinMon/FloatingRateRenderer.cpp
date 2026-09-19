@@ -4,6 +4,8 @@
 
 namespace
 {
+constexpr float kBodyScale = 12.0f / 11.0f; // 132x44 design coordinates to 144x48 DIP.
+
 void Check(HRESULT result) { if (FAILED(result)) throw result; }
 double Rate(double value) noexcept { return std::isfinite(value) && value > 0 ? value : 0; }
 }
@@ -21,14 +23,14 @@ FloatingRateRenderer::~FloatingRateRenderer()
 
 SIZE FloatingRateRenderer::SizeForDpi(UINT dpi) noexcept
 {
-    return {MulDiv(138, static_cast<int>(dpi), 96), MulDiv(50, static_cast<int>(dpi), 96)};
+    return {MulDiv(150, static_cast<int>(dpi), 96), MulDiv(54, static_cast<int>(dpi), 96)};
 }
 
 bool FloatingRateRenderer::HitTest(POINT client, UINT dpi) noexcept
 {
     if (!dpi) return false;
-    const float x = client.x * 96.0f / dpi - 3;
-    const float y = client.y * 96.0f / dpi - 25;
+    const float x = (client.x * 96.0f / dpi - 3) / kBodyScale;
+    const float y = (client.y * 96.0f / dpi - 3) / kBodyScale - 22;
     const float dx = x - std::clamp(x, 22.0f, 110.0f);
     return dx * dx + y * y <= 22 * 22;
 }
@@ -129,14 +131,15 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             target_->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
             dpi_ = dpi;
         }
+        target_->SetTransform(D2D1::Matrix3x2F::Identity());
         target_->BeginDraw();
         target_->Clear(D2D1::ColorF(0, 0.0f));
         const auto color = [&](UINT32 rgb, float alpha = 1) { brush_->SetColor(D2D1::ColorF(rgb, alpha)); };
         // Two quiet contours keep the entire shadow inside the 3 DIP margin.
         color(0x000000, 0.06f);
-        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(1, 1, 137, 49), 24, 24), brush_.Get());
+        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(1, 1, 149, 53), 26, 26), brush_.Get());
         color(0x000000, 0.10f);
-        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(2, 2, 136, 48), 23, 23), brush_.Get());
+        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(2, 2, 148, 52), 25, 25), brush_.Get());
         Check(target_->EndDraw());
         const auto copyPixels = [&]
         {
@@ -148,22 +151,25 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         auto shadow = copyPixels();
         target_->BeginDraw();
         target_->Clear(D2D1::ColorF(0, 0.0f));
+        // Scale vectors and glyphs before rasterization, leaving the shadow margin at 3 DIP.
+        target_->SetTransform(D2D1::Matrix3x2F::Scale(kBodyScale, kBodyScale, D2D1::Point2F(3, 3)));
         color(0x222e34);
         target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(3, 3, 135, 47), 22, 22), brush_.Get());
-        color(0x46565f);
-        target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(25, 25), 17.25f, 17.25f), brush_.Get(), 1.5f);
         double maximum = 1000;
         for (size_t i = 48 - count_; i < 48; ++i)
             maximum = std::max({maximum, uploadHistory_[i], downloadHistory_[i]});
-        const auto arc = [&](double value, bool up)
+        const auto arc = [&](double ratio, bool up, UINT32 rgb)
         {
-            if (value <= 0) return;
-            const double angle = std::clamp(value / maximum, 0.0, 1.0) * 3.141592653589793;
+            if (ratio <= 0) return;
+            // Leave about 2 DIP of clear space after accounting for the round caps.
+            constexpr double gapAngle = 0.1;
+            const double angle = gapAngle + std::clamp(ratio, 0.0, 1.0) * (3.141592653589793 - 2 * gapAngle);
             ComPtr<ID2D1PathGeometry> path;
             ComPtr<ID2D1GeometrySink> sink;
             Check(factory_->CreatePathGeometry(&path));
             Check(path->Open(&sink));
-            sink->BeginFigure(D2D1::Point2F(42.25f, 25), D2D1_FIGURE_BEGIN_HOLLOW);
+            sink->BeginFigure(D2D1::Point2F(25 + 17.25f * static_cast<float>(std::cos(gapAngle)),
+                25 + (up ? -17.25f : 17.25f) * static_cast<float>(std::sin(gapAngle))), D2D1_FIGURE_BEGIN_HOLLOW);
             sink->AddArc(D2D1::ArcSegment(
                 D2D1::Point2F(25 + 17.25f * static_cast<float>(std::cos(angle)),
                     25 + (up ? -17.25f : 17.25f) * static_cast<float>(std::sin(angle))),
@@ -172,11 +178,13 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                 D2D1_ARC_SIZE_SMALL));
             sink->EndFigure(D2D1_FIGURE_END_OPEN);
             Check(sink->Close());
-            color(up ? 0x61e5b7 : 0x32bdeb);
+            color(rgb);
             target_->DrawGeometry(path.Get(), brush_.Get(), 1.5f, stroke_.Get());
         };
-        arc(upload_ > 0 ? uploadHistory_.back() : 0, true);
-        arc(download_ > 0 ? downloadHistory_.back() : 0, false);
+        arc(1, true, 0x46565f);
+        arc(1, false, 0x46565f);
+        arc(upload_ > 0 ? uploadHistory_.back() / maximum : 0, true, 0x61e5b7);
+        arc(download_ > 0 ? downloadHistory_.back() / maximum : 0, false, 0x32bdeb);
         if (count_ > 1)
         {
             double peak = 1000;

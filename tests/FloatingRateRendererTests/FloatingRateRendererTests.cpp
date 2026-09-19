@@ -36,14 +36,14 @@ int main(int argc, char** argv)
     LOGFONTW font{};
     wcscpy_s(font.lfFaceName, L"Segoe UI");
     Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 96), "offscreen render");
-    Require(renderer.PixelSize().cx == 138 && renderer.PixelSize().cy == 50, "132x44 body plus shadow");
+    Require(renderer.PixelSize().cx == 150 && renderer.PixelSize().cy == 54, "144x48 body plus shadow");
     bool partial = false;
     const auto& pixels = renderer.Pixels();
     for (size_t i = 0; i < pixels.size(); ++i)
     {
         const DWORD p = pixels[i], a = p >> 24;
         Require((p & 255) <= a && ((p >> 8) & 255) <= a && ((p >> 16) & 255) <= a, "premultiplied alpha");
-        if (i < 138 || i >= pixels.size() - 138 || i % 138 == 0 || i % 138 == 137)
+        if (i < 150 || i >= pixels.size() - 150 || i % 150 == 0 || i % 150 == 149)
             Require(p == 0, "transparent canvas boundary");
         partial |= a > 0 && a < 255;
     }
@@ -52,10 +52,12 @@ int main(int argc, char** argv)
 
     const auto colored = [&](int x, int y, bool up)
     {
+        x = 3 + (x - 3) * 12 / 11;
+        y = 3 + (y - 3) * 12 / 11;
         for (int dy = -1; dy <= 1; ++dy)
             for (int dx = -1; dx <= 1; ++dx)
             {
-                DWORD p = renderer.Pixels()[(y + dy) * 138 + x + dx];
+                DWORD p = renderer.Pixels()[(y + dy) * 150 + x + dx];
                 int b = p & 255, g = (p >> 8) & 255, r = (p >> 16) & 255;
                 if (up ? (g > 120 && g > b + 15 && g > r + 30) : (b > 140 && b > g + 15 && b > r + 50)) return true;
             }
@@ -75,6 +77,19 @@ int main(int argc, char** argv)
     renderer.AddSample(1000, 1000);
     render();
     Require(colored(13, 13, true) && colored(13, 37, false), "full semicircles reach left");
+    for (UINT dpi : {96u, 120u, 144u, 192u})
+    {
+        for (bool active : {false, true})
+        {
+            renderer.ResetHistory();
+            if (active) renderer.AddSample(1000, 1000);
+            Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, dpi), "joint gap frame");
+            const int y = MulDiv(27, static_cast<int>(dpi), 96);
+            for (int x : {MulDiv(8, static_cast<int>(dpi), 96), MulDiv(46, static_cast<int>(dpi), 96)})
+                Require(renderer.Pixels()[y * renderer.PixelSize().cx + x] == 0xff222e34,
+                    "tracks and full arcs leave capsule-colored gaps at both joints");
+        }
+    }
     renderer.AddSample(0, 0);
     render();
     Require(!colored(37, 13, true) && !colored(37, 37, false), "raw zero immediately clears arcs");
@@ -125,8 +140,8 @@ int main(int argc, char** argv)
                 wcscpy_s(font.lfFaceName, family);
                 Require(renderer.Render(value, value, font, dpi), "DPI/font/long value matrix");
                 const SIZE size = renderer.PixelSize();
-                Require(size.cx == (dpi == 96 ? 138 : dpi == 120 ? 173 : dpi == 144 ? 207 : 276), "scaled width");
-                Require(size.cy == (dpi == 96 ? 50 : dpi == 120 ? 63 : dpi == 144 ? 75 : 100), "scaled height");
+                Require(size.cx == (dpi == 96 ? 150 : dpi == 120 ? 188 : dpi == 144 ? 225 : 300), "scaled width");
+                Require(size.cy == (dpi == 96 ? 54 : dpi == 120 ? 68 : dpi == 144 ? 81 : 108), "scaled height");
                 for (size_t i = 0; i < renderer.Pixels().size(); ++i)
                 {
                     DWORD p = renderer.Pixels()[i], a = p >> 24;
