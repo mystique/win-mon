@@ -89,6 +89,7 @@ void RateStrip::SetRates(
     uploadText_ = uploadText;
     downloadText_ = downloadText;
     floatingRenderer_.AddSample(uploadBytesPerSecond, downloadBytesPerSecond);
+    UpdatePulseTimer();
     if (GetSafeHwnd() != nullptr)
     {
         static_cast<void>(Render());
@@ -235,6 +236,8 @@ void RateStrip::SetContextMenuEnabled(bool enabled) noexcept
 
 BEGIN_MESSAGE_MAP(RateStrip, CWnd)
     ON_WM_PAINT()
+    ON_WM_TIMER()
+    ON_WM_SETTINGCHANGE()
     ON_WM_ERASEBKGND()
     ON_WM_MOUSEACTIVATE()
     ON_WM_NCHITTEST()
@@ -484,6 +487,9 @@ bool RateStrip::RelayoutFloating() noexcept
 
 void RateStrip::Shutdown() noexcept
 {
+    if (GetSafeHwnd() && pulseTimerActive_) KillTimer(1);
+    pulseTimerActive_ = false;
+    pulsePhase_ = 0;
     if (GetSafeHwnd() != nullptr)
     {
         DestroyWindow();
@@ -672,7 +678,7 @@ bool RateStrip::Render() noexcept
         RateFontSelection selection;
         return GetSafeHwnd() != nullptr && GetRateFont(selection) &&
             floatingRenderer_.Render(uploadText_, downloadText_, selection.logFont,
-                GetDpiForWindow(GetSafeHwnd())) && floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd());
+                GetDpiForWindow(GetSafeHwnd()), pulseTimerActive_ ? pulsePhase_ : 0.5) && floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd());
     }
     if (GetSafeHwnd() == nullptr || size_.cx <= 0 || size_.cy <= 0 || font_.GetSafeHandle() == nullptr)
     {
@@ -874,4 +880,49 @@ void RateStrip::OnWindowPosChanged(WINDOWPOS* position)
         if (::GetWindowRect(GetSafeHwnd(), &rect))
             floatingShadow_.SetWindowPos(&wndTopMost, rect.left, rect.top, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
     }
+}
+
+void RateStrip::UpdatePulseTimer() noexcept
+{
+    if (!floating_ || !GetSafeHwnd()) return;
+    BOOL animations = FALSE;
+    SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
+    const bool animate = IsWindowVisible() && animations && floatingRenderer_.Activity() > 0;
+    if (animate && !pulseTimerActive_)
+    {
+        pulseTick_ = GetTickCount64();
+        pulseTimerActive_ = SetTimer(1, 33, nullptr) != 0;
+    }
+    else if (!animate && pulseTimerActive_)
+    {
+        KillTimer(1);
+        pulseTimerActive_ = false;
+        pulsePhase_ = 0;
+    }
+}
+
+void RateStrip::OnTimer(UINT_PTR timer)
+{
+    if (timer == 1 && floating_ && pulseTimerActive_)
+    {
+        if (!IsWindowVisible() || floatingRenderer_.Activity() == 0)
+        {
+            UpdatePulseTimer();
+            return;
+        }
+        const ULONGLONG now = GetTickCount64();
+        const double period = 2200 - 1200 * floatingRenderer_.Activity();
+        pulsePhase_ = std::fmod(pulsePhase_ + (now - pulseTick_) / period, 1.0);
+        pulseTick_ = now;
+        static_cast<void>(Render());
+        return;
+    }
+    CWnd::OnTimer(timer);
+}
+
+void RateStrip::OnSettingChange(UINT flags, LPCTSTR section)
+{
+    UpdatePulseTimer();
+    if (floating_ && IsWindowVisible()) static_cast<void>(Render());
+    CWnd::OnSettingChange(flags, section);
 }

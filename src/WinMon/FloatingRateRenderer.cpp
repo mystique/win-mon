@@ -64,6 +64,15 @@ void FloatingRateRenderer::AddSample(double upload, double download) noexcept
     count_ = std::min(count_ + 1, uploadHistory_.size());
 }
 
+double FloatingRateRenderer::Activity() const noexcept
+{
+    if (upload_ == 0 && download_ == 0) return 0;
+    double peak = 1000;
+    for (size_t i = 48 - count_; i < 48; ++i)
+        peak = std::max({peak, uploadHistory_[i], downloadHistory_[i]});
+    return std::clamp(std::max(uploadHistory_.back(), downloadHistory_.back()) / peak, 0.0, 1.0);
+}
+
 void FloatingRateRenderer::ReleaseTarget() noexcept
 {
     brush_.Reset();
@@ -73,7 +82,7 @@ void FloatingRateRenderer::ReleaseTarget() noexcept
 }
 
 bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring& download,
-    const LOGFONTW& font, UINT dpi) noexcept
+    const LOGFONTW& font, UINT dpi, double pulsePhase) noexcept
 {
     try
     {
@@ -103,7 +112,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         }
         if (!formats_[0] || memcmp(&font_, &font, sizeof(font)) != 0)
         {
-            constexpr float sizes[]{15, 9, 12};
+            constexpr float sizes[]{14, 9, 10};
             std::array<ComPtr<IDWriteTextFormat>, 3> formats;
             for (size_t i = 0; i < formats.size(); ++i)
             {
@@ -162,7 +171,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         {
             if (ratio <= 0) return;
             // Leave about 2 DIP of clear space after accounting for the round caps.
-            constexpr double gapAngle = 0.1;
+            constexpr double gapAngle = 0.13;
             const double angle = gapAngle + std::clamp(ratio, 0.0, 1.0) * (3.141592653589793 - 2 * gapAngle);
             ComPtr<ID2D1PathGeometry> path;
             ComPtr<ID2D1GeometrySink> sink;
@@ -179,24 +188,44 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             sink->EndFigure(D2D1_FIGURE_END_OPEN);
             Check(sink->Close());
             color(rgb);
-            target_->DrawGeometry(path.Get(), brush_.Get(), 1.5f, stroke_.Get());
+            target_->DrawGeometry(path.Get(), brush_.Get(), 2.5f, stroke_.Get());
         };
         arc(1, true, 0x46565f);
         arc(1, false, 0x46565f);
         arc(upload_ > 0 ? uploadHistory_.back() / maximum : 0, true, 0x61e5b7);
         arc(download_ > 0 ? downloadHistory_.back() / maximum : 0, false, 0x32bdeb);
+        const float activity = static_cast<float>(Activity());
+        if (activity > 0)
+        {
+            const float phase = static_cast<float>(std::isfinite(pulsePhase) ? std::clamp(pulsePhase, 0.0, 1.0) : 0.5);
+            const float radius = 2 + 12 * phase;
+            const float opacity = (0.2f + 0.8f * activity) * std::sin(phase * 3.14159265f);
+            // Soft concentric fills expand from the center; radius + stroke stays
+            // below 14.5, safely inside the outer ring's inner radius of 16 DIP.
+            for (int layer = 12; layer > 0; --layer)
+            {
+                const float r = radius * layer / 12;
+                color(0x43cfc9, opacity * 0.035f);
+                target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(25, 25), r, r), brush_.Get());
+            }
+            color(0x61e5b7, opacity * 0.4f);
+            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(25, 25), radius, radius), brush_.Get(), 0.8f);
+        }
         if (count_ > 1)
         {
-            double peak = 1000;
-            for (size_t i = 48 - count_; i < 48; ++i) peak = std::max(peak, downloadHistory_[i]);
-            color(peak == 1000 && downloadHistory_.back() == 0 ? 0x46565f : 0x32bdeb);
-            const auto point = [&](size_t i)
+            const auto trend = [&](const auto& history, UINT32 rgb)
             {
-                return D2D1::Point2F(47 + 66.0f * static_cast<float>(i) / 47,
-                    39 - 11 * static_cast<float>(downloadHistory_[i] / peak));
+                color(rgb, 0.32f);
+                const auto point = [&](size_t i)
+                {
+                    return D2D1::Point2F(47 + 66.0f * static_cast<float>(i) / 47,
+                        40 - 31 * static_cast<float>(history[i] / maximum));
+                };
+                for (size_t i = 49 - count_; i < 48; ++i)
+                    target_->DrawLine(point(i - 1), point(i), brush_.Get(), 1.0f, stroke_.Get());
             };
-            for (size_t i = 49 - count_; i < 48; ++i)
-                target_->DrawLine(point(i - 1), point(i), brush_.Get(), 1.25f, stroke_.Get());
+            trend(uploadHistory_, 0x61e5b7);
+            trend(downloadHistory_, 0x32bdeb);
         }
         const auto text = [&](const std::wstring& value, size_t style, D2D1_RECT_F rect, UINT32 rgb, DWRITE_TEXT_ALIGNMENT alignment)
         {
@@ -213,30 +242,34 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                 (rect.bottom - rect.top) / metrics.height});
             if (scale < 1)
                 Check(layout->SetFontSize(formats_[style]->GetFontSize() * scale * 0.98f, {0, length}));
+            // A narrow glyph halo keeps overlapping trends from crossing the readings.
+            color(0x222e34);
+            for (const auto offset : {D2D1::Point2F(-0.75f, 0), D2D1::Point2F(0.75f, 0),
+                D2D1::Point2F(0, -0.75f), D2D1::Point2F(0, 0.75f)})
+                target_->DrawTextLayout(D2D1::Point2F(rect.left + offset.x, rect.top + offset.y), layout.Get(), brush_.Get());
             color(rgb);
             target_->DrawTextLayout(D2D1::Point2F(rect.left, rect.top), layout.Get(), brush_.Get());
             Check(layout->GetMetrics(&metrics));
             return metrics.widthIncludingTrailingWhitespace;
         };
-        const auto split = download.find(L' ');
-        text(download.substr(0, split), 0, D2D1::RectF(11, 13, 39, 29), 0xf0f5f7, DWRITE_TEXT_ALIGNMENT_CENTER);
-        text(L"\u2193 " + (split == std::wstring::npos ? std::wstring{} : download.substr(split + 1)),
-            1, D2D1::RectF(11, 28, 39, 38), 0x32bdeb, DWRITE_TEXT_ALIGNMENT_CENTER);
-        const float arrowWidth = text(L"\u2191", 2, D2D1::RectF(47, 9, 58, 25),
-            0x61e5b7, DWRITE_TEXT_ALIGNMENT_LEADING);
-        const auto uploadSplit = upload.find(L' ');
-        const std::wstring unit = uploadSplit == std::wstring::npos ? std::wstring{} : upload.substr(uploadSplit);
-        ComPtr<IDWriteTextLayout> unitLayout;
-        Check(textFactory_->CreateTextLayout(unit.c_str(), static_cast<UINT32>(unit.size()),
-            formats_[2].Get(), 66, 16, &unitLayout));
-        DWRITE_TEXT_METRICS unitMetrics{};
-        Check(unitLayout->GetMetrics(&unitMetrics));
-        const float numberLeft = 47 + arrowWidth + 4 / kBodyScale;
-        const float numberWidth = text(upload.substr(0, uploadSplit), 2,
-            D2D1::RectF(numberLeft, 9, 113 - unitMetrics.widthIncludingTrailingWhitespace, 25),
-            0xf0f5f7, DWRITE_TEXT_ALIGNMENT_LEADING);
-        text(unit, 2, D2D1::RectF(numberLeft + numberWidth, 9, 113, 25),
-            0xf0f5f7, DWRITE_TEXT_ALIGNMENT_LEADING);
+        const auto rateLine = [&](const std::wstring& value, const wchar_t* arrow,
+            size_t style, float top, float bottom, UINT32 rgb)
+        {
+            text(arrow, style, D2D1::RectF(47, top, 58, bottom), rgb, DWRITE_TEXT_ALIGNMENT_LEADING);
+            const auto split = value.find(L' ');
+            const std::wstring unit = split == std::wstring::npos ? std::wstring{} : value.substr(split);
+            ComPtr<IDWriteTextLayout> unitLayout;
+            Check(textFactory_->CreateTextLayout(unit.c_str(), static_cast<UINT32>(unit.size()),
+                formats_[style].Get(), 66, bottom - top, &unitLayout));
+            DWRITE_TEXT_METRICS metrics{};
+            Check(unitLayout->GetMetrics(&metrics));
+            const float width = text(value.substr(0, split), style,
+                D2D1::RectF(59, top, 113 - metrics.widthIncludingTrailingWhitespace, bottom),
+                rgb, DWRITE_TEXT_ALIGNMENT_LEADING);
+            text(unit, style, D2D1::RectF(59 + width, top, 113, bottom), rgb, DWRITE_TEXT_ALIGNMENT_LEADING);
+        };
+        rateLine(upload, L"\u2191", 2, 7, 23, 0x96b6ae);
+        rateLine(download, L"\u2193", 0, 23, 43, 0xf0f5f7);
         Check(target_->EndDraw());
         auto body = copyPixels();
         auto pixels = body;

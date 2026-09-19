@@ -137,9 +137,45 @@ int main(int argc, char** argv)
         for (int x = 60; x < 70; ++x)
         {
             const DWORD p = renderer.Pixels()[y * 138 + x];
-            nearbyReading |= ((p >> 16) & 255) > 170 && ((p >> 8) & 255) > 170 && (p & 255) > 170;
+            nearbyReading |= ((p >> 16) & 255) > 110 && ((p >> 8) & 255) > 150 && (p & 255) > 140;
         }
     Require(nearbyReading, "short upload stays beside arrow instead of aligning to far right");
+    renderer.ResetHistory();
+    renderer.AddSample(1000, 1000);
+    Require(renderer.Render(L"1.0 K/s", L"1.0 K/s", font, 96, 0.1), "early pulse");
+    const auto earlyPulse = renderer.Pixels();
+    Require(renderer.Render(L"1.0 K/s", L"1.0 K/s", font, 96, 0.8), "late pulse");
+    int pulseChanges = 0;
+    for (int y = 0; y < 54; ++y)
+        for (int x = 0; x < 138; ++x)
+            if (earlyPulse[y * 138 + x] != renderer.Pixels()[y * 138 + x])
+            {
+                ++pulseChanges;
+                Require((x - 27) * (x - 27) + (y - 27) * (y - 27) < 17 * 17,
+                    "expanding pulse stays inside ring and never moves readings or history");
+            }
+    Require(pulseChanges > 30, "pulse expands between animation phases");
+    renderer.AddSample(0, 0);
+    Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 96, 0.1), "idle pulse frame");
+    const auto idle = renderer.Pixels();
+    Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 96, 0.8), "idle second phase");
+    Require(idle == renderer.Pixels(), "idle has no breathing motion");
+    renderer.ResetHistory();
+    render();
+    const auto emptyCurves = renderer.Pixels();
+    for (int i = 0; i < 48; ++i) renderer.AddSample(1000, 500);
+    render();
+    bool greenCurve = false, blueCurve = false;
+    for (int y = 8; y < 28; ++y)
+        for (int x = 52; x < 123; ++x)
+        {
+            const DWORD p = renderer.Pixels()[y * 138 + x];
+            if (p == emptyCurves[y * 138 + x]) continue;
+            const int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            greenCurve |= g > r + 15 && g > b + 5;
+            blueCurve |= b > r + 15 && b > g + 8;
+        }
+    Require(greenCurve && blueCurve, "both color-coded curves use the upper area too");
     const auto evidence = argc > 1 ? std::filesystem::path(argv[1]) : std::filesystem::path{};
     if (!evidence.empty()) std::filesystem::create_directories(evidence);
     for (UINT dpi : {96u, 120u, 144u, 192u})
@@ -171,5 +207,10 @@ int main(int argc, char** argv)
         SaveBitmap(renderer, evidence / "long-reading.bmp", 0xf4f5f7);
         Require(renderer.Render(L"0.6 K/s", L"0.1 K/s", font, 96), "short evidence");
         SaveBitmap(renderer, evidence / "short-reading.bmp", 0x181818);
+        for (int frame = 0; frame < 30; ++frame)
+        {
+            Require(renderer.Render(L"128.0 K/s", L"8.4 M/s", font, 96, frame / 30.0), "pulse preview frame");
+            SaveBitmap(renderer, evidence / ("pulse-" + std::to_string(frame) + ".bmp"), 0x181818);
+        }
     }
 }

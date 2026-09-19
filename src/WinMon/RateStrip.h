@@ -50,6 +50,9 @@ private:
     [[nodiscard]] bool Render() noexcept;
     [[nodiscard]] bool Relayout(HWND taskbar, HWND notificationArea) noexcept;
 
+    void UpdatePulseTimer() noexcept;
+    afx_msg void OnTimer(UINT_PTR timer);
+    afx_msg void OnSettingChange(UINT flags, LPCTSTR section);
     afx_msg void OnPaint();
     afx_msg BOOL OnEraseBkgnd(CDC* deviceContext);
     afx_msg int OnMouseActivate(CWnd* desktopWindow, UINT hitTest, UINT message);
@@ -80,4 +83,7 @@ private:
     bool contextMenuEnabled_ = false;
     bool hasSelectedFont_ = false;
     bool floating_ = false;
+    bool pulseTimerActive_ = false;
+    double pulsePhase_ = 0;
+    ULONGLONG pulseTick_ = 0;
 };

@@ -87,6 +87,17 @@ int main(int argc, char** argv)
             for (int i = 0; i < 48; ++i)
                 display.SetRates(L"128.0 K/s", L"8.4 M/s", 128000, 2000000 + (i % 7) * 1100000);
             display.SetRates(L"128.0 K/s", L"8.4 M/s", 128000, 8400000);
+            const ULONGLONG until = GetTickCount64() + 500;
+            while (GetTickCount64() < until)
+            {
+                MSG message{};
+                while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
+                {
+                    TranslateMessage(&message);
+                    DispatchMessageW(&message);
+                }
+                MsgWaitForMultipleObjects(0, nullptr, FALSE, 16, QS_ALLINPUT);
+            }
             for (bool light : {false, true})
             {
                 HWND backdrop = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"STATIC", L"", WS_POPUP |
