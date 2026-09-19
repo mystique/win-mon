@@ -158,6 +158,7 @@ RateDisplay WinMonCore::SampleObserved(
 {
     ReconcileSelection(snapshots);
     RateDisplay display;
+    display.networkGeneration = networkGeneration_;
     const double elapsed = std::chrono::duration<double>(sampledAt - previousTime_).count();
     const bool validElapsed = hasPrevious_ && elapsed > 0.0;
     if (validElapsed)
@@ -266,8 +267,15 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
     return menu;
 }
 
-void WinMonCore::SelectAll() noexcept { selectedNicId_.clear(); }
-void WinMonCore::SelectNic(const std::string& stableId) noexcept { selectedNicId_ = stableId; }
+void WinMonCore::SelectAll() noexcept { SelectNic({}); }
+void WinMonCore::SelectNic(const std::string& stableId) noexcept
+{
+    if (selectedNicId_ != stableId)
+    {
+        selectedNicId_ = stableId;
+        ++networkGeneration_;
+    }
+}
 
 void WinMonCore::ReconcileSelection(const std::vector<NicSnapshot>& snapshots) noexcept
 {
@@ -282,7 +290,7 @@ void WinMonCore::ReconcileSelection(const std::vector<NicSnapshot>& snapshots) n
         [this](const NicSnapshot& snapshot) { return !snapshot.loopback && snapshot.stableId == selectedNicId_; });
     if (selected == snapshots.end())
     {
-        selectedNicId_.clear();
+        SelectAll();
     }
 }
 

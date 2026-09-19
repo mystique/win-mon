@@ -13,7 +13,7 @@ The two-line Upload/Download Rate text embedded on the primary bottom taskbar on
 _Avoid_: taskbar window, widget, HUD, overlay (unless contrasting implementation), main UI
 
 **Floating Rate Display**:
-An optional, borderless, always-on-top desktop display of the same two Rate Strip lines. It has no taskbar or Alt-Tab entry, uses the Rate Font and system-theme text color, can be dragged with the left mouse button, and always opens the Operator Menu on right-click; it remains available while the Rate Strip is hidden. Its visibility and absolute desktop position persist; first use and an off-screen restored position place it at the primary work area's upper-right corner.
+An optional, borderless, always-on-top 132×44 DIP dark capsule. Download Rate is emphasized inside a left-hand ring; Upload Rate sits above a recent download trend on the right. Independent green upper and blue lower semicircles grow from the right toward the left, showing upload and download relative to a shared recent peak (not bandwidth utilization). Direct2D/DirectWrite render at the display monitor’s DPI with per-pixel alpha; the subtle shadow occupies at most 3 DIP per side and passes mouse input through. It has no taskbar or Alt-Tab entry, uses the Rate Font family and styles with independently fitted compact sizes, can be dragged without activation, and always opens the Operator Menu on right-click; it remains available while the Rate Strip is hidden. Its dark palette is fixed and independent of the Rate Strip’s system-theme colors. Graphical history resets when Network to Monitor changes or falls back. Its visibility and absolute desktop position persist; first use and an off-screen restored position place it at the primary work area's upper-right corner.
 _Avoid_: floating window, dashboard, overlay, main window
 
 **Tray Icon**:
@@ -38,7 +38,7 @@ _Avoid_: show window, floating display toggle
 
 
 **Rate Font**:
-The font used for both Rate Strip and Floating Rate Display lines. With no saved choice, it uses the current DPI-aware Windows UI message font reported by `SPI_GETNONCLIENTMETRICS`. The Operator Menu shows the active face as a disabled `Font: <name>` item; **Set Font...** opens the standard Windows screen-font chooser (sizes 6â€“12 points, which fit the two-line taskbar surface) and applies the selected face, style, and size immediately. The accepted face, style, and size are stored as the versioned `RateFont` value under `HKCU\Software\Win Mon`, loaded at startup and re-read before Rate Strip recreation during relayout or Shell Recovery. Invalid or unreadable data falls back to the Windows UI font.
+The font selection shared by Rate Strip and Floating Rate Display. The Rate Strip uses the selected size; the compact Floating Rate Display uses the same family and styles but fits its own sizes without changing the saved selection. With no saved choice, it uses the current DPI-aware Windows UI message font reported by `SPI_GETNONCLIENTMETRICS`. The Operator Menu shows the active face as a disabled `Font: <name>` item; **Set Font...** opens the standard Windows screen-font chooser (sizes 6â€“12 points, which fit the two-line taskbar surface) and applies the selected face, style, and size immediately. The accepted face, style, and size are stored as the versioned `RateFont` value under `HKCU\Software\Win Mon`, loaded at startup and re-read before Rate Strip recreation during relayout or Shell Recovery. Invalid or unreadable data falls back to the Windows UI font.
 _Avoid_: text font, display font
 
 **Exit**:

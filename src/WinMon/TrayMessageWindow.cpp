@@ -358,6 +358,11 @@ void TrayMessageWindow::SampleRates()
 {
     core_.ObserveNetwork(ReadNetworkObservation());
     const auto display = core_.Sample();
+    if (displayedNetworkGeneration_ != display.networkGeneration)
+    {
+        floatingRateDisplay_.ResetHistory();
+        displayedNetworkGeneration_ = display.networkGeneration;
+    }
     rateStrip_.SetRates(
         display.uploadText,
         display.downloadText,

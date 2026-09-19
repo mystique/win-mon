@@ -167,6 +167,7 @@ void NetworkSessionPresentsOneCanonicalObservation()
     core.ObserveNetwork({{NamedNic("up", L"Ethernet", L"Intel"), NamedNic("down", L"", L"Disconnected", false), hidden}, true, RateSampleAt(1.0)});
     core.Sample();
 
+    Require(core.Sample().networkGeneration == 0, "initial network generation");
     const auto opened = core.BeginOperatorMenu({true, false}, L"Cascadia Mono");
     Require(opened.has_value(), "first Operator Menu transaction opens");
     const auto& down = FindItem(*opened, L"Disconnected");
@@ -175,6 +176,7 @@ void NetworkSessionPresentsOneCanonicalObservation()
     Require(!core.BeginOperatorMenu({}, L"").has_value(), "nested Operator Menu is rejected");
     Require(core.CompleteOperatorMenu(down.choiceToken).kind == OperatorActionKind::None, "network choice is completed inside transaction");
 
+    Require(core.Sample().networkGeneration == 1, "NIC selection resets display history");
     auto observedUp = NamedNic("up", L"Ethernet", L"Intel");
     observedUp.inOctets = 1000;
     observedUp.outOctets = 1000;
@@ -191,6 +193,7 @@ void NetworkSessionPresentsOneCanonicalObservation()
     observedUp.outOctets = 4000;
     core.ObserveNetwork({{observedUp}, true, RateSampleAt(3.0)});
     RequireRate(core.Sample(), 3000.0, 1000.0);
+    Require(core.Sample().networkGeneration == 2, "automatic fallback resets display history");
     const auto fallbackMenu = core.BeginOperatorMenu({}, L"Consolas");
     Require(FindItem(*fallbackMenu, L"All").checked, "disappearance reconciles to all before rates and menu");
     core.CancelOperatorMenu();

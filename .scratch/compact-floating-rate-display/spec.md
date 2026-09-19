@@ -1,6 +1,6 @@
 # Compact Floating Rate Display — Direct2D / DirectWrite
 
-Status: ready-for-agent
+Status: ready-for-human
 
 日期：2026-09-19
 
@@ -128,3 +128,7 @@ Status: ready-for-agent
 - 设计收敛记录：保留第二款下载优先布局，采用第三款约 3:1 比例，恢复项目深色系，尺寸由 144×48 DIP 缩至 132×44 DIP，圆环改为上传在上、下载在下且均从右端开始。
 - 用户已指定采用推荐的 Direct2D／DirectWrite 技术选型。本规格对未讨论的比例标尺、字体适配、采样刷新和资源复用给出了可直接实现的默认决定。
 - 技术依据：[Microsoft — Layered Windows with Direct2D](https://learn.microsoft.com/en-us/archive/msdn-magazine/2009/december/windows-with-c-layered-windows-with-direct2d)。它描述了 Direct2D、WIC 预乘位图和分层窗口的组合；不是要求复制其中旧示例的全部封装。
+
+## Implementation progress — 2026-09-19
+
+三个 ticket 的实现已完成；Release 构建和 3 项 CTest 通过，双轴复审无剩余发现。真实设备场景尚待人工验收，详见 [验证报告](validation.md) 及各 ticket 状态。原 Out of Scope 中“不开始实现／不提交”的限制属于当时规格编写阶段；本次用户已明确要求执行 implement。

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <afxwin.h>
+#include "FloatingRateRenderer.h"
 
 #include <array>
 #include <cstddef>
@@ -19,6 +20,7 @@ public:
     [[nodiscard]] bool ShowFloating(POINT position, bool restorePosition);
     [[nodiscard]] bool Refresh();
     void Shutdown() noexcept;
+    void ResetHistory() noexcept { floatingRenderer_.ResetHistory(); }
     [[nodiscard]] static bool IsPrimaryBottomTaskbarAvailable() noexcept;
     void SetRates(
         const std::wstring& uploadText,
@@ -55,6 +57,9 @@ private:
     afx_msg void OnRButtonUp(UINT flags, CPoint point);
     afx_msg void OnLButtonDown(UINT flags, CPoint point);
     afx_msg void OnExitSizeMove();
+    afx_msg void OnWindowPosChanged(WINDOWPOS* position);
+    afx_msg LRESULT OnDpiChanged(WPARAM, LPARAM);
+    afx_msg void OnDisplayChange(UINT, int, int);
 
     DECLARE_MESSAGE_MAP()
 
@@ -64,12 +69,8 @@ private:
     CSize size_{};
     std::wstring uploadText_ = L"0.0 K/s";
     std::wstring downloadText_ = L"0.0 K/s";
-    static constexpr std::size_t kRateHistorySize = 48;
-    std::array<double, kRateHistorySize> uploadHistory_{};
-    std::array<double, kRateHistorySize> downloadHistory_{};
-    std::size_t rateHistoryCount_ = 0;
-    double smoothedUploadBytesPerSecond_ = 0.0;
-    double smoothedDownloadBytesPerSecond_ = 0.0;
+    CWnd floatingShadow_;
+    FloatingRateRenderer floatingRenderer_;
     HWND taskbar_ = nullptr;
     COLORREF textColor_ = RGB(255, 255, 255);
     HWND contextMenuOwner_ = nullptr;

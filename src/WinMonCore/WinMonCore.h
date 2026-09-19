@@ -133,6 +133,7 @@ struct OperatorMenuItem final
 
 struct RateDisplay final
 {
+    std::uint64_t networkGeneration = 0;
     double uploadBytesPerSecond = 0.0;
     double downloadBytesPerSecond = 0.0;
     std::wstring uploadText;
@@ -185,5 +186,6 @@ private:
     std::chrono::steady_clock::time_point sampledAt_{};
     bool menuOpen_ = false;
     std::string selectedNicId_;
+    std::uint64_t networkGeneration_ = 0;
 };
 }

@@ -1,6 +1,8 @@
 # 01: 紧凑深色 Floating Rate Display
 
-Status: ready-for-agent
+Status: ready-for-human
+Implementation: complete
+Acceptance: pending manual Windows scenarios
 Blocked by: None (can start immediately)
 
 **What to build:** 用户启用 Show Floating Display 后，实际看到一个 132×44 DIP 的平滑深色胶囊，左侧显示实时 Download Rate，右上显示实时 Upload Rate，并可继续拖动及使用 Operator Menu。完成从现有 Rate Sample 到新绘图路径再到实际分层窗口的完整链路。
@@ -19,18 +21,18 @@ Compact Floating Rate Display — Direct2D / DirectWrite 实现规格。采用�
 
 ## Acceptance criteria
 
-- [ ] 启用 Show Floating Display 后，主体为 132×44 DIP、圆角约 22 DIP 的深色胶囊，主色以 #222E34 为基准，文字近白，上传青绿、下载青蓝。
-- [ ] 左侧圆轨道外径约 36 DIP，线宽约 1.5 DIP；下载数字在环内，下方显示向下箭头和单位；右上显示向上箭头和完整上传读数。没有 CPU、百分比、加号或图外说明文字。
-- [ ] 实际 Rate Sample 每秒更新读数；数值与 Rate Strip 一致，采用基数 1000、K/s／M/s／G/s、至少 K/s、一位小数，例如 128.0 K/s。
-- [ ] 默认字体下左右区域固定且不随数值跳动；0.0 K/s、999.9 K/s、999.9 G/s 及更长读数不省略数值或单位。复用字体测量，必要时只缩小相应数字字号。
-- [ ] 起始文字大小约为下载 15 DIP、单位 9 DIP、上传 12 DIP，以真实尺寸可读性校准。当前目标 DPI 下直接绘制，不拉伸低分辨率截图。
-- [ ] 边缘保留连续 Alpha，完全透明像素颜色为零；不统一覆盖渲染后 Alpha、不使用硬边圆形裁剪。主体保持可读，阴影每侧最多约 3 DIP，主体尺寸与含阴影窗口尺寸分别计算。
-- [ ] 阴影与胶囊外部不拦截鼠标，胶囊主体保留拖动、右键 Operator Menu、置顶、不激活、无任务栏及 Alt-Tab 项的行为。
-- [ ] 保留可见性及位置的现有持久化；修正至少露出 48 像素高度的固定判断，使 100% 缩放下完全可见的 44 DIP 高主体能恢复到保存位置。增加一个复用现有位置判断入口的小窗口回归检查。
-- [ ] 不改变 Tray Icon、Rate Strip、Operator Menu 结构、核心采样和注册表结构；任务栏无法显示时，Floating Rate Display 仍可显示。
-- [ ] 初始化失败不保存虚假的成功状态，不导致仍可用的 Tray Icon 和 Rate Strip 退出；释放本次创建的资源。
-- [ ] 建立用户确认的单一较高层位图测试入口：输入确定的速率／历史、字体与 DPI，得到可检查的最终位图。沿用现有 CTest 和 Require 风格，无新增测试框架。
-- [ ] 位图检查覆盖尺寸、透明外缘、中间 Alpha、预乘颜色不大于 Alpha；在黑色及浅色背景合成后无明显硬黑边。测试不依赖跨系统完全一致的文字像素金图。
+- [x] 启用 Show Floating Display 后，主体为 132×44 DIP、圆角约 22 DIP 的深色胶囊，主色以 #222E34 为基准，文字近白，上传青绿、下载青蓝。
+- [x] 左侧圆轨道外径约 36 DIP，线宽约 1.5 DIP；下载数字在环内，下方显示向下箭头和单位；右上显示向上箭头和完整上传读数。没有 CPU、百分比、加号或图外说明文字。
+- [x] 实际 Rate Sample 每秒更新读数；数值与 Rate Strip 一致，采用基数 1000、K/s／M/s／G/s、至少 K/s、一位小数，例如 128.0 K/s。
+- [x] 默认字体下左右区域固定且不随数值跳动；0.0 K/s、999.9 K/s、999.9 G/s 及更长读数不省略数值或单位。复用字体测量，必要时只缩小相应数字字号。
+- [x] 起始文字大小约为下载 15 DIP、单位 9 DIP、上传 12 DIP，以真实尺寸可读性校准。当前目标 DPI 下直接绘制，不拉伸低分辨率截图。
+- [x] 边缘保留连续 Alpha，完全透明像素颜色为零；不统一覆盖渲染后 Alpha、不使用硬边圆形裁剪。主体保持可读，阴影每侧最多约 3 DIP，主体尺寸与含阴影窗口尺寸分别计算。
+- [x] 阴影与胶囊外部不拦截鼠标，胶囊主体保留拖动、右键 Operator Menu、置顶、不激活、无任务栏及 Alt-Tab 项的行为。
+- [x] 保留可见性及位置的现有持久化；修正至少露出 48 像素高度的固定判断，使 100% 缩放下完全可见的 44 DIP 高主体能恢复到保存位置。增加一个复用现有位置判断入口的小窗口回归检查。
+- [x] 不改变 Tray Icon、Rate Strip、Operator Menu 结构、核心采样和注册表结构；任务栏无法显示时，Floating Rate Display 仍可显示。
+- [x] 初始化失败不保存虚假的成功状态，不导致仍可用的 Tray Icon 和 Rate Strip 退出；释放本次创建的资源。
+- [x] 建立用户确认的单一较高层位图测试入口：输入确定的速率／历史、字体与 DPI，得到可检查的最终位图。沿用现有 CTest 和 Require 风格，无新增测试框架。
+- [x] 位图检查覆盖尺寸、透明外缘、中间 Alpha、预乘颜色不大于 Alpha；在黑色及浅色背景合成后无明显硬黑边。测试不依赖跨系统完全一致的文字像素金图。
 - [ ] CMake Release 构建与 CTest 通过；在 Windows 11 实际窗口演示实时读数、拖动、菜单和隐藏／显示，并保留真实 100% 尺寸截图及放大边缘图。
 
 ## Scope boundary
@@ -40,3 +42,12 @@ Compact Floating Rate Display — Direct2D / DirectWrite 实现规格。采用�
 ## Comments
 
 用户已确认三张工单的粒度及依赖关系；本工单无阻塞，可首先执行。
+
+### 2026-09-19 implementation
+
+01 已实现并接入真实 RateStrip 浮动分支。新增具体 Direct2D/DirectWrite/WIC 绘图单元、固定胶囊布局、字体测量适配、预乘 Alpha 与可离屏测试入口。小窗口可见性回归通过。原生窗口测试验证显示／销毁、不激活、置顶、位置及右键通知路由；真实鼠标拖动和完整 Operator Menu 人工演示未执行。
+
+- 最终 `cmake -S . -B build -A x64`、Release build 和 CTest：3/3 通过。
+- Standards / Spec 双轴审查：初审阴影跨进程穿透问题已用独立 `WS_EX_TRANSPARENT` 分层阴影修复；复审均无剩余发现。
+- [验证报告及待人工验收清单](../validation.md)。勾选项表示实现和相应自动检查已完成，不代表未执行的设备场景已人工通过。
+- 状态 `ready-for-human`：代码实现完成，保留人工验收项，不将 ticket 虚标为全部验收完成。

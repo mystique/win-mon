@@ -13,16 +13,6 @@ constexpr wchar_t kTaskbarClassName[] = L"Shell_TrayWnd";
 constexpr wchar_t kNotificationAreaClassName[] = L"TrayNotifyWnd";
 constexpr wchar_t kMaximumTopLine[] = L"999.9 G/s \u2191";
 constexpr wchar_t kMaximumBottomLine[] = L"999.9 G/s \u2193";
-constexpr double kRateSmoothing = 0.35;
-
-constexpr double SmoothRate(double previous, double sample, bool firstSample) noexcept
-{
-    return firstSample ? sample : previous + (sample - previous) * kRateSmoothing;
-}
-
-static_assert(SmoothRate(10.0, 20.0, true) == 20.0);
-static_assert(SmoothRate(10.0, 20.0, false) > 10.0 && SmoothRate(10.0, 20.0, false) < 20.0);
-
 struct NotificationAreaSearch
 {
     HWND notificationArea = nullptr;
@@ -58,10 +48,7 @@ BOOL CALLBACK FindVisibleFloatingArea(HMONITOR monitor, HDC, LPRECT, LPARAM para
         return TRUE;
     }
 
-    RECT intersection{};
-    if (IntersectRect(&intersection, &search->target, &monitorInfo.rcWork) &&
-        intersection.right - intersection.left >= 48 &&
-        intersection.bottom - intersection.top >= 48)
+    if (FloatingRateRenderer::IsPositionVisible(search->target, monitorInfo.rcWork))
     {
         search->visible = true;
         return FALSE;
@@ -69,10 +56,11 @@ BOOL CALLBACK FindVisibleFloatingArea(HMONITOR monitor, HDC, LPRECT, LPARAM para
     return TRUE;
 }
 
-bool IsFloatingPositionVisible(POINT position, CSize size) noexcept
+bool IsFloatingPositionVisible(POINT position, CSize size, UINT dpi) noexcept
 {
+    const int margin = MulDiv(3, static_cast<int>(dpi), 96);
     FloatingVisibilitySearch search{
-        {position.x, position.y, position.x + size.cx, position.y + size.cy}};
+        {position.x + margin, position.y + margin, position.x + size.cx - margin, position.y + size.cy - margin}};
     EnumDisplayMonitors(nullptr, nullptr, FindVisibleFloatingArea, reinterpret_cast<LPARAM>(&search));
     return search.visible;
 }
@@ -100,16 +88,7 @@ void RateStrip::SetRates(
 {
     uploadText_ = uploadText;
     downloadText_ = downloadText;
-    const bool firstSample = rateHistoryCount_ == 0;
-    smoothedUploadBytesPerSecond_ = SmoothRate(
-        smoothedUploadBytesPerSecond_, std::max(0.0, uploadBytesPerSecond), firstSample);
-    smoothedDownloadBytesPerSecond_ = SmoothRate(
-        smoothedDownloadBytesPerSecond_, std::max(0.0, downloadBytesPerSecond), firstSample);
-    std::rotate(uploadHistory_.begin(), uploadHistory_.begin() + 1, uploadHistory_.end());
-    std::rotate(downloadHistory_.begin(), downloadHistory_.begin() + 1, downloadHistory_.end());
-    uploadHistory_.back() = smoothedUploadBytesPerSecond_;
-    downloadHistory_.back() = smoothedDownloadBytesPerSecond_;
-    rateHistoryCount_ = std::min(rateHistoryCount_ + 1, kRateHistorySize);
+    floatingRenderer_.AddSample(uploadBytesPerSecond, downloadBytesPerSecond);
     if (GetSafeHwnd() != nullptr)
     {
         static_cast<void>(Render());
@@ -262,6 +241,9 @@ BEGIN_MESSAGE_MAP(RateStrip, CWnd)
     ON_WM_RBUTTONUP()
     ON_WM_LBUTTONDOWN()
     ON_WM_EXITSIZEMOVE()
+    ON_WM_WINDOWPOSCHANGED()
+    ON_MESSAGE(WM_DPICHANGED, &RateStrip::OnDpiChanged)
+    ON_WM_DISPLAYCHANGE()
 END_MESSAGE_MAP()
 
 bool RateStrip::Embed(bool shouldShow)
@@ -366,45 +348,51 @@ bool RateStrip::ShowFloating(POINT position, bool restorePosition)
         }
     }
 
-    if (!CreateRateFont(nullptr))
-    {
-        return false;
-    }
-    naturalSize_ = MeasureSize(nullptr);
-    size_ = naturalSize_;
-    if (size_.cx <= 0 || size_.cy <= 0)
-    {
-        font_.DeleteObject();
-        return false;
-    }
-    if (!restorePosition || !IsFloatingPositionVisible(position, size_))
-    {
-        position = DefaultFloatingPosition(size_);
-    }
+    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForSystem());
+    if (!restorePosition) position = DefaultFloatingPosition(size_);
 
     const CString windowClass = AfxRegisterWndClass(0, LoadCursorW(nullptr, IDC_ARROW), nullptr, nullptr);
+    // A separate WS_EX_TRANSPARENT layered window makes shadow pixels pass
+    // clicks to other processes; HTTRANSPARENT alone only reaches this thread.
+    if (!floatingShadow_.CreateEx(
+            WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
+            windowClass, nullptr, WS_POPUP,
+            CRect(position.x, position.y, position.x + size_.cx, position.y + size_.cy), nullptr, 0))
+        return false;
     if (!CreateEx(
-            WS_EX_TOOLWINDOW | WS_EX_LAYERED,
+            WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE,
             windowClass,
             nullptr,
             WS_POPUP,
             CRect(position.x, position.y, position.x + size_.cx, position.y + size_.cy),
-            nullptr,
+            &floatingShadow_,
             0))
     {
-        font_.DeleteObject();
+        floatingShadow_.DestroyWindow();
         return false;
     }
 
     floating_ = true;
+    if (!RelayoutFloating())
+    {
+        Shutdown();
+        return false;
+    }
+    position = GetFloatingPosition();
     if (::SetWindowPos(
             GetSafeHwnd(), HWND_TOPMOST, position.x, position.y, size_.cx, size_.cy, SWP_NOACTIVATE) == FALSE)
     {
         Shutdown();
         return false;
     }
+    if (!Render())
+    {
+        Shutdown();
+        return false;
+    }
+    floatingShadow_.ShowWindow(SW_SHOWNOACTIVATE);
     ShowWindow(SW_SHOWNOACTIVATE);
-    return Render();
+    return true;
 }
 bool RateStrip::Refresh()
 {
@@ -483,19 +471,15 @@ bool RateStrip::RelayoutFloating() noexcept
     {
         return false;
     }
-    if (font_.GetSafeHandle() != nullptr)
-    {
-        font_.DeleteObject();
-    }
-    if (!CreateRateFont(nullptr))
-    {
-        return false;
-    }
-    naturalSize_ = MeasureSize(nullptr);
-    size_ = naturalSize_;
-    return size_.cx > 0 && size_.cy > 0 &&
-        ::SetWindowPos(
-            GetSafeHwnd(), HWND_TOPMOST, windowRect.left, windowRect.top, size_.cx, size_.cy, SWP_NOACTIVATE) != FALSE;
+    UINT dpi = GetDpiForWindow(GetSafeHwnd());
+    size_ = FloatingRateRenderer::SizeForDpi(dpi);
+    POINT position{windowRect.left, windowRect.top};
+    if (!IsFloatingPositionVisible(position, size_, dpi))
+        position = DefaultFloatingPosition(size_);
+    if (!::SetWindowPos(GetSafeHwnd(), HWND_TOPMOST, position.x, position.y, 0, 0,
+            SWP_NOACTIVATE | SWP_NOSIZE)) return false;
+    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()));
+    return true;
 }
 
 void RateStrip::Shutdown() noexcept
@@ -511,6 +495,8 @@ void RateStrip::Shutdown() noexcept
     }
 
 
+    if (floatingShadow_.GetSafeHwnd()) floatingShadow_.DestroyWindow();
+    floatingRenderer_.ReleaseTarget();
     taskbar_ = nullptr;
     size_ = {};
     floating_ = false;
@@ -598,13 +584,6 @@ bool RateStrip::CreateRateFont(HWND taskbar) noexcept
 
 CSize RateStrip::MeasureSize(HWND taskbar) const
 {
-    if (taskbar == nullptr)
-    {
-        const int dpi = static_cast<int>(GetDpiForSystem());
-        const int diameter = MulDiv(128, dpi, 96);
-        return {diameter, diameter};
-    }
-
     const HDC deviceContext = ::GetDC(taskbar);
     if (deviceContext == nullptr)
     {
@@ -688,6 +667,13 @@ bool RateStrip::PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea)
 }
 bool RateStrip::Render() noexcept
 {
+    if (floating_)
+    {
+        RateFontSelection selection;
+        return GetSafeHwnd() != nullptr && GetRateFont(selection) &&
+            floatingRenderer_.Render(uploadText_, downloadText_, selection.logFont,
+                GetDpiForWindow(GetSafeHwnd())) && floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd());
+    }
     if (GetSafeHwnd() == nullptr || size_.cx <= 0 || size_.cy <= 0 || font_.GetSafeHandle() == nullptr)
     {
         return false;
@@ -729,138 +715,7 @@ bool RateStrip::Render() noexcept
     auto* const pixels = static_cast<DWORD*>(bitmapBits);
     const size_t pixelCount = static_cast<size_t>(size_.cx) * static_cast<size_t>(size_.cy);
     std::fill_n(pixels, pixelCount, 0u);
-    if (floating_)
-    {
-        const UINT dpi = GetDpiForWindow(GetSafeHwnd());
-        const auto scaled = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi), 96); };
-        const COLORREF panelColor = RGB(8, 18, 27);
-        const COLORREF panelEdgeColor = RGB(31, 68, 82);
-        const COLORREF uploadColor = RGB(91, 224, 177);
-        const COLORREF downloadColor = RGB(66, 183, 231);
-        textColor_ = RGB(224, 238, 244);
-
-        const HRGN panel = CreateEllipticRgn(0, 0, size_.cx + 1, size_.cy + 1);
-        const HBRUSH background = CreateSolidBrush(panelColor);
-        const HBRUSH edge = CreateSolidBrush(panelEdgeColor);
-        if (panel == nullptr || background == nullptr || edge == nullptr)
-        {
-            if (panel != nullptr) DeleteObject(panel);
-            if (background != nullptr) DeleteObject(background);
-            if (edge != nullptr) DeleteObject(edge);
-            ::SelectObject(memoryDc, previousFont);
-            ::SelectObject(memoryDc, previousBitmap);
-            ::DeleteObject(bitmap);
-            ::DeleteDC(memoryDc);
-            ::ReleaseDC(nullptr, screenDc);
-            return false;
-        }
-        FillRgn(memoryDc, panel, background);
-        FrameRgn(memoryDc, panel, edge, scaled(1), scaled(1));
-        SelectClipRgn(memoryDc, panel);
-
-        const int centerX = size_.cx / 2;
-        const int centerY = size_.cy / 2;
-        const HPEN guidePen = CreatePen(PS_SOLID, scaled(1), RGB(20, 42, 53));
-        if (guidePen != nullptr)
-        {
-            const HGDIOBJ previousPen = SelectObject(memoryDc, guidePen);
-            const HGDIOBJ previousBrush = SelectObject(memoryDc, GetStockObject(HOLLOW_BRUSH));
-            Ellipse(memoryDc, scaled(10), scaled(10), size_.cx - scaled(10), size_.cy - scaled(10));
-            Ellipse(memoryDc, scaled(17), scaled(17), size_.cx - scaled(17), size_.cy - scaled(17));
-            SelectObject(memoryDc, previousBrush);
-            SelectObject(memoryDc, previousPen);
-            DeleteObject(guidePen);
-        }
-
-        const HFONT labelFont = CreateFontW(
-            -scaled(9), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
-            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-            DEFAULT_PITCH, L"Segoe UI Variable Text");
-        if (labelFont != nullptr) SelectObject(memoryDc, labelFont);
-        SetBkMode(memoryDc, TRANSPARENT);
-        SetTextColor(memoryDc, uploadColor);
-        RECT uploadLabel{scaled(29), scaled(34), scaled(48), scaled(52)};
-        DrawTextW(memoryDc, L"UL", -1, &uploadLabel,
-            DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
-        SetTextColor(memoryDc, downloadColor);
-        RECT downloadLabel{scaled(29), scaled(73), scaled(48), scaled(91)};
-        DrawTextW(memoryDc, L"DL", -1, &downloadLabel,
-            DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
-
-        SelectObject(memoryDc, font_.GetSafeHandle());
-        SetTextColor(memoryDc, textColor_);
-        RECT uploadValue{scaled(49), scaled(31), size_.cx - scaled(27), scaled(54)};
-        DrawTextW(memoryDc, uploadText_.c_str(), -1, &uploadValue,
-            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
-        RECT downloadValue{scaled(49), scaled(70), size_.cx - scaled(27), scaled(93)};
-        DrawTextW(memoryDc, downloadText_.c_str(), -1, &downloadValue,
-            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
-
-        const HPEN dividerPen = CreatePen(PS_SOLID, scaled(1), RGB(25, 52, 63));
-        if (dividerPen != nullptr)
-        {
-            const HGDIOBJ previousPen = SelectObject(memoryDc, dividerPen);
-            MoveToEx(memoryDc, scaled(31), scaled(63), nullptr);
-            LineTo(memoryDc, size_.cx - scaled(31), scaled(63));
-            SelectObject(memoryDc, previousPen);
-            DeleteObject(dividerPen);
-        }
-
-        constexpr std::size_t visibleSamples = 16;
-        const std::size_t sampleCount = std::min(rateHistoryCount_, visibleSamples);
-        const std::size_t first = kRateHistorySize - sampleCount;
-        double maximum = 1024.0;
-        for (std::size_t index = first; index < kRateHistorySize; ++index)
-        {
-            maximum = std::max(maximum, std::max(uploadHistory_[index], downloadHistory_[index]));
-        }
-        constexpr double pi = 3.14159265358979323846;
-        const auto drawOrbit = [&](const auto& history, double startDegrees, COLORREF glow, COLORREF color) {
-            if (sampleCount == 0) return;
-            const HPEN glowPen = CreatePen(PS_SOLID, scaled(5), glow);
-            const HPEN signalPen = CreatePen(PS_SOLID, scaled(2), color);
-            if (glowPen == nullptr || signalPen == nullptr)
-            {
-                if (glowPen != nullptr) DeleteObject(glowPen);
-                if (signalPen != nullptr) DeleteObject(signalPen);
-                return;
-            }
-            for (std::size_t index = 0; index < sampleCount; ++index)
-            {
-                const double angle = (startDegrees + 140.0 * index / (visibleSamples - 1)) * pi / 180.0;
-                const double ratio = std::sqrt(std::clamp(history[first + index] / maximum, 0.0, 1.0));
-                const double outerRadius = static_cast<double>(scaled(58));
-                const double innerRadius = static_cast<double>(scaled(52)) - scaled(8) * ratio;
-                const POINT inner{
-                    centerX + static_cast<LONG>(std::cos(angle) * innerRadius),
-                    centerY + static_cast<LONG>(std::sin(angle) * innerRadius)};
-                const POINT outer{
-                    centerX + static_cast<LONG>(std::cos(angle) * outerRadius),
-                    centerY + static_cast<LONG>(std::sin(angle) * outerRadius)};
-                HGDIOBJ previousPen = SelectObject(memoryDc, glowPen);
-                MoveToEx(memoryDc, inner.x, inner.y, nullptr);
-                LineTo(memoryDc, outer.x, outer.y);
-                SelectObject(memoryDc, signalPen);
-                MoveToEx(memoryDc, inner.x, inner.y, nullptr);
-                LineTo(memoryDc, outer.x, outer.y);
-                SelectObject(memoryDc, previousPen);
-            }
-            DeleteObject(signalPen);
-            DeleteObject(glowPen);
-        };
-        drawOrbit(uploadHistory_, 110.0, RGB(19, 72, 62), uploadColor);
-        drawOrbit(downloadHistory_, -70.0, RGB(18, 61, 82), downloadColor);
-
-        SelectClipRgn(memoryDc, nullptr);
-        if (labelFont != nullptr) DeleteObject(labelFont);
-        DeleteObject(edge);
-        DeleteObject(background);
-        DeleteObject(panel);
-    }
-    else
-    {
-        ::PatBlt(memoryDc, 0, 0, size_.cx, size_.cy, BLACKNESS);
-    }
+    ::PatBlt(memoryDc, 0, 0, size_.cx, size_.cy, BLACKNESS);
     if (!floating_)
     {
         ::SetBkMode(memoryDc, TRANSPARENT);
@@ -879,23 +734,6 @@ bool RateStrip::Render() noexcept
     const DWORD red = GetRValue(textColor_);
     const DWORD green = GetGValue(textColor_);
     const DWORD blue = GetBValue(textColor_);
-    if (floating_)
-    {
-        constexpr DWORD alpha = 224u;
-        for (size_t index = 0; index < pixelCount; ++index)
-        {
-            const DWORD pixel = pixels[index] & 0x00ffffffu;
-            if (pixel != 0)
-            {
-                pixels[index] =
-                    (alpha << 24) |
-                    (((pixel >> 16) & 0xffu) * alpha / 255u << 16) |
-                    (((pixel >> 8) & 0xffu) * alpha / 255u << 8) |
-                    ((pixel & 0xffu) * alpha / 255u);
-            }
-        }
-    }
-    else
     {
         // A layered window passes mouse input through fully transparent pixels, so
         // an interactive strip needs a floor that is hit-testable yet unnoticeable.
@@ -951,8 +789,13 @@ int RateStrip::OnMouseActivate(CWnd*, UINT, UINT)
     return MA_NOACTIVATE;
 }
 
-LRESULT RateStrip::OnNcHitTest(CPoint)
+LRESULT RateStrip::OnNcHitTest(CPoint point)
 {
+    if (floating_)
+    {
+        ScreenToClient(&point);
+        return FloatingRateRenderer::HitTest(point, GetDpiForWindow(GetSafeHwnd())) ? HTCLIENT : HTTRANSPARENT;
+    }
     return floating_ || contextMenuEnabled_ ? HTCLIENT : HTTRANSPARENT;
 }
 
@@ -995,4 +838,40 @@ POINT RateStrip::GetFloatingPosition() const noexcept
     return GetSafeHwnd() != nullptr && ::GetWindowRect(GetSafeHwnd(), &windowRect)
         ? POINT{windowRect.left, windowRect.top}
         : POINT{};
+}
+
+LRESULT RateStrip::OnDpiChanged(WPARAM, LPARAM parameter)
+{
+    if (floating_)
+    {
+        const auto* rect = reinterpret_cast<const RECT*>(parameter);
+        ::SetWindowPos(GetSafeHwnd(), HWND_TOPMOST, rect->left, rect->top, 0, 0,
+            SWP_NOSIZE | SWP_NOACTIVATE);
+        size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()));
+        static_cast<void>(Render());
+        if (positionChangedOwner_ && positionChangedMessage_)
+            ::PostMessageW(positionChangedOwner_, positionChangedMessage_, 0, 0);
+    }
+    return 0;
+}
+
+void RateStrip::OnDisplayChange(UINT, int, int)
+{
+    if (floating_ && RelayoutFloating())
+    {
+        static_cast<void>(Render());
+        if (positionChangedOwner_ && positionChangedMessage_)
+            ::PostMessageW(positionChangedOwner_, positionChangedMessage_, 0, 0);
+    }
+}
+
+void RateStrip::OnWindowPosChanged(WINDOWPOS* position)
+{
+    CWnd::OnWindowPosChanged(position);
+    if (floating_ && floatingShadow_.GetSafeHwnd())
+    {
+        RECT rect{};
+        if (::GetWindowRect(GetSafeHwnd(), &rect))
+            floatingShadow_.SetWindowPos(&wndTopMost, rect.left, rect.top, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
+    }
 }

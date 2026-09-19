@@ -50,6 +50,7 @@ private:
     RateStrip floatingRateDisplay_;
     winmon::ShellLifecycle shellLifecycle_;
     winmon::WinMonCore core_;
+    std::uint64_t displayedNetworkGeneration_ = 0;
     bool trayIconAdded_ = false;
     bool shellRecoveryTimerActive_ = false;
     bool shuttingDown_ = false;
