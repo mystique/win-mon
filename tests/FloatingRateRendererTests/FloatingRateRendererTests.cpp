@@ -176,14 +176,16 @@ int main(int argc, char** argv)
             blueCurve |= b > r + 15 && b > g + 8;
         }
     Require(greenCurve && blueCurve, "both color-coded curves use the upper area too");
-    Require(renderer.Render(L"0.6 K/s", L"8.4 M/s", font, 96, 0.5, 0), "hidden text frame");
+    Require(renderer.Render(L"0.6 K/s", L"8.4 M/s", font, 96, 0.5, 0), "centered download frame");
     const auto hiddenText = renderer.Pixels();
-    Require(renderer.Render(L"999.9 G/s", L"999.9 G/s", font, 96, 0.5, 0), "hidden text ignores readings");
-    Require(hiddenText == renderer.Pixels(), "hidden glyphs and halos leave curves untouched");
-    Require(renderer.Render(L"0.6 K/s", L"8.4 M/s", font, 96, 0.5, 0.5), "half visible text");
+    Require(renderer.Render(L"999.9 G/s", L"8.4 M/s", font, 96, 0.5, 0), "default ignores upload reading");
+    Require(hiddenText == renderer.Pixels(), "upload is absent in default state");
+    Require(renderer.Render(L"0.6 K/s", L"8.4 M/s", font, 96, 0.5, 0.5), "intermediate layout");
     const auto halfText = renderer.Pixels();
     Require(renderer.Render(L"0.6 K/s", L"8.4 M/s", font, 96, 0.5, 1), "visible text");
-    Require(halfText != hiddenText && halfText != renderer.Pixels(), "fade has intermediate opacity");
+    Require(halfText != hiddenText && halfText != renderer.Pixels(), "transition has intermediate layout and opacity");
+    Require(renderer.Render(L"0.6 K/s", L"1.2 M/s", font, 96, 0.5, 0), "default download updates");
+    Require(hiddenText != renderer.Pixels(), "download remains visible without hover");
     renderer.ResetHistory();
     for (int i = 0; i < 46; ++i) renderer.AddSample(0, 0);
     renderer.AddSample(0, 1000);
@@ -191,7 +193,7 @@ int main(int argc, char** argv)
     Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 96, 0.5, 0), "isolated trend peak");
     bool retainedPeak = false;
     for (int y = 5; y < 50; ++y)
-        for (int x = 52; x < 126; ++x)
+        for (int x = 115; x < 126; ++x)
         {
             const DWORD p = renderer.Pixels()[y * 138 + x];
             const int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
@@ -235,7 +237,7 @@ int main(int argc, char** argv)
         SaveBitmap(renderer, evidence / "short-reading.bmp", 0x181818);
         for (int frame = 0; frame < 30; ++frame)
         {
-            Require(renderer.Render(L"128.0 K/s", L"8.4 M/s", font, 96, frame / 30.0), "pulse preview frame");
+            Require(renderer.Render(L"128.0 K/s", L"8.4 M/s", font, 96, frame / 30.0, frame < 15 ? frame / 14.0f : (29 - frame) / 14.0f), "hover transition preview frame");
             SaveBitmap(renderer, evidence / ("pulse-" + std::to_string(frame) + ".bmp"), 0x181818);
         }
     }

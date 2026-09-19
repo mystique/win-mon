@@ -87,7 +87,7 @@ private:
     bool floating_ = false;
     bool pulseTimerActive_ = false;
     bool hovering_ = false;
-    float textOpacity_ = 0;
+    float hoverProgress_ = 0;
     double pulsePhase_ = 0;
     ULONGLONG pulseTick_ = 0;
 };

@@ -19,7 +19,7 @@ public:
     void AddSample(double upload, double download) noexcept;
     void ResetHistory() noexcept;
     bool Render(const std::wstring& upload, const std::wstring& download,
-        const LOGFONTW& font, UINT dpi, double pulsePhase = 0.5, float textOpacity = 1) noexcept;
+        const LOGFONTW& font, UINT dpi, double pulsePhase = 0.5, float hoverProgress = 1) noexcept;
     double Activity() const noexcept;
     bool Present(HWND window, HWND shadow = nullptr) noexcept;
     void ReleaseTarget() noexcept;

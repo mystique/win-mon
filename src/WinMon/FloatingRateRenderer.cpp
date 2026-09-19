@@ -82,7 +82,7 @@ void FloatingRateRenderer::ReleaseTarget() noexcept
 }
 
 bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring& download,
-    const LOGFONTW& font, UINT dpi, double pulsePhase, float textOpacity) noexcept
+    const LOGFONTW& font, UINT dpi, double pulsePhase, float hoverProgress) noexcept
 {
     try
     {
@@ -252,8 +252,9 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             trend(uploadHistory_, 0x61e5b7);
             trend(downloadHistory_, 0x32bdeb);
         }
-        textOpacity = std::isfinite(textOpacity) ? std::clamp(textOpacity, 0.0f, 1.0f) : 0;
-        const auto text = [&](const std::wstring& value, size_t style, D2D1_RECT_F rect, UINT32 rgb, DWRITE_TEXT_ALIGNMENT alignment)
+        hoverProgress = std::isfinite(hoverProgress) ? std::clamp(hoverProgress, 0.0f, 1.0f) : 0;
+        const float transition = hoverProgress * hoverProgress * (3 - 2 * hoverProgress);
+        const auto text = [&](const std::wstring& value, size_t style, D2D1_RECT_F rect, UINT32 rgb, DWRITE_TEXT_ALIGNMENT alignment, float opacity)
         {
             ComPtr<IDWriteTextLayout> layout;
             const auto length = static_cast<UINT32>(value.size());
@@ -269,19 +270,19 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             if (scale < 1)
                 Check(layout->SetFontSize(formats_[style]->GetFontSize() * scale * 0.98f, {0, length}));
             // A narrow glyph halo keeps overlapping trends from crossing the readings.
-            color(0x222e34, textOpacity);
+            color(0x222e34, opacity);
             for (const auto offset : {D2D1::Point2F(-0.75f, 0), D2D1::Point2F(0.75f, 0),
                 D2D1::Point2F(0, -0.75f), D2D1::Point2F(0, 0.75f)})
                 target_->DrawTextLayout(D2D1::Point2F(rect.left + offset.x, rect.top + offset.y), layout.Get(), brush_.Get());
-            color(rgb, textOpacity);
+            color(rgb, opacity);
             target_->DrawTextLayout(D2D1::Point2F(rect.left, rect.top), layout.Get(), brush_.Get());
             Check(layout->GetMetrics(&metrics));
             return metrics.widthIncludingTrailingWhitespace;
         };
         const auto rateLine = [&](const std::wstring& value, const wchar_t* arrow,
-            size_t style, float top, float bottom, UINT32 rgb)
+            size_t style, float top, float bottom, UINT32 rgb, float opacity)
         {
-            text(arrow, style, D2D1::RectF(47, top, 58, bottom), rgb, DWRITE_TEXT_ALIGNMENT_LEADING);
+            text(arrow, style, D2D1::RectF(47, top, 58, bottom), rgb, DWRITE_TEXT_ALIGNMENT_LEADING, opacity);
             const auto split = value.find(L' ');
             const std::wstring unit = split == std::wstring::npos ? std::wstring{} : value.substr(split);
             ComPtr<IDWriteTextLayout> unitLayout;
@@ -291,11 +292,11 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             Check(unitLayout->GetMetrics(&metrics));
             const float width = text(value.substr(0, split), style,
                 D2D1::RectF(59, top, 113 - metrics.widthIncludingTrailingWhitespace, bottom),
-                rgb, DWRITE_TEXT_ALIGNMENT_LEADING);
-            text(unit, style, D2D1::RectF(59 + width, top, 113, bottom), rgb, DWRITE_TEXT_ALIGNMENT_LEADING);
+                rgb, DWRITE_TEXT_ALIGNMENT_LEADING, opacity);
+            text(unit, style, D2D1::RectF(59 + width, top, 113, bottom), rgb, DWRITE_TEXT_ALIGNMENT_LEADING, opacity);
         };
-        rateLine(upload, L"\u2191", 2, 7, 23, 0x61e5b7);
-        rateLine(download, L"\u2193", 0, 23, 43, 0x32bdeb);
+        rateLine(upload, L"\u2191", 2, 7, 23, 0x61e5b7, transition);
+        rateLine(download, L"\u2193", 0, 15 + 8 * transition, 35 + 8 * transition, 0x32bdeb, 1);
         Check(target_->EndDraw());
         auto body = copyPixels();
         auto pixels = body;

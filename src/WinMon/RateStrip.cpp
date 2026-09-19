@@ -493,7 +493,7 @@ void RateStrip::Shutdown() noexcept
     pulseTimerActive_ = false;
     pulsePhase_ = 0;
     hovering_ = false;
-    textOpacity_ = 0;
+    hoverProgress_ = 0;
     if (GetSafeHwnd() != nullptr)
     {
         DestroyWindow();
@@ -682,7 +682,7 @@ bool RateStrip::Render() noexcept
         RateFontSelection selection;
         return GetSafeHwnd() != nullptr && GetRateFont(selection) &&
             floatingRenderer_.Render(uploadText_, downloadText_, selection.logFont,
-                GetDpiForWindow(GetSafeHwnd()), pulseTimerActive_ ? pulsePhase_ : 0.5, textOpacity_) && floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd());
+                GetDpiForWindow(GetSafeHwnd()), pulseTimerActive_ ? pulsePhase_ : 0.5, hoverProgress_) && floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd());
     }
     if (GetSafeHwnd() == nullptr || size_.cx <= 0 || size_.cy <= 0 || font_.GetSafeHandle() == nullptr)
     {
@@ -892,9 +892,9 @@ void RateStrip::UpdatePulseTimer() noexcept
     BOOL animations = FALSE;
     SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
     const float targetOpacity = hovering_ ? 1.0f : 0.0f;
-    if (!animations) textOpacity_ = targetOpacity;
+    if (!animations) hoverProgress_ = targetOpacity;
     const bool animate = IsWindowVisible() && animations &&
-        (floatingRenderer_.Activity() > 0 || textOpacity_ != targetOpacity);
+        (floatingRenderer_.Activity() > 0 || hoverProgress_ != targetOpacity);
     if (animate && !pulseTimerActive_)
     {
         pulseTick_ = GetTickCount64();
@@ -919,7 +919,7 @@ void RateStrip::OnTimer(UINT_PTR timer)
         }
         const ULONGLONG now = GetTickCount64();
         const float step = static_cast<float>(now - pulseTick_) / (hovering_ ? 180.0f : 220.0f);
-        textOpacity_ = hovering_ ? std::min(1.0f, textOpacity_ + step) : std::max(0.0f, textOpacity_ - step);
+        hoverProgress_ = hovering_ ? std::min(1.0f, hoverProgress_ + step) : std::max(0.0f, hoverProgress_ - step);
         const double period = 2200 - 1200 * floatingRenderer_.Activity();
         pulsePhase_ = std::fmod(pulsePhase_ + (now - pulseTick_) / period, 1.0);
         pulseTick_ = now;
