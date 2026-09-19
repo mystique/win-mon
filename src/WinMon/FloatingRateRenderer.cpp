@@ -4,7 +4,7 @@
 
 namespace
 {
-constexpr float kBodyScale = 12.0f / 11.0f; // 132x44 design coordinates to 144x48 DIP.
+constexpr float kBodyScale = 12.0f / 11.0f; // Preserve the enlarged ring and text while narrowing the capsule.
 
 void Check(HRESULT result) { if (FAILED(result)) throw result; }
 double Rate(double value) noexcept { return std::isfinite(value) && value > 0 ? value : 0; }
@@ -23,16 +23,16 @@ FloatingRateRenderer::~FloatingRateRenderer()
 
 SIZE FloatingRateRenderer::SizeForDpi(UINT dpi) noexcept
 {
-    return {MulDiv(150, static_cast<int>(dpi), 96), MulDiv(54, static_cast<int>(dpi), 96)};
+    return {MulDiv(138, static_cast<int>(dpi), 96), MulDiv(54, static_cast<int>(dpi), 96)};
 }
 
 bool FloatingRateRenderer::HitTest(POINT client, UINT dpi) noexcept
 {
     if (!dpi) return false;
-    const float x = (client.x * 96.0f / dpi - 3) / kBodyScale;
-    const float y = (client.y * 96.0f / dpi - 3) / kBodyScale - 22;
-    const float dx = x - std::clamp(x, 22.0f, 110.0f);
-    return dx * dx + y * y <= 22 * 22;
+    const float x = client.x * 96.0f / dpi - 3;
+    const float y = client.y * 96.0f / dpi - 27;
+    const float dx = x - std::clamp(x, 24.0f, 108.0f);
+    return dx * dx + y * y <= 24 * 24;
 }
 
 bool FloatingRateRenderer::IsPositionVisible(RECT body, RECT workArea) noexcept
@@ -137,9 +137,9 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         const auto color = [&](UINT32 rgb, float alpha = 1) { brush_->SetColor(D2D1::ColorF(rgb, alpha)); };
         // Two quiet contours keep the entire shadow inside the 3 DIP margin.
         color(0x000000, 0.06f);
-        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(1, 1, 149, 53), 26, 26), brush_.Get());
+        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(1, 1, 137, 53), 26, 26), brush_.Get());
         color(0x000000, 0.10f);
-        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(2, 2, 148, 52), 25, 25), brush_.Get());
+        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(2, 2, 136, 52), 25, 25), brush_.Get());
         Check(target_->EndDraw());
         const auto copyPixels = [&]
         {
@@ -154,7 +154,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         // Scale vectors and glyphs before rasterization, leaving the shadow margin at 3 DIP.
         target_->SetTransform(D2D1::Matrix3x2F::Scale(kBodyScale, kBodyScale, D2D1::Point2F(3, 3)));
         color(0x222e34);
-        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(3, 3, 135, 47), 22, 22), brush_.Get());
+        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(3, 3, 124, 47), 22, 22), brush_.Get());
         double maximum = 1000;
         for (size_t i = 48 - count_; i < 48; ++i)
             maximum = std::max({maximum, uploadHistory_[i], downloadHistory_[i]});
@@ -192,7 +192,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             color(peak == 1000 && downloadHistory_.back() == 0 ? 0x46565f : 0x32bdeb);
             const auto point = [&](size_t i)
             {
-                return D2D1::Point2F(48 + 76.0f * static_cast<float>(i) / 47,
+                return D2D1::Point2F(47 + 66.0f * static_cast<float>(i) / 47,
                     39 - 11 * static_cast<float>(downloadHistory_[i] / peak));
             };
             for (size_t i = 49 - count_; i < 48; ++i)
@@ -215,16 +215,28 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                 Check(layout->SetFontSize(formats_[style]->GetFontSize() * scale * 0.98f, {0, length}));
             color(rgb);
             target_->DrawTextLayout(D2D1::Point2F(rect.left, rect.top), layout.Get(), brush_.Get());
+            Check(layout->GetMetrics(&metrics));
+            return metrics.widthIncludingTrailingWhitespace;
         };
         const auto split = download.find(L' ');
         text(download.substr(0, split), 0, D2D1::RectF(11, 13, 39, 29), 0xf0f5f7, DWRITE_TEXT_ALIGNMENT_CENTER);
         text(L"\u2193 " + (split == std::wstring::npos ? std::wstring{} : download.substr(split + 1)),
             1, D2D1::RectF(11, 28, 39, 38), 0x32bdeb, DWRITE_TEXT_ALIGNMENT_CENTER);
-        text(L"\u2191", 2, D2D1::RectF(47, 9, 58, 25), 0x61e5b7, DWRITE_TEXT_ALIGNMENT_LEADING);
+        const float arrowWidth = text(L"\u2191", 2, D2D1::RectF(47, 9, 58, 25),
+            0x61e5b7, DWRITE_TEXT_ALIGNMENT_LEADING);
         const auto uploadSplit = upload.find(L' ');
-        text(upload.substr(0, uploadSplit), 2, D2D1::RectF(59, 9, 100, 25), 0xf0f5f7, DWRITE_TEXT_ALIGNMENT_TRAILING);
-        text(uploadSplit == std::wstring::npos ? std::wstring{} : upload.substr(uploadSplit + 1),
-            2, D2D1::RectF(102, 9, 127, 25), 0xf0f5f7, DWRITE_TEXT_ALIGNMENT_LEADING);
+        const std::wstring unit = uploadSplit == std::wstring::npos ? std::wstring{} : upload.substr(uploadSplit);
+        ComPtr<IDWriteTextLayout> unitLayout;
+        Check(textFactory_->CreateTextLayout(unit.c_str(), static_cast<UINT32>(unit.size()),
+            formats_[2].Get(), 66, 16, &unitLayout));
+        DWRITE_TEXT_METRICS unitMetrics{};
+        Check(unitLayout->GetMetrics(&unitMetrics));
+        const float numberLeft = 47 + arrowWidth + 4 / kBodyScale;
+        const float numberWidth = text(upload.substr(0, uploadSplit), 2,
+            D2D1::RectF(numberLeft, 9, 113 - unitMetrics.widthIncludingTrailingWhitespace, 25),
+            0xf0f5f7, DWRITE_TEXT_ALIGNMENT_LEADING);
+        text(unit, 2, D2D1::RectF(numberLeft + numberWidth, 9, 113, 25),
+            0xf0f5f7, DWRITE_TEXT_ALIGNMENT_LEADING);
         Check(target_->EndDraw());
         auto body = copyPixels();
         auto pixels = body;

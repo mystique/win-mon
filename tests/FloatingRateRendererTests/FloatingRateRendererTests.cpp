@@ -36,14 +36,14 @@ int main(int argc, char** argv)
     LOGFONTW font{};
     wcscpy_s(font.lfFaceName, L"Segoe UI");
     Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 96), "offscreen render");
-    Require(renderer.PixelSize().cx == 150 && renderer.PixelSize().cy == 54, "144x48 body plus shadow");
+    Require(renderer.PixelSize().cx == 138 && renderer.PixelSize().cy == 54, "132x48 body plus shadow");
     bool partial = false;
     const auto& pixels = renderer.Pixels();
     for (size_t i = 0; i < pixels.size(); ++i)
     {
         const DWORD p = pixels[i], a = p >> 24;
         Require((p & 255) <= a && ((p >> 8) & 255) <= a && ((p >> 16) & 255) <= a, "premultiplied alpha");
-        if (i < 150 || i >= pixels.size() - 150 || i % 150 == 0 || i % 150 == 149)
+        if (i < 138 || i >= pixels.size() - 138 || i % 138 == 0 || i % 138 == 137)
             Require(p == 0, "transparent canvas boundary");
         partial |= a > 0 && a < 255;
     }
@@ -57,7 +57,7 @@ int main(int argc, char** argv)
         for (int dy = -1; dy <= 1; ++dy)
             for (int dx = -1; dx <= 1; ++dx)
             {
-                DWORD p = renderer.Pixels()[(y + dy) * 150 + x + dx];
+                DWORD p = renderer.Pixels()[(y + dy) * 138 + x + dx];
                 int b = p & 255, g = (p >> 8) & 255, r = (p >> 16) & 255;
                 if (up ? (g > 120 && g > b + 15 && g > r + 30) : (b > 140 && b > g + 15 && b > r + 50)) return true;
             }
@@ -131,6 +131,15 @@ int main(int argc, char** argv)
     Require(FloatingRateRenderer::HitTest({25, 25}, 96), "capsule receives input");
     Require(!FloatingRateRenderer::IsPositionVisible({2000,0,2132,44}, {0,0,1920,1080}), "missing monitor rejected");
     Require(FloatingRateRenderer::IsPositionVisible({-84,0,48,44}, {0,0,1920,1080}), "usable partial body retained");
+    Require(renderer.Render(L"0.6 K/s", L"0.1 K/s", font, 96), "compact short upload");
+    bool nearbyReading = false;
+    for (int y = 12; y < 26; ++y)
+        for (int x = 60; x < 70; ++x)
+        {
+            const DWORD p = renderer.Pixels()[y * 138 + x];
+            nearbyReading |= ((p >> 16) & 255) > 170 && ((p >> 8) & 255) > 170 && (p & 255) > 170;
+        }
+    Require(nearbyReading, "short upload stays beside arrow instead of aligning to far right");
     const auto evidence = argc > 1 ? std::filesystem::path(argv[1]) : std::filesystem::path{};
     if (!evidence.empty()) std::filesystem::create_directories(evidence);
     for (UINT dpi : {96u, 120u, 144u, 192u})
@@ -140,7 +149,7 @@ int main(int argc, char** argv)
                 wcscpy_s(font.lfFaceName, family);
                 Require(renderer.Render(value, value, font, dpi), "DPI/font/long value matrix");
                 const SIZE size = renderer.PixelSize();
-                Require(size.cx == (dpi == 96 ? 150 : dpi == 120 ? 188 : dpi == 144 ? 225 : 300), "scaled width");
+                Require(size.cx == (dpi == 96 ? 138 : dpi == 120 ? 173 : dpi == 144 ? 207 : 276), "scaled width");
                 Require(size.cy == (dpi == 96 ? 54 : dpi == 120 ? 68 : dpi == 144 ? 81 : 108), "scaled height");
                 for (size_t i = 0; i < renderer.Pixels().size(); ++i)
                 {
@@ -160,5 +169,7 @@ int main(int argc, char** argv)
         SaveBitmap(renderer, evidence / "actual-size-light.bmp", 0xf4f5f7);
         Require(renderer.Render(L"999.9 G/s", L"999.9 G/s", font, 96), "long evidence");
         SaveBitmap(renderer, evidence / "long-reading.bmp", 0xf4f5f7);
+        Require(renderer.Render(L"0.6 K/s", L"0.1 K/s", font, 96), "short evidence");
+        SaveBitmap(renderer, evidence / "short-reading.bmp", 0x181818);
     }
 }
