@@ -13,6 +13,8 @@ double Rate(double value) noexcept { return std::isfinite(value) && value > 0 ? 
 FloatingRateRenderer::~FloatingRateRenderer()
 {
     ReleaseTarget();
+    for (auto& layout : layouts_) layout.layout.Reset();
+    for (auto& path : paths_) path.Reset();
     for (auto& format : formats_) format.Reset();
     stroke_.Reset();
     imagingFactory_.Reset();
@@ -45,6 +47,7 @@ bool FloatingRateRenderer::IsPositionVisible(RECT body, RECT workArea) noexcept
 
 void FloatingRateRenderer::ResetHistory() noexcept
 {
+    for (size_t i = 2; i < paths_.size(); ++i) paths_[i].Reset();
     count_ = 0;
     upload_ = download_ = 0;
     uploadHistory_.fill(0);
@@ -53,6 +56,7 @@ void FloatingRateRenderer::ResetHistory() noexcept
 
 void FloatingRateRenderer::AddSample(double upload, double download) noexcept
 {
+    for (size_t i = 2; i < paths_.size(); ++i) paths_[i].Reset();
     upload_ = Rate(upload);
     download_ = Rate(download);
     const double up = count_ ? uploadHistory_.back() * 0.65 + upload_ * 0.35 : upload_;
@@ -75,6 +79,18 @@ double FloatingRateRenderer::Activity() const noexcept
 
 void FloatingRateRenderer::ReleaseTarget() noexcept
 {
+    if (surfacePrevious_) SelectObject(surfaceDc_, surfacePrevious_);
+    if (surfaceBitmap_) DeleteObject(surfaceBitmap_);
+    if (surfaceDc_) DeleteDC(surfaceDc_);
+    surfaceDc_ = nullptr;
+    surfaceBitmap_ = nullptr;
+    surfacePrevious_ = nullptr;
+    surfaceBits_ = nullptr;
+    presentedShadow_ = nullptr;
+    shadowPixels_.clear();
+    bodyPixels_.clear();
+    pixels_.clear();
+    pixelsDirty_ = true;
     brush_.Reset();
     target_.Reset();
     bitmap_.Reset();
@@ -123,6 +139,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                 Check(formats[i]->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));
                 Check(formats[i]->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER));
             }
+            for (auto& layout : layouts_) layout.layout.Reset();
             formats_ = std::move(formats);
             font_ = font;
         }
@@ -140,24 +157,26 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             target_->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
             dpi_ = dpi;
         }
-        target_->SetTransform(D2D1::Matrix3x2F::Identity());
-        target_->BeginDraw();
-        target_->Clear(D2D1::ColorF(0, 0.0f));
         const auto color = [&](UINT32 rgb, float alpha = 1) { brush_->SetColor(D2D1::ColorF(rgb, alpha)); };
-        // Two quiet contours keep the entire shadow inside the 3 DIP margin.
-        color(0x000000, 0.06f);
-        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(1, 1, 137, 53), 26, 26), brush_.Get());
-        color(0x000000, 0.10f);
-        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(2, 2, 136, 52), 25, 25), brush_.Get());
-        Check(target_->EndDraw());
-        const auto copyPixels = [&]
+        const auto copyPixels = [&](std::vector<DWORD>& pixels)
         {
-            std::vector<DWORD> pixels(static_cast<size_t>(size.cx) * size.cy);
+            pixels.resize(static_cast<size_t>(size.cx) * size.cy);
             Check(bitmap_->CopyPixels(nullptr, size.cx * 4, static_cast<UINT>(pixels.size() * 4),
                 reinterpret_cast<BYTE*>(pixels.data())));
-            return pixels;
         };
-        auto shadow = copyPixels();
+        if (shadowPixels_.empty())
+        {
+            target_->SetTransform(D2D1::Matrix3x2F::Identity());
+            target_->BeginDraw();
+            target_->Clear(D2D1::ColorF(0, 0.0f));
+            // The shadow only changes with DPI.
+            color(0x000000, 0.06f);
+            target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(1, 1, 137, 53), 26, 26), brush_.Get());
+            color(0x000000, 0.10f);
+            target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(2, 2, 136, 52), 25, 25), brush_.Get());
+            Check(target_->EndDraw());
+            copyPixels(shadowPixels_);
+        }
         target_->BeginDraw();
         target_->Clear(D2D1::ColorF(0, 0.0f));
         // Scale vectors and glyphs before rasterization, leaving the shadow margin at 3 DIP.
@@ -167,33 +186,36 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         double maximum = 1000;
         for (size_t i = 48 - count_; i < 48; ++i)
             maximum = std::max({maximum, uploadHistory_[i], downloadHistory_[i]});
-        const auto arc = [&](double ratio, bool up, UINT32 rgb)
+        const auto arc = [&](size_t slot, double ratio, bool up, UINT32 rgb)
         {
             if (ratio <= 0) return;
             // Leave about 2 DIP of clear space after accounting for the round caps.
             constexpr double gapAngle = 0.13;
             const double angle = gapAngle + std::clamp(ratio, 0.0, 1.0) * (3.141592653589793 - 2 * gapAngle);
-            ComPtr<ID2D1PathGeometry> path;
-            ComPtr<ID2D1GeometrySink> sink;
-            Check(factory_->CreatePathGeometry(&path));
-            Check(path->Open(&sink));
-            sink->BeginFigure(D2D1::Point2F(25 + 17.25f * static_cast<float>(std::cos(gapAngle)),
-                25 + (up ? -17.25f : 17.25f) * static_cast<float>(std::sin(gapAngle))), D2D1_FIGURE_BEGIN_HOLLOW);
-            sink->AddArc(D2D1::ArcSegment(
-                D2D1::Point2F(25 + 17.25f * static_cast<float>(std::cos(angle)),
-                    25 + (up ? -17.25f : 17.25f) * static_cast<float>(std::sin(angle))),
-                D2D1::SizeF(17.25f, 17.25f), 0,
-                up ? D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE : D2D1_SWEEP_DIRECTION_CLOCKWISE,
-                D2D1_ARC_SIZE_SMALL));
-            sink->EndFigure(D2D1_FIGURE_END_OPEN);
-            Check(sink->Close());
+            auto& path = paths_[slot];
+            if (!path)
+            {
+                ComPtr<ID2D1GeometrySink> sink;
+                Check(factory_->CreatePathGeometry(&path));
+                Check(path->Open(&sink));
+                sink->BeginFigure(D2D1::Point2F(25 + 17.25f * static_cast<float>(std::cos(gapAngle)),
+                    25 + (up ? -17.25f : 17.25f) * static_cast<float>(std::sin(gapAngle))), D2D1_FIGURE_BEGIN_HOLLOW);
+                sink->AddArc(D2D1::ArcSegment(
+                    D2D1::Point2F(25 + 17.25f * static_cast<float>(std::cos(angle)),
+                        25 + (up ? -17.25f : 17.25f) * static_cast<float>(std::sin(angle))),
+                    D2D1::SizeF(17.25f, 17.25f), 0,
+                    up ? D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE : D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                    D2D1_ARC_SIZE_SMALL));
+                sink->EndFigure(D2D1_FIGURE_END_OPEN);
+                Check(sink->Close());
+            }
             color(rgb);
             target_->DrawGeometry(path.Get(), brush_.Get(), 2.5f, stroke_.Get());
         };
-        arc(1, true, 0x46565f);
-        arc(1, false, 0x46565f);
-        arc(upload_ > 0 ? uploadHistory_.back() / maximum : 0, true, 0x61e5b7);
-        arc(download_ > 0 ? downloadHistory_.back() / maximum : 0, false, 0x32bdeb);
+        arc(0, 1, true, 0x46565f);
+        arc(1, 1, false, 0x46565f);
+        arc(2, upload_ > 0 ? uploadHistory_.back() / maximum : 0, true, 0x61e5b7);
+        arc(3, download_ > 0 ? downloadHistory_.back() / maximum : 0, false, 0x32bdeb);
         const float activity = static_cast<float>(Activity());
         if (activity > 0)
         {
@@ -213,62 +235,77 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         }
         if (count_ > 1)
         {
-            const auto trend = [&](const auto& history, UINT32 rgb)
+            const auto trend = [&](size_t slot, const auto& history, UINT32 rgb)
             {
                 color(rgb, 0.32f);
-                const auto point = [&](size_t i)
+                auto& path = paths_[slot];
+                if (!path)
                 {
-                    return D2D1::Point2F(47 + 66.0f * static_cast<float>(i) / 47,
-                        40 - 31 * static_cast<float>(history[i] / maximum));
-                };
-                const size_t first = 48 - count_;
-                const auto tangent = [&](size_t i)
-                {
-                    if (i == first) return point(i + 1).y - point(i).y;
-                    if (i == 47) return point(i).y - point(i - 1).y;
-                    const float before = point(i).y - point(i - 1).y;
-                    const float after = point(i + 1).y - point(i).y;
-                    // Monotone Hermite slopes retain every sampled peak and valley,
-                    // without interpolation overshoot or additional rate smoothing.
-                    return before * after > 0 ? 2 * before * after / (before + after) : 0.0f;
-                };
-                ComPtr<ID2D1PathGeometry> path;
-                ComPtr<ID2D1GeometrySink> sink;
-                Check(factory_->CreatePathGeometry(&path));
-                Check(path->Open(&sink));
-                sink->BeginFigure(point(first), D2D1_FIGURE_BEGIN_HOLLOW);
-                for (size_t i = first + 1; i < 48; ++i)
-                {
-                    const auto from = point(i - 1), to = point(i);
-                    const float third = (to.x - from.x) / 3;
-                    sink->AddBezier(D2D1::BezierSegment(
-                        D2D1::Point2F(from.x + third, from.y + tangent(i - 1) / 3),
-                        D2D1::Point2F(to.x - third, to.y - tangent(i) / 3), to));
+                    const auto point = [&](size_t i)
+                    {
+                        return D2D1::Point2F(47 + 66.0f * static_cast<float>(i) / 47,
+                            40 - 31 * static_cast<float>(history[i] / maximum));
+                    };
+                    const size_t first = 48 - count_;
+                    const auto tangent = [&](size_t i)
+                    {
+                        if (i == first) return point(i + 1).y - point(i).y;
+                        if (i == 47) return point(i).y - point(i - 1).y;
+                        const float before = point(i).y - point(i - 1).y;
+                        const float after = point(i + 1).y - point(i).y;
+                        // Monotone Hermite slopes retain every sampled peak and valley,
+                        // without interpolation overshoot or additional rate smoothing.
+                        return before * after > 0 ? 2 * before * after / (before + after) : 0.0f;
+                    };
+                    ComPtr<ID2D1GeometrySink> sink;
+                    Check(factory_->CreatePathGeometry(&path));
+                    Check(path->Open(&sink));
+                    sink->BeginFigure(point(first), D2D1_FIGURE_BEGIN_HOLLOW);
+                    for (size_t i = first + 1; i < 48; ++i)
+                    {
+                        const auto from = point(i - 1), to = point(i);
+                        const float third = (to.x - from.x) / 3;
+                        sink->AddBezier(D2D1::BezierSegment(
+                            D2D1::Point2F(from.x + third, from.y + tangent(i - 1) / 3),
+                            D2D1::Point2F(to.x - third, to.y - tangent(i) / 3), to));
+                    }
+                    sink->EndFigure(D2D1_FIGURE_END_OPEN);
+                    Check(sink->Close());
                 }
-                sink->EndFigure(D2D1_FIGURE_END_OPEN);
-                Check(sink->Close());
                 target_->DrawGeometry(path.Get(), brush_.Get(), 1.6f, stroke_.Get());
             };
-            trend(uploadHistory_, 0x61e5b7);
-            trend(downloadHistory_, 0x32bdeb);
+            trend(4, uploadHistory_, 0x61e5b7);
+            trend(5, downloadHistory_, 0x32bdeb);
         }
         hoverProgress = std::isfinite(hoverProgress) ? std::clamp(hoverProgress, 0.0f, 1.0f) : 0;
         const float transition = hoverProgress * hoverProgress * (3 - 2 * hoverProgress);
-        const auto text = [&](const std::wstring& value, size_t style, D2D1_RECT_F rect, UINT32 rgb, DWRITE_TEXT_ALIGNMENT alignment, float opacity)
+        const auto layoutFor = [&](size_t slot, const std::wstring& value, size_t style,
+            float width, float height, bool fit) -> TextLayout&
         {
-            ComPtr<IDWriteTextLayout> layout;
-            const auto length = static_cast<UINT32>(value.size());
-            Check(textFactory_->CreateTextLayout(value.c_str(), length, formats_[style].Get(),
-                rect.right - rect.left, rect.bottom - rect.top, &layout));
-            Check(layout->SetTextAlignment(alignment));
-            if (font.lfUnderline) Check(layout->SetUnderline(TRUE, {0, length}));
-            if (font.lfStrikeOut) Check(layout->SetStrikethrough(TRUE, {0, length}));
-            DWRITE_TEXT_METRICS metrics{};
-            Check(layout->GetMetrics(&metrics));
-            const float scale = std::min({1.0f, (rect.right - rect.left) / metrics.widthIncludingTrailingWhitespace,
-                (rect.bottom - rect.top) / metrics.height});
-            if (scale < 1)
-                Check(layout->SetFontSize(formats_[style]->GetFontSize() * scale * 0.98f, {0, length}));
+            auto& cached = layouts_[slot];
+            if (!cached.layout || cached.text != value || cached.width != width || cached.height != height)
+            {
+                ComPtr<IDWriteTextLayout> layout;
+                const auto length = static_cast<UINT32>(value.size());
+                Check(textFactory_->CreateTextLayout(value.c_str(), length, formats_[style].Get(), width, height, &layout));
+                if (fit && font.lfUnderline) Check(layout->SetUnderline(TRUE, {0, length}));
+                if (fit && font.lfStrikeOut) Check(layout->SetStrikethrough(TRUE, {0, length}));
+                DWRITE_TEXT_METRICS metrics{};
+                Check(layout->GetMetrics(&metrics));
+                const float scale = std::min({1.0f, width / metrics.widthIncludingTrailingWhitespace, height / metrics.height});
+                if (fit && scale < 1)
+                {
+                    Check(layout->SetFontSize(formats_[style]->GetFontSize() * scale * 0.98f, {0, length}));
+                    Check(layout->GetMetrics(&metrics));
+                }
+                cached = {std::move(layout), value, width, height, metrics.widthIncludingTrailingWhitespace};
+            }
+            return cached;
+        };
+        const auto text = [&](size_t slot, const std::wstring& value, size_t style, D2D1_RECT_F rect, UINT32 rgb, float opacity)
+        {
+            auto& cached = layoutFor(slot, value, style, rect.right - rect.left, style == 2 ? 16.0f : 20.0f, true);
+            const auto& layout = cached.layout;
             // A narrow glyph halo keeps overlapping trends from crossing the readings.
             color(0x222e34, opacity);
             for (const auto offset : {D2D1::Point2F(-0.75f, 0), D2D1::Point2F(0.75f, 0),
@@ -276,44 +313,33 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                 target_->DrawTextLayout(D2D1::Point2F(rect.left + offset.x, rect.top + offset.y), layout.Get(), brush_.Get());
             color(rgb, opacity);
             target_->DrawTextLayout(D2D1::Point2F(rect.left, rect.top), layout.Get(), brush_.Get());
-            Check(layout->GetMetrics(&metrics));
-            return metrics.widthIncludingTrailingWhitespace;
+            return cached.measuredWidth;
         };
         const auto rateLine = [&](const std::wstring& value, const wchar_t* arrow,
             size_t style, float top, float bottom, UINT32 rgb, float opacity)
         {
-            text(arrow, style, D2D1::RectF(47, top, 58, bottom), rgb, DWRITE_TEXT_ALIGNMENT_LEADING, opacity);
+            if (opacity <= 0) return;
+            const size_t slot = style == 2 ? 0 : 4;
+            text(slot, arrow, style, D2D1::RectF(47, top, 58, bottom), rgb, opacity);
             const auto split = value.find(L' ');
             const std::wstring unit = split == std::wstring::npos ? std::wstring{} : value.substr(split);
-            ComPtr<IDWriteTextLayout> unitLayout;
-            Check(textFactory_->CreateTextLayout(unit.c_str(), static_cast<UINT32>(unit.size()),
-                formats_[style].Get(), 66, bottom - top, &unitLayout));
-            DWRITE_TEXT_METRICS metrics{};
-            Check(unitLayout->GetMetrics(&metrics));
-            const float width = text(value.substr(0, split), style,
-                D2D1::RectF(59, top, 113 - metrics.widthIncludingTrailingWhitespace, bottom),
-                rgb, DWRITE_TEXT_ALIGNMENT_LEADING, opacity);
-            text(unit, style, D2D1::RectF(59 + width, top, 113, bottom), rgb, DWRITE_TEXT_ALIGNMENT_LEADING, opacity);
+            const auto& unitLayout = layoutFor(slot + 1, unit, style, 66, style == 2 ? 16.0f : 20.0f, false);
+            const float width = text(slot + 2, value.substr(0, split), style,
+                D2D1::RectF(59, top, 113 - unitLayout.measuredWidth, bottom), rgb, opacity);
+            text(slot + 3, unit, style, D2D1::RectF(59 + width, top, 113, bottom), rgb, opacity);
         };
         rateLine(upload, L"\u2191", 2, 7, 23, 0x61e5b7, transition);
         rateLine(download, L"\u2193", 0, 15 + 8 * transition, 35 + 8 * transition, 0x32bdeb, 1);
         Check(target_->EndDraw());
-        auto body = copyPixels();
-        auto pixels = body;
-        for (size_t i = 0; i < pixels.size(); ++i)
-        {
-            // The shadow is black, so only its alpha contributes behind the body.
-            const DWORD alpha = (body[i] >> 24) + (shadow[i] >> 24) * (255 - (body[i] >> 24)) / 255;
-            pixels[i] = (body[i] & 0x00ffffff) | (alpha << 24);
-        }
-        bodyPixels_.swap(body);
-        shadowPixels_.swap(shadow);
-        pixels_.swap(pixels);
+        copyPixels(bodyPixels_);
+        pixelsDirty_ = true;
         size_ = size;
         return true;
     }
     catch (...)
     {
+        // A failed geometry sink may have left an incomplete cached path.
+        for (auto& path : paths_) path.Reset();
         ReleaseTarget();
         return false;
     }
@@ -321,38 +347,55 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
 
 bool FloatingRateRenderer::Present(HWND window, HWND shadow) noexcept
 {
-    if (pixels_.empty()) return false;
-    struct Surface
+    if (bodyPixels_.empty()) return false;
+    if (!surfaceDc_)
     {
-        HDC dc = CreateCompatibleDC(nullptr);
-        HBITMAP bitmap = nullptr;
-        HGDIOBJ previous = nullptr;
-        ~Surface()
+        surfaceDc_ = CreateCompatibleDC(nullptr);
+        if (!surfaceDc_) return false;
+        BITMAPINFO info{};
+        info.bmiHeader = {sizeof(BITMAPINFOHEADER), size_.cx, -size_.cy, 1, 32, BI_RGB};
+        surfaceBitmap_ = CreateDIBSection(surfaceDc_, &info, DIB_RGB_COLORS, &surfaceBits_, nullptr, 0);
+        if (!surfaceBitmap_ || !surfaceBits_)
         {
-            if (previous) SelectObject(dc, previous);
-            if (bitmap) DeleteObject(bitmap);
-            if (dc) DeleteDC(dc);
+            ReleaseTarget();
+            return false;
         }
-    } surface;
-    if (!surface.dc) return false;
-    BITMAPINFO info{};
-    info.bmiHeader = {sizeof(BITMAPINFOHEADER), size_.cx, -size_.cy, 1, 32, BI_RGB};
-    void* bits = nullptr;
-    surface.bitmap = CreateDIBSection(surface.dc, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
-    if (!surface.bitmap || !bits) return false;
-    surface.previous = SelectObject(surface.dc, surface.bitmap);
-    if (!surface.previous || surface.previous == HGDI_ERROR) return false;
+        surfacePrevious_ = SelectObject(surfaceDc_, surfaceBitmap_);
+        if (!surfacePrevious_ || surfacePrevious_ == HGDI_ERROR)
+        {
+            surfacePrevious_ = nullptr;
+            ReleaseTarget();
+            return false;
+        }
+    }
     POINT source{};
     BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
-    if (shadow)
+    if (shadow && shadow != presentedShadow_)
     {
         RECT rect{};
         if (!GetWindowRect(window, &rect)) return false;
         POINT position{rect.left, rect.top};
-        memcpy(bits, shadowPixels_.data(), shadowPixels_.size() * sizeof(DWORD));
-        if (!UpdateLayeredWindow(shadow, nullptr, &position, &size_, surface.dc, &source, 0, &blend, ULW_ALPHA))
+        memcpy(surfaceBits_, shadowPixels_.data(), shadowPixels_.size() * sizeof(DWORD));
+        if (!UpdateLayeredWindow(shadow, nullptr, &position, &size_, surfaceDc_, &source, 0, &blend, ULW_ALPHA))
             return false;
+        presentedShadow_ = shadow;
     }
-    memcpy(bits, bodyPixels_.data(), bodyPixels_.size() * sizeof(DWORD));
-    return UpdateLayeredWindow(window, nullptr, nullptr, &size_, surface.dc, &source, 0, &blend, ULW_ALPHA) != FALSE;
+    memcpy(surfaceBits_, bodyPixels_.data(), bodyPixels_.size() * sizeof(DWORD));
+    return UpdateLayeredWindow(window, nullptr, nullptr, &size_, surfaceDc_, &source, 0, &blend, ULW_ALPHA) != FALSE;
+}
+
+const std::vector<DWORD>& FloatingRateRenderer::Pixels() const
+{
+    if (pixelsDirty_)
+    {
+        pixels_.resize(bodyPixels_.size());
+        for (size_t i = 0; i < pixels_.size(); ++i)
+        {
+            const DWORD body = bodyPixels_[i];
+            const DWORD alpha = (body >> 24) + (shadowPixels_[i] >> 24) * (255 - (body >> 24)) / 255;
+            pixels_[i] = (body & 0x00ffffff) | (alpha << 24);
+        }
+        pixelsDirty_ = false;
+    }
+    return pixels_;
 }

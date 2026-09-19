@@ -224,6 +224,35 @@ int main(int argc, char** argv)
                 }
             }
     wcscpy_s(font.lfFaceName, L"Segoe UI");
+    // A reused renderer must match a fresh one after text, font, DPI and history changes.
+    FloatingRateRenderer cached;
+    for (int sample = 0; sample < 4; ++sample)
+    {
+        cached.AddSample(sample * 1200, (4 - sample) * 9000);
+        for (UINT dpi : {96u, 192u, 96u})
+            for (BYTE decoration : {BYTE{0}, BYTE{1}})
+                for (float hover : {0.0f, 0.4f, 1.0f, 0.0f})
+                {
+                    LOGFONTW selected = font;
+                    selected.lfUnderline = decoration;
+                    selected.lfItalic = decoration;
+                    const auto value = sample % 2 ? L"999.9 G/s" : L"0.1 K/s";
+                    FloatingRateRenderer fresh;
+                    for (int i = 0; i <= sample; ++i) fresh.AddSample(i * 1200, (4 - i) * 9000);
+                    Require(cached.Render(value, value, selected, dpi, 0.3, hover), "cached frame");
+                    Require(fresh.Render(value, value, selected, dpi, 0.3, hover), "fresh frame");
+                    Require(cached.Pixels() == fresh.Pixels(), "cache invalidation matches fresh renderer");
+                    const auto expected = cached.Pixels();
+                    Require(cached.Render(value, value, selected, dpi, 0.3, hover), "repeat cached frame");
+                    Require(cached.Pixels() == expected, "cached frame remains identical");
+                }
+    }
+    cached.ResetHistory();
+    cached.ReleaseTarget();
+    FloatingRateRenderer empty;
+    Require(cached.Render(L"0.0 K/s", L"0.0 K/s", font, 96), "recreate cached target");
+    Require(empty.Render(L"0.0 K/s", L"0.0 K/s", font, 96), "empty reference");
+    Require(cached.Pixels() == empty.Pixels(), "reset clears cached sample geometry");
     renderer.ResetHistory();
     for (int i = 0; i < 48; ++i) renderer.AddSample(128000, 400000 + (i % 7) * 120000);
     Require(renderer.Render(L"128.0 K/s", L"8.4 M/s", font, 96), "evidence frame");

@@ -23,7 +23,7 @@ public:
     double Activity() const noexcept;
     bool Present(HWND window, HWND shadow = nullptr) noexcept;
     void ReleaseTarget() noexcept;
-    const std::vector<DWORD>& Pixels() const noexcept { return pixels_; }
+    const std::vector<DWORD>& Pixels() const;
     SIZE PixelSize() const noexcept { return size_; }
     static SIZE SizeForDpi(UINT dpi) noexcept;
     static bool HitTest(POINT client, UINT dpi) noexcept;
@@ -31,6 +31,19 @@ public:
 
 private:
     template<class T> using ComPtr = Microsoft::WRL::ComPtr<T>;
+    struct TextLayout
+    {
+        ComPtr<IDWriteTextLayout> layout;
+        std::wstring text;
+        float width = 0, height = 0, measuredWidth = 0;
+    };
+    std::array<TextLayout, 8> layouts_;
+    std::array<ComPtr<ID2D1PathGeometry>, 6> paths_;
+    HDC surfaceDc_ = nullptr;
+    HBITMAP surfaceBitmap_ = nullptr;
+    HGDIOBJ surfacePrevious_ = nullptr;
+    void* surfaceBits_ = nullptr;
+    HWND presentedShadow_ = nullptr;
     bool comInitialized_ = false;
     ComPtr<ID2D1Factory> factory_;
     ComPtr<IDWriteFactory> textFactory_;
@@ -43,7 +56,8 @@ private:
     LOGFONTW font_{};
     UINT dpi_ = 0;
     SIZE size_{};
-    std::vector<DWORD> pixels_;
+    mutable std::vector<DWORD> pixels_;
+    mutable bool pixelsDirty_ = true;
     std::vector<DWORD> bodyPixels_;
     std::vector<DWORD> shadowPixels_;
     std::array<double, 48> uploadHistory_{};

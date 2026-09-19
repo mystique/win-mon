@@ -292,15 +292,33 @@ void TrayMessageWindow::Shutdown() noexcept
 
 
 
-winmon::NetworkObservation TrayMessageWindow::ReadNetworkObservation() const
+winmon::NetworkObservation TrayMessageWindow::ReadNetworkObservation()
 {
     MIB_IF_TABLE2* table = nullptr;
     const DWORD tableStatus = GetIfTable2(&table);
     const auto sampledAt = std::chrono::steady_clock::now();
     if (tableStatus != NO_ERROR || table == nullptr) return {{}, false, sampledAt};
     std::vector<winmon::NicSnapshot> snapshots;
-    const auto classicConnectionIds = ReadClassicConnectionIds();
-    const bool classicClassificationAvailable = classicConnectionIds.available;
+    std::vector<GUID> interfaces;
+    interfaces.reserve(table->NumEntries);
+    for (ULONG index = 0; index < table->NumEntries; ++index)
+        interfaces.push_back(table->Table[index].InterfaceGuid);
+    std::sort(interfaces.begin(), interfaces.end(), [](const GUID& left, const GUID& right) {
+        return memcmp(&left, &right, sizeof(GUID)) < 0;
+    });
+    const bool topologyChanged = !std::equal(interfaces.begin(), interfaces.end(),
+        observedInterfaces_.begin(), observedInterfaces_.end(), [](const GUID& left, const GUID& right) {
+            return InlineIsEqualGUID(left, right) != FALSE;
+        });
+    if (topologyChanged || sampledAt >= classificationRefreshAt_)
+    {
+        auto classification = ReadClassicConnectionIds();
+        classicClassificationAvailable_ = classification.available;
+        classicConnectionIds_ = std::move(classification.values);
+        observedInterfaces_ = std::move(interfaces);
+        // ponytail: same-GUID classification changes can lag 30s; use notifications if immediate updates are needed.
+        classificationRefreshAt_ = sampledAt + std::chrono::seconds(classification.available ? 30 : 2);
+    }
     snapshots.reserve(table->NumEntries);
     for (ULONG index = 0; index < table->NumEntries; ++index)
     {
@@ -311,7 +329,7 @@ winmon::NetworkObservation TrayMessageWindow::ReadNetworkObservation() const
         snapshot.description = row.Description;
         snapshot.loopback = row.Type == IF_TYPE_SOFTWARE_LOOPBACK;
         snapshot.visibleInClassicConnections =
-            classicConnectionIds.available && ContainsConnectionId(classicConnectionIds.values, row.InterfaceGuid);
+            classicClassificationAvailable_ && ContainsConnectionId(classicConnectionIds_, row.InterfaceGuid);
         snapshot.up = row.OperStatus == IfOperStatusUp;
         snapshot.hardwareInterface =
             row.InterfaceAndOperStatusFlags.HardwareInterface != FALSE;
@@ -320,7 +338,7 @@ winmon::NetworkObservation TrayMessageWindow::ReadNetworkObservation() const
         snapshots.push_back(std::move(snapshot));
     }
     FreeMibTable(table);
-    return {std::move(snapshots), classicClassificationAvailable, sampledAt};
+    return {std::move(snapshots), classicClassificationAvailable_, sampledAt};
 }
 
 
