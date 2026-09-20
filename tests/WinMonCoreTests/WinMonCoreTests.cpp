@@ -61,11 +61,11 @@ std::chrono::steady_clock::time_point RateSampleAt(double seconds)
         std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(seconds))};
 }
 
-
 void Require(bool condition, const char* message)
 {
     if (!condition) throw std::runtime_error(message);
 }
+
 void RequireRate(const winmon::RateDisplay& display, double upload, double download);
 
 class FakeShellSurface final : public ShellSurface
@@ -259,16 +259,20 @@ public:
     bool ApplyLive() override
     {
         ++applyCalls;
+        firstDisplayFont = 2;
+        if (applyResult) secondDisplayFont = 2;
         return applyResult;
     }
     bool Persist() override
     {
         ++persistCalls;
+        if (persistResult) savedFont = 2;
         return persistResult;
     }
     bool RollbackLive() override
     {
         ++rollbackCalls;
+        if (rollbackResult) firstDisplayFont = secondDisplayFont = 1;
         return rollbackResult;
     }
 
@@ -278,6 +282,7 @@ public:
     int applyCalls = 0;
     int persistCalls = 0;
     int rollbackCalls = 0;
+    int firstDisplayFont = 1, secondDisplayFont = 1, savedFont = 1;
 };
 
 void OperatorSettingTransactionPreservesPreviousChoice()
@@ -287,7 +292,14 @@ void OperatorSettingTransactionPreservesPreviousChoice()
     Require(
         OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::LiveApplicationFailed,
         "live failure rejects setting before persistence");
-    Require(change.persistCalls == 0 && change.rollbackCalls == 0, "live failure leaves storage untouched");
+    Require(change.firstDisplayFont == 1 && change.secondDisplayFont == 1 && change.savedFont == 1,
+        "partial live failure restores both displays and leaves storage untouched");
+
+    change = {};
+    change.applyResult = false;
+    change.rollbackResult = false;
+    Require(OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::RecoveryRequired,
+        "partial live failure with failed rollback requires recovery");
 
     change = {};
     change.persistResult = false;
@@ -295,6 +307,8 @@ void OperatorSettingTransactionPreservesPreviousChoice()
         OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::RolledBack,
         "storage failure restores previous live setting");
     Require(change.applyCalls == 1 && change.persistCalls == 1 && change.rollbackCalls == 1, "rollback transaction order");
+    Require(change.firstDisplayFont == 1 && change.secondDisplayFont == 1 && change.savedFont == 1,
+        "storage failure restores both displays");
 
     change = {};
     change.persistResult = false;
@@ -308,10 +322,9 @@ void OperatorSettingTransactionPreservesPreviousChoice()
         OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::Applied,
         "successful change applies and persists exactly once");
     Require(change.rollbackCalls == 0, "successful change needs no rollback");
+    Require(change.firstDisplayFont == 2 && change.secondDisplayFont == 2 && change.savedFont == 2,
+        "successful change updates both displays and storage");
 }
-
-
-
 
 void RequireRate(const winmon::RateDisplay& display, double upload, double download)
 {
@@ -416,9 +429,6 @@ void BackwardCountersAndDisappearingNicsAreZero()
     RequireRate(display, 100.0, 100.0);
 }
 
-
-
-
 void NonpositiveElapsedIsZero()
 {
     WinMonCore core;
@@ -431,8 +441,6 @@ void NonpositiveElapsedIsZero()
     display = core.Sample();
     RequireRate(display, 0.0, 0.0);
 }
-
-
 
 void FormatsBase1000BoundariesAndMinimumK()
 {

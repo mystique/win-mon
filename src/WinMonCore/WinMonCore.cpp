@@ -77,11 +77,12 @@ void ShellLifecycle::HandleRateStripState(RateStripState state) noexcept
     }
 }
 
-
-
 OperatorSettingOutcome OperatorSettingTransaction::Commit(OperatorSettingChange& change)
 {
-    if (!change.ApplyLive()) return OperatorSettingOutcome::LiveApplicationFailed;
+    if (!change.ApplyLive())
+        return change.RollbackLive()
+            ? OperatorSettingOutcome::LiveApplicationFailed
+            : OperatorSettingOutcome::RecoveryRequired;
     if (change.Persist()) return OperatorSettingOutcome::Applied;
     return change.RollbackLive()
         ? OperatorSettingOutcome::RolledBack
@@ -293,7 +294,6 @@ void WinMonCore::ReconcileSelection(const std::vector<NicSnapshot>& snapshots) n
         SelectAll();
     }
 }
-
 
 std::wstring WinMonCore::FormatRate(double bytesPerSecond)
 {

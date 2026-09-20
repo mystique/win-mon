@@ -77,6 +77,7 @@ class OperatorSettingChange
 {
 public:
     virtual ~OperatorSettingChange() = default;
+    // Failure may leave partial changes; Commit always attempts RollbackLive.
     [[nodiscard]] virtual bool ApplyLive() = 0;
     [[nodiscard]] virtual bool Persist() = 0;
     [[nodiscard]] virtual bool RollbackLive() = 0;
@@ -87,9 +88,6 @@ class OperatorSettingTransaction final
 public:
     [[nodiscard]] static OperatorSettingOutcome Commit(OperatorSettingChange& change);
 };
-
-
-
 
 // Persisted operator settings that the Operator Menu renders as check marks.
 struct OperatorMenuToggles final
@@ -118,7 +116,6 @@ struct NetworkObservation final
     bool classicClassificationAvailable = false;
     std::chrono::steady_clock::time_point sampledAt{};
 };
-
 
 struct OperatorMenuItem final
 {
