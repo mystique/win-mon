@@ -1,5 +1,5 @@
 #include <afxwin.h>
-#include "RateStrip.h"
+#include "FloatingRateDisplay.h"
 #include <iostream>
 #include <stdexcept>
 #include <dwmapi.h>
@@ -11,6 +11,7 @@ void Require(bool condition, const char* message)
 {
     if (!condition) throw std::runtime_error(message);
 }
+
 void CaptureWindow(HWND window, const std::filesystem::path& path)
 {
     DwmFlush();
@@ -46,8 +47,8 @@ int main(int argc, char** argv)
     SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     try
     {
-        RateStrip display;
-        display.SetContextMenuEnabled(true);
+        FloatingRateDisplay display;
+
         CWnd menuOwner;
         Require(menuOwner.CreateEx(0, AfxRegisterWndClass(0), L"Floating test notifications", WS_POPUP,
             CRect(0, 0, 0, 0), nullptr, 0), "menu notification owner");
@@ -80,6 +81,40 @@ int main(int argc, char** argv)
         RECT shadowRect{};
         Require(::GetWindowRect(shadow, &shadowRect) && shadowRect.left == 130 && shadowRect.top == 150, "shadow follows move");
         Require(GetForegroundWindow() == foreground, "move does not activate");
+        MONITORINFO monitorInfo{sizeof(monitorInfo)};
+        Require(GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitorInfo),
+            "drag work area");
+        const RECT work = monitorInfo.rcWork;
+        const LONG width = size.cx, height = size.cy;
+        for (const LONG x : {work.left - 10, work.left + 20, work.right - width + 10})
+        {
+            for (const LONG y : {work.top - 10, work.top + 20, work.bottom - height + 10})
+            {
+                RECT proposed{x, y, x + width, y + height};
+                display.SendMessageW(WM_MOVING, WMSZ_LEFT, reinterpret_cast<LPARAM>(&proposed));
+                Require(proposed.left >= work.left && proposed.top >= work.top &&
+                    proposed.right <= work.right && proposed.bottom <= work.bottom,
+                    "drag keeps entire window inside all four work area edges");
+                Require(proposed.right - proposed.left == width && proposed.bottom - proposed.top == height,
+                    "drag constraint preserves window size");
+                if (x == work.left + 20 && y == work.top + 20)
+                    Require(proposed.left == x && proposed.top == y, "interior drag remains unchanged");
+            }
+        }
+        RateFontSelection defaultFont, selectedFont, actualFont;
+        Require(display.GetRateFont(defaultFont), "floating default font");
+        selectedFont = defaultFont;
+        selectedFont.pointSizeTenths = 100;
+        wcscpy_s(selectedFont.logFont.lfFaceName, L"Segoe UI");
+        Require(display.SetRateFont(selectedFont) && display.GetRateFont(actualFont) &&
+            actualFont.pointSizeTenths == 100, "floating font updates and renders");
+        selectedFont.pointSizeTenths = 0;
+        Require(!display.SetRateFont(selectedFont) && display.GetRateFont(actualFont) &&
+            actualFont.pointSizeTenths == 100, "invalid font preserves floating selection");
+        Require(display.ResetRateFont() && display.GetRateFont(actualFont) &&
+            actualFont.pointSizeTenths == defaultFont.pointSizeTenths &&
+            wcscmp(actualFont.logFont.lfFaceName, defaultFont.logFont.lfFaceName) == 0,
+            "floating reset restores system font");
         if (argc > 1)
         {
             const std::filesystem::path evidence(argv[1]);

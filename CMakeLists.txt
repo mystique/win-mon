@@ -64,9 +64,14 @@ if(BUILD_TESTING)
     target_link_libraries(FloatingRateRendererTests PRIVATE d2d1 dwrite windowscodecs ole32)
     add_test(NAME FloatingRateRendererTests COMMAND FloatingRateRendererTests "${CMAKE_BINARY_DIR}/floating-evidence")
 
+    add_executable(RateFontTests tests/RateFontTests/RateFontTests.cpp)
+    target_include_directories(RateFontTests PRIVATE src/WinMon)
+    target_link_libraries(RateFontTests PRIVATE WinMonCore)
+    add_test(NAME RateFontTests COMMAND RateFontTests)
+
     add_executable(FloatingWindowTests
         tests/FloatingRateRendererTests/FloatingWindowTests.cpp
-        src/WinMon/RateStrip.cpp src/WinMon/FloatingRateRenderer.cpp src/WinMon/Theme.cpp)
+        src/WinMon/FloatingRateDisplay.cpp src/WinMon/FloatingRateRenderer.cpp)
     target_include_directories(FloatingWindowTests PRIVATE src/WinMon)
     target_link_libraries(FloatingWindowTests PRIVATE d2d1 dwrite windowscodecs ole32 dwmapi)
     add_test(NAME FloatingWindowTests COMMAND FloatingWindowTests "${CMAKE_BINARY_DIR}/floating-evidence")

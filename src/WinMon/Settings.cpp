@@ -1,5 +1,5 @@
 #include "Settings.h"
-#include "RateStrip.h"
+#include "RateFont.h"
 
 #include <windows.h>
 

@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "RateStrip.h"
+#include "FloatingRateDisplay.h"
 #include "../WinMonCore/WinMonCore.h"
 
 class TrayMessageWindow final : public CWnd, private winmon::ShellSurface
@@ -47,7 +48,7 @@ private:
     DECLARE_MESSAGE_MAP()
 
     RateStrip rateStrip_;
-    RateStrip floatingRateDisplay_;
+    FloatingRateDisplay floatingRateDisplay_;
     winmon::ShellLifecycle shellLifecycle_;
     winmon::WinMonCore core_;
     std::vector<GUID> observedInterfaces_;
@@ -58,4 +59,5 @@ private:
     bool trayIconAdded_ = false;
     bool shellRecoveryTimerActive_ = false;
     bool shuttingDown_ = false;
+    bool rateFontRecoveryPending_ = false;
 };

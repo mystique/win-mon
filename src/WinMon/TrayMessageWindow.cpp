@@ -1,6 +1,7 @@
 #include "TrayMessageWindow.h"
 #include "Autostart.h"
 #include "Settings.h"
+#include "RateFontSettingChange.h"
 #include "Theme.h"
 
 #include "res/resource.h"
@@ -153,37 +154,10 @@ private:
     bool enabled_;
 };
 
-class RateFontSettingChange final : public winmon::OperatorSettingChange
-{
-public:
-    RateFontSettingChange(
-        RateStrip& rateStrip,
-        RateStrip& floatingRateDisplay,
-        const RateFontSelection& previous,
-        const RateFontSelection& selected) noexcept
-        : rateStrip_(rateStrip), floatingRateDisplay_(floatingRateDisplay), previous_(previous), selected_(selected) {}
-
-    bool ApplyLive() override
-    {
-        return rateStrip_.SetRateFont(selected_) && floatingRateDisplay_.SetRateFont(selected_);
-    }
-    bool Persist() override { return settings::SetRateFont(selected_); }
-    bool RollbackLive() override
-    {
-        return rateStrip_.SetRateFont(previous_) && floatingRateDisplay_.SetRateFont(previous_);
-    }
-
-private:
-    RateStrip& rateStrip_;
-    RateStrip& floatingRateDisplay_;
-    const RateFontSelection& previous_;
-    const RateFontSelection& selected_;
-};
-
 class FloatingRateDisplaySettingChange final : public winmon::OperatorSettingChange
 {
 public:
-    FloatingRateDisplaySettingChange(RateStrip& display, bool previous, bool enabled) noexcept
+    FloatingRateDisplaySettingChange(FloatingRateDisplay& display, bool previous, bool enabled) noexcept
         : display_(display), previous_(previous), enabled_(enabled) {}
 
     bool ApplyLive() override { return SetVisible(enabled_); }
@@ -204,7 +178,7 @@ private:
             settings::GetFloatingRateDisplayPosition(position));
     }
 
-    RateStrip& display_;
+    FloatingRateDisplay& display_;
     bool previous_;
     bool enabled_;
 };
@@ -252,7 +226,6 @@ bool TrayMessageWindow::Initialize()
     rateStrip_.SetContextMenuOwner(GetSafeHwnd(), kRightClickSpeedTextMessage);
     rateStrip_.SetContextMenuEnabled(settings::IsRightClickSpeedTextEnabled());
     floatingRateDisplay_.SetContextMenuOwner(GetSafeHwnd(), kRightClickSpeedTextMessage);
-    floatingRateDisplay_.SetContextMenuEnabled(true);
     floatingRateDisplay_.SetPositionChangedOwner(GetSafeHwnd(), kFloatingRateDisplayMovedMessage);
     if (!shellLifecycle_.Start())
     {
@@ -289,8 +262,6 @@ void TrayMessageWindow::Shutdown() noexcept
         DestroyWindow();
     }
 }
-
-
 
 winmon::NetworkObservation TrayMessageWindow::ReadNetworkObservation()
 {
@@ -383,9 +354,7 @@ void TrayMessageWindow::SampleRates()
     }
     rateStrip_.SetRates(
         display.uploadText,
-        display.downloadText,
-        display.uploadBytesPerSecond,
-        display.downloadBytesPerSecond);
+        display.downloadText);
     floatingRateDisplay_.SetRates(
         display.uploadText,
         display.downloadText,
@@ -397,6 +366,7 @@ void TrayMessageWindow::OnTimer(UINT_PTR timerId)
 {
     if (timerId == kRateSampleTimer)
     {
+        if (rateFontRecoveryPending_) LoadSavedRateFont();
         SampleRates();
         shellLifecycle_.OnRateSample();
     }
@@ -491,16 +461,18 @@ void TrayMessageWindow::CancelRecovery() noexcept
 void TrayMessageWindow::LoadSavedRateFont()
 {
     RateFontSelection savedFont;
+    bool stripApplied, floatingApplied;
     if (settings::GetRateFont(savedFont))
     {
-        static_cast<void>(rateStrip_.SetRateFont(savedFont));
-        static_cast<void>(floatingRateDisplay_.SetRateFont(savedFont));
+        stripApplied = rateStrip_.SetRateFont(savedFont);
+        floatingApplied = floatingRateDisplay_.SetRateFont(savedFont);
     }
     else
     {
-        static_cast<void>(rateStrip_.ResetRateFont());
-        static_cast<void>(floatingRateDisplay_.ResetRateFont());
+        stripApplied = rateStrip_.ResetRateFont();
+        floatingApplied = floatingRateDisplay_.ResetRateFont();
     }
+    rateFontRecoveryPending_ = !stripApplied || !floatingApplied;
 }
 
 void TrayMessageWindow::SaveFloatingRateDisplayPosition()
@@ -591,6 +563,7 @@ void TrayMessageWindow::RequestExit()
     Shutdown();
     PostQuitMessage(0);
 }
+
 void TrayMessageWindow::ChooseRateFont()
 {
     RateFontSelection selection;
@@ -616,11 +589,12 @@ void TrayMessageWindow::ChooseRateFont()
 
     dialog.GetCurrentFont(&selection.logFont);
     selection.pointSizeTenths = dialog.GetSize();
-    RateFontSettingChange change{rateStrip_, floatingRateDisplay_, previousSelection, selection};
+    RateFontSettingChange change{rateStrip_, floatingRateDisplay_, previousSelection, selection, settings::SetRateFont};
     if (winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RecoveryRequired)
     {
-        // The persisted value is still the previous choice. Recreate through
-        // the lifecycle so recovery keeps retrying until that choice is live.
+        // Retry both displays from persisted truth, including when the taskbar
+        // is unavailable. The sample timer continues any failed restoration.
+        rateFontRecoveryPending_ = true;
         shellLifecycle_.OnEnvironmentChanged();
     }
 }

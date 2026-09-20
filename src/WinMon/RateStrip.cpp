@@ -3,7 +3,7 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
+
 #include <cwchar>
 #include <iterator>
 
@@ -16,12 +16,6 @@ constexpr wchar_t kMaximumBottomLine[] = L"999.9 G/s \u2193";
 struct NotificationAreaSearch
 {
     HWND notificationArea = nullptr;
-};
-
-struct FloatingVisibilitySearch
-{
-    RECT target{};
-    bool visible = false;
 };
 
 BOOL CALLBACK FindNotificationAreaChild(HWND child, LPARAM parameter)
@@ -39,63 +33,19 @@ BOOL CALLBACK FindNotificationAreaChild(HWND child, LPARAM parameter)
     return TRUE;
 }
 
-BOOL CALLBACK FindVisibleFloatingArea(HMONITOR monitor, HDC, LPRECT, LPARAM parameter)
-{
-    auto* const search = reinterpret_cast<FloatingVisibilitySearch*>(parameter);
-    MONITORINFO monitorInfo{ sizeof(monitorInfo) };
-    if (!GetMonitorInfoW(monitor, &monitorInfo))
-    {
-        return TRUE;
-    }
-
-    if (FloatingRateRenderer::IsPositionVisible(search->target, monitorInfo.rcWork))
-    {
-        search->visible = true;
-        return FALSE;
-    }
-    return TRUE;
 }
 
-bool IsFloatingPositionVisible(POINT position, CSize size, UINT dpi) noexcept
-{
-    const int margin = MulDiv(3, static_cast<int>(dpi), 96);
-    FloatingVisibilitySearch search{
-        {position.x + margin, position.y + margin, position.x + size.cx - margin, position.y + size.cy - margin}};
-    EnumDisplayMonitors(nullptr, nullptr, FindVisibleFloatingArea, reinterpret_cast<LPARAM>(&search));
-    return search.visible;
-}
-
-POINT DefaultFloatingPosition(CSize size) noexcept
-{
-    MONITORINFO monitorInfo{ sizeof(monitorInfo) };
-    const HMONITOR monitor = MonitorFromPoint({}, MONITOR_DEFAULTTOPRIMARY);
-    if (monitor == nullptr || !GetMonitorInfoW(monitor, &monitorInfo))
-    {
-        return {};
-    }
-
-    const int margin = MulDiv(12, static_cast<int>(GetDpiForSystem()), 96);
-    return {
-        std::max(monitorInfo.rcWork.left, monitorInfo.rcWork.right - size.cx - margin),
-        monitorInfo.rcWork.top + margin};
-}
-}
 void RateStrip::SetRates(
     const std::wstring& uploadText,
-    const std::wstring& downloadText,
-    double uploadBytesPerSecond,
-    double downloadBytesPerSecond) noexcept
+    const std::wstring& downloadText) noexcept
 {
     uploadText_ = uploadText;
     downloadText_ = downloadText;
-    floatingRenderer_.AddSample(uploadBytesPerSecond, downloadBytesPerSecond);
-    UpdatePulseTimer();
     if (GetSafeHwnd() != nullptr)
     {
         static_cast<void>(Render());
     }
 }
-
 
 std::wstring RateStrip::GetRateFontName() const
 {
@@ -105,118 +55,23 @@ std::wstring RateStrip::GetRateFontName() const
 
 bool RateStrip::GetRateFont(RateFontSelection& selection) const noexcept
 {
-    if (hasSelectedFont_)
-    {
-        selection = selectedFont_;
-        return true;
-    }
-
-    const HWND taskbar = taskbar_ != nullptr && IsWindow(taskbar_) ? taskbar_ : nullptr;
-    return LoadDefaultRateFont(taskbar, selection);
+    return rateFont_.Get(taskbar_ != nullptr && IsWindow(taskbar_) ? taskbar_ : nullptr, selection);
 }
 
-bool RateStrip::SetRateFont(const RateFontSelection& selection) noexcept
+bool RateStrip::UpdateRateFont(std::optional<RateFontSelection> selection) noexcept
 {
-    if (selection.logFont.lfFaceName[0] == L'\0' || selection.pointSizeTenths <= 0)
-    {
-        return false;
-    }
-
-    if (hasSelectedFont_ &&
-        selectedFont_.pointSizeTenths == selection.pointSizeTenths &&
-        memcmp(&selectedFont_.logFont, &selection.logFont, sizeof(LOGFONTW)) == 0)
-    {
-        return true;
-    }
-
-    const RateFontSelection previousFont = selectedFont_;
-    const bool previouslySelected = hasSelectedFont_;
-    selectedFont_ = selection;
-    hasSelectedFont_ = true;
-
-    if (GetSafeHwnd() == nullptr)
-    {
-        return true;
-    }
-
-    if (floating_ && RelayoutFloating() && Render())
-    {
-        return true;
-    }
-
-    const HWND taskbar = FindPrimaryBottomTaskbar();
-    const HWND notificationArea = taskbar == nullptr ? nullptr : FindNotificationArea(taskbar);
-    if (notificationArea != nullptr && taskbar_ == taskbar && Relayout(taskbar, notificationArea) && Render())
-    {
-        return true;
-    }
-
-    selectedFont_ = previousFont;
-    hasSelectedFont_ = previouslySelected;
-    if (floating_)
-    {
-        static_cast<void>(RelayoutFloating());
-        static_cast<void>(Render());
-    }
-    else if (notificationArea != nullptr && taskbar_ == taskbar)
-    {
-        static_cast<void>(Relayout(taskbar, notificationArea));
-        static_cast<void>(Render());
-    }
-    return false;
-}
-
-bool RateStrip::ResetRateFont() noexcept
-{
-    if (!hasSelectedFont_)
-    {
-        return true;
-    }
-
-    const RateFontSelection previousFont = selectedFont_;
-    hasSelectedFont_ = false;
-    if (GetSafeHwnd() == nullptr)
-    {
-        return true;
-    }
-
-    if (floating_ && RelayoutFloating() && Render())
-    {
-        return true;
-    }
-
-    const HWND taskbar = FindPrimaryBottomTaskbar();
-    const HWND notificationArea = taskbar == nullptr ? nullptr : FindNotificationArea(taskbar);
-    if (notificationArea != nullptr && taskbar_ == taskbar && Relayout(taskbar, notificationArea) && Render())
-    {
-        return true;
-    }
-
-    selectedFont_ = previousFont;
-    hasSelectedFont_ = true;
-    if (floating_)
-    {
-        static_cast<void>(RelayoutFloating());
-        static_cast<void>(Render());
-    }
-    else if (notificationArea != nullptr && taskbar_ == taskbar)
-    {
-        static_cast<void>(Relayout(taskbar, notificationArea));
-        static_cast<void>(Render());
-    }
-    return false;
+    return rateFont_.Apply(selection, [this] {
+        if (GetSafeHwnd() == nullptr) return true;
+        const HWND taskbar = FindPrimaryBottomTaskbar();
+        const HWND area = taskbar == nullptr ? nullptr : FindNotificationArea(taskbar);
+        return area != nullptr && taskbar_ == taskbar && Relayout(taskbar, area) && Render();
+    });
 }
 
 void RateStrip::SetContextMenuOwner(HWND owner, UINT notificationMessage) noexcept
 {
     contextMenuOwner_ = owner;
     contextMenuMessage_ = notificationMessage;
-}
-
-void RateStrip::SetPositionChangedOwner(HWND owner, UINT notificationMessage) noexcept
-{
-    positionChangedOwner_ = owner;
-    positionChangedMessage_ = notificationMessage;
 }
 
 void RateStrip::SetContextMenuEnabled(bool enabled) noexcept
@@ -236,31 +91,17 @@ void RateStrip::SetContextMenuEnabled(bool enabled) noexcept
 
 BEGIN_MESSAGE_MAP(RateStrip, CWnd)
     ON_WM_PAINT()
-    ON_WM_MOUSEMOVE()
-    ON_WM_MOUSELEAVE()
-    ON_WM_TIMER()
-    ON_WM_SETTINGCHANGE()
     ON_WM_ERASEBKGND()
     ON_WM_MOUSEACTIVATE()
     ON_WM_NCHITTEST()
     ON_WM_RBUTTONUP()
-    ON_WM_LBUTTONDOWN()
-    ON_WM_EXITSIZEMOVE()
-    ON_WM_WINDOWPOSCHANGED()
-    ON_MESSAGE(WM_DPICHANGED, &RateStrip::OnDpiChanged)
-    ON_WM_DISPLAYCHANGE()
 END_MESSAGE_MAP()
-
 bool RateStrip::Embed(bool shouldShow)
 {
     if (!shouldShow)
     {
         Shutdown();
         return false;
-    }
-    if (floating_)
-    {
-        Shutdown();
     }
     const HWND taskbar = FindPrimaryBottomTaskbar();
     if (taskbar == nullptr)
@@ -338,76 +179,11 @@ bool RateStrip::Embed(bool shouldShow)
     return Render();
 }
 
-bool RateStrip::ShowFloating(POINT position, bool restorePosition)
-{
-    if (GetSafeHwnd() != nullptr)
-    {
-        if (!floating_)
-        {
-            Shutdown();
-        }
-        else
-        {
-            ShowWindow(SW_SHOWNOACTIVATE);
-            return true;
-        }
-    }
-
-    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForSystem());
-    if (!restorePosition) position = DefaultFloatingPosition(size_);
-
-    const CString windowClass = AfxRegisterWndClass(0, LoadCursorW(nullptr, IDC_ARROW), nullptr, nullptr);
-    // A separate WS_EX_TRANSPARENT layered window makes shadow pixels pass
-    // clicks to other processes; HTTRANSPARENT alone only reaches this thread.
-    if (!floatingShadow_.CreateEx(
-            WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
-            windowClass, nullptr, WS_POPUP,
-            CRect(position.x, position.y, position.x + size_.cx, position.y + size_.cy), nullptr, 0))
-        return false;
-    if (!CreateEx(
-            WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE,
-            windowClass,
-            nullptr,
-            WS_POPUP,
-            CRect(position.x, position.y, position.x + size_.cx, position.y + size_.cy),
-            &floatingShadow_,
-            0))
-    {
-        floatingShadow_.DestroyWindow();
-        return false;
-    }
-
-    floating_ = true;
-    if (!RelayoutFloating())
-    {
-        Shutdown();
-        return false;
-    }
-    position = GetFloatingPosition();
-    if (::SetWindowPos(
-            GetSafeHwnd(), HWND_TOPMOST, position.x, position.y, size_.cx, size_.cy, SWP_NOACTIVATE) == FALSE)
-    {
-        Shutdown();
-        return false;
-    }
-    if (!Render())
-    {
-        Shutdown();
-        return false;
-    }
-    floatingShadow_.ShowWindow(SW_SHOWNOACTIVATE);
-    ShowWindow(SW_SHOWNOACTIVATE);
-    return true;
-}
 bool RateStrip::Refresh()
 {
     if (GetSafeHwnd() == nullptr)
     {
         return false;
-    }
-    if (floating_)
-    {
-        return Render();
     }
 
     const HWND taskbar = FindPrimaryBottomTaskbar();
@@ -469,31 +245,8 @@ bool RateStrip::Relayout(HWND taskbar, HWND notificationArea) noexcept
     return PlaceBesideNotificationArea(taskbar, notificationArea);
 }
 
-bool RateStrip::RelayoutFloating() noexcept
-{
-    RECT windowRect{};
-    if (GetSafeHwnd() == nullptr || !::GetWindowRect(GetSafeHwnd(), &windowRect))
-    {
-        return false;
-    }
-    UINT dpi = GetDpiForWindow(GetSafeHwnd());
-    size_ = FloatingRateRenderer::SizeForDpi(dpi);
-    POINT position{windowRect.left, windowRect.top};
-    if (!IsFloatingPositionVisible(position, size_, dpi))
-        position = DefaultFloatingPosition(size_);
-    if (!::SetWindowPos(GetSafeHwnd(), HWND_TOPMOST, position.x, position.y, 0, 0,
-            SWP_NOACTIVATE | SWP_NOSIZE)) return false;
-    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()));
-    return true;
-}
-
 void RateStrip::Shutdown() noexcept
 {
-    if (GetSafeHwnd() && pulseTimerActive_) KillTimer(1);
-    pulseTimerActive_ = false;
-    pulsePhase_ = 0;
-    hovering_ = false;
-    hoverProgress_ = 0;
     if (GetSafeHwnd() != nullptr)
     {
         DestroyWindow();
@@ -504,20 +257,14 @@ void RateStrip::Shutdown() noexcept
         font_.DeleteObject();
     }
 
-
-    if (floatingShadow_.GetSafeHwnd()) floatingShadow_.DestroyWindow();
-    floatingRenderer_.ReleaseTarget();
     taskbar_ = nullptr;
     size_ = {};
-    floating_ = false;
 }
 
 bool RateStrip::IsPrimaryBottomTaskbarAvailable() noexcept
 {
     return FindPrimaryBottomTaskbar() != nullptr;
 }
-
-
 
 HWND RateStrip::FindPrimaryBottomTaskbar() noexcept
 {
@@ -549,37 +296,10 @@ HWND RateStrip::FindNotificationArea(HWND taskbar) noexcept
     return search.notificationArea;
 }
 
-bool RateStrip::LoadDefaultRateFont(HWND taskbar, RateFontSelection& selection) noexcept
-{
-    const UINT dpi = taskbar == nullptr ? GetDpiForSystem() : GetDpiForWindow(taskbar);
-    NONCLIENTMETRICSW metrics{};
-    metrics.cbSize = sizeof(metrics);
-    if (!SystemParametersInfoForDpi(
-            SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0, dpi))
-    {
-        return false;
-    }
-
-    selection.logFont = metrics.lfMessageFont;
-    const int logicalHeight = selection.logFont.lfHeight < 0
-        ? -selection.logFont.lfHeight
-        : selection.logFont.lfHeight;
-    selection.pointSizeTenths = MulDiv(logicalHeight, 720, static_cast<int>(dpi));
-    if (selection.logFont.lfFaceName[0] == L'\0' || selection.pointSizeTenths <= 0)
-    {
-        return false;
-    }
-    return true;
-}
-
 bool RateStrip::CreateRateFont(HWND taskbar) noexcept
 {
     RateFontSelection selection;
-    if (hasSelectedFont_)
-    {
-        selection = selectedFont_;
-    }
-    else if (!LoadDefaultRateFont(taskbar, selection))
+    if (!rateFont_.Get(taskbar, selection))
     {
         return false;
     }
@@ -675,15 +395,9 @@ bool RateStrip::PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea)
                size_.cy,
                SWP_NOACTIVATE) != FALSE;
 }
+
 bool RateStrip::Render() noexcept
 {
-    if (floating_)
-    {
-        RateFontSelection selection;
-        return GetSafeHwnd() != nullptr && GetRateFont(selection) &&
-            floatingRenderer_.Render(uploadText_, downloadText_, selection.logFont,
-                GetDpiForWindow(GetSafeHwnd()), pulseTimerActive_ ? pulsePhase_ : 0.5, hoverProgress_) && floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd());
-    }
     if (GetSafeHwnd() == nullptr || size_.cx <= 0 || size_.cy <= 0 || font_.GetSafeHandle() == nullptr)
     {
         return false;
@@ -726,7 +440,6 @@ bool RateStrip::Render() noexcept
     const size_t pixelCount = static_cast<size_t>(size_.cx) * static_cast<size_t>(size_.cy);
     std::fill_n(pixels, pixelCount, 0u);
     ::PatBlt(memoryDc, 0, 0, size_.cx, size_.cy, BLACKNESS);
-    if (!floating_)
     {
         ::SetBkMode(memoryDc, TRANSPARENT);
         ::SetTextColor(memoryDc, RGB(255, 255, 255));
@@ -799,14 +512,9 @@ int RateStrip::OnMouseActivate(CWnd*, UINT, UINT)
     return MA_NOACTIVATE;
 }
 
-LRESULT RateStrip::OnNcHitTest(CPoint point)
+LRESULT RateStrip::OnNcHitTest(CPoint)
 {
-    if (floating_)
-    {
-        ScreenToClient(&point);
-        return FloatingRateRenderer::HitTest(point, GetDpiForWindow(GetSafeHwnd())) ? HTCLIENT : HTTRANSPARENT;
-    }
-    return floating_ || contextMenuEnabled_ ? HTCLIENT : HTTRANSPARENT;
+    return contextMenuEnabled_ ? HTCLIENT : HTTRANSPARENT;
 }
 
 void RateStrip::OnRButtonUp(UINT flags, CPoint point)
@@ -819,146 +527,4 @@ void RateStrip::OnRButtonUp(UINT flags, CPoint point)
 
     // Post so the owner opens its menu outside this mouse message.
     ::PostMessageW(contextMenuOwner_, contextMenuMessage_, 0, 0);
-}
-
-void RateStrip::OnLButtonDown(UINT flags, CPoint point)
-{
-    if (!floating_)
-    {
-        CWnd::OnLButtonDown(flags, point);
-        return;
-    }
-    ClientToScreen(&point);
-    ReleaseCapture();
-    SendMessageW(WM_NCLBUTTONDOWN, HTCAPTION, MAKELPARAM(point.x, point.y));
-}
-
-void RateStrip::OnExitSizeMove()
-{
-    if (floating_ && positionChangedOwner_ != nullptr && positionChangedMessage_ != 0)
-    {
-        ::PostMessageW(positionChangedOwner_, positionChangedMessage_, 0, 0);
-    }
-    CWnd::OnExitSizeMove();
-}
-
-POINT RateStrip::GetFloatingPosition() const noexcept
-{
-    RECT windowRect{};
-    return GetSafeHwnd() != nullptr && ::GetWindowRect(GetSafeHwnd(), &windowRect)
-        ? POINT{windowRect.left, windowRect.top}
-        : POINT{};
-}
-
-LRESULT RateStrip::OnDpiChanged(WPARAM, LPARAM parameter)
-{
-    if (floating_)
-    {
-        const auto* rect = reinterpret_cast<const RECT*>(parameter);
-        ::SetWindowPos(GetSafeHwnd(), HWND_TOPMOST, rect->left, rect->top, 0, 0,
-            SWP_NOSIZE | SWP_NOACTIVATE);
-        size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()));
-        static_cast<void>(Render());
-        if (positionChangedOwner_ && positionChangedMessage_)
-            ::PostMessageW(positionChangedOwner_, positionChangedMessage_, 0, 0);
-    }
-    return 0;
-}
-
-void RateStrip::OnDisplayChange(UINT, int, int)
-{
-    if (floating_ && RelayoutFloating())
-    {
-        static_cast<void>(Render());
-        if (positionChangedOwner_ && positionChangedMessage_)
-            ::PostMessageW(positionChangedOwner_, positionChangedMessage_, 0, 0);
-    }
-}
-
-void RateStrip::OnWindowPosChanged(WINDOWPOS* position)
-{
-    CWnd::OnWindowPosChanged(position);
-    if (floating_ && floatingShadow_.GetSafeHwnd())
-    {
-        RECT rect{};
-        if (::GetWindowRect(GetSafeHwnd(), &rect))
-            floatingShadow_.SetWindowPos(&wndTopMost, rect.left, rect.top, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
-    }
-}
-
-void RateStrip::UpdatePulseTimer() noexcept
-{
-    if (!floating_ || !GetSafeHwnd()) return;
-    BOOL animations = FALSE;
-    SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
-    const float targetOpacity = hovering_ ? 1.0f : 0.0f;
-    if (!animations) hoverProgress_ = targetOpacity;
-    const bool animate = IsWindowVisible() && animations &&
-        (floatingRenderer_.Activity() > 0 || hoverProgress_ != targetOpacity);
-    if (animate && !pulseTimerActive_)
-    {
-        pulseTick_ = GetTickCount64();
-        pulseTimerActive_ = SetTimer(1, 33, nullptr) != 0;
-    }
-    else if (!animate && pulseTimerActive_)
-    {
-        KillTimer(1);
-        pulseTimerActive_ = false;
-        pulsePhase_ = 0;
-    }
-}
-
-void RateStrip::OnTimer(UINT_PTR timer)
-{
-    if (timer == 1 && floating_ && pulseTimerActive_)
-    {
-        if (!IsWindowVisible())
-        {
-            UpdatePulseTimer();
-            return;
-        }
-        const ULONGLONG now = GetTickCount64();
-        const float step = static_cast<float>(now - pulseTick_) / (hovering_ ? 180.0f : 220.0f);
-        hoverProgress_ = hovering_ ? std::min(1.0f, hoverProgress_ + step) : std::max(0.0f, hoverProgress_ - step);
-        const double period = 2200 - 1200 * floatingRenderer_.Activity();
-        pulsePhase_ = std::fmod(pulsePhase_ + (now - pulseTick_) / period, 1.0);
-        pulseTick_ = now;
-        UpdatePulseTimer();
-        static_cast<void>(Render());
-        return;
-    }
-    CWnd::OnTimer(timer);
-}
-
-void RateStrip::OnSettingChange(UINT flags, LPCTSTR section)
-{
-    UpdatePulseTimer();
-    if (floating_ && IsWindowVisible()) static_cast<void>(Render());
-    CWnd::OnSettingChange(flags, section);
-}
-
-void RateStrip::OnMouseMove(UINT flags, CPoint point)
-{
-    if (floating_ && !hovering_)
-    {
-        TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, GetSafeHwnd(), 0};
-        if (::TrackMouseEvent(&tracking))
-        {
-            hovering_ = true;
-            UpdatePulseTimer();
-            static_cast<void>(Render());
-        }
-    }
-    CWnd::OnMouseMove(flags, point);
-}
-
-void RateStrip::OnMouseLeave()
-{
-    if (floating_)
-    {
-        hovering_ = false;
-        UpdatePulseTimer();
-        static_cast<void>(Render());
-    }
-    CWnd::OnMouseLeave();
 }
