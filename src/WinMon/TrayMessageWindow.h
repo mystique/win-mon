@@ -6,6 +6,7 @@
 
 #include "RateStrip.h"
 #include "FloatingRateDisplay.h"
+#include "NetworkObservationReader.h"
 #include "../WinMonCore/WinMonCore.h"
 
 class TrayMessageWindow final : public CWnd, private winmon::ShellSurface
@@ -34,7 +35,6 @@ private:
     void RequestExit();
     void ChooseRateFont();
     void SampleRates();
-    [[nodiscard]] winmon::NetworkObservation ReadNetworkObservation();
     afx_msg LRESULT OnTrayNotification(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnRightClickSpeedText(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnFloatingRateDisplayMoved(WPARAM wParam, LPARAM lParam);
@@ -51,10 +51,7 @@ private:
     FloatingRateDisplay floatingRateDisplay_;
     winmon::ShellLifecycle shellLifecycle_;
     winmon::WinMonCore core_;
-    std::vector<GUID> observedInterfaces_;
-    std::vector<GUID> classicConnectionIds_;
-    std::chrono::steady_clock::time_point classificationRefreshAt_{};
-    bool classicClassificationAvailable_ = false;
+    NetworkObservationReader networkReader_;
     std::uint64_t displayedNetworkGeneration_ = 0;
     bool trayIconAdded_ = false;
     bool shellRecoveryTimerActive_ = false;

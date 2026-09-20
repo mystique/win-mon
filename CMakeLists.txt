@@ -69,6 +69,13 @@ if(BUILD_TESTING)
     target_link_libraries(RateFontTests PRIVATE WinMonCore)
     add_test(NAME RateFontTests COMMAND RateFontTests)
 
+    add_executable(NetworkObservationTests
+        tests/NetworkObservationTests/NetworkObservationTests.cpp
+        src/WinMon/NetworkObservationReader.cpp)
+    target_include_directories(NetworkObservationTests PRIVATE src/WinMon)
+    target_link_libraries(NetworkObservationTests PRIVATE Iphlpapi ole32)
+    add_test(NAME NetworkObservationTests COMMAND NetworkObservationTests)
+
     add_executable(FloatingWindowTests
         tests/FloatingRateRendererTests/FloatingWindowTests.cpp
         src/WinMon/FloatingRateDisplay.cpp src/WinMon/FloatingRateRenderer.cpp)

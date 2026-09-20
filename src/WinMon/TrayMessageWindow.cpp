@@ -8,12 +8,6 @@
 
 #include <afxdlgs.h>
 #include <shellapi.h>
-#include <iphlpapi.h>
-#include <netcon.h>
-#include <netioapi.h>
-#include <wrl/client.h>
-#include <algorithm>
-#include <chrono>
 #include <vector>
 #include <string>
 #include <utility>
@@ -28,65 +22,6 @@ constexpr UINT_PTR kRateSampleTimer = 1;
 constexpr UINT_PTR kShellRecoveryTimer = 2;
 constexpr UINT kShellRecoveryCadenceMs = 2000;
 const UINT kTaskbarCreatedMessage = RegisterWindowMessageW(L"TaskbarCreated");
-struct ClassicConnectionIds final
-{
-    bool available = false;
-    std::vector<GUID> values;
-};
-
-ClassicConnectionIds ReadClassicConnectionIds()
-{
-    const HRESULT initialization = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    const bool shouldUninitialize = SUCCEEDED(initialization);
-    if (FAILED(initialization) && initialization != RPC_E_CHANGED_MODE)
-    {
-        return {};
-    }
-
-    ClassicConnectionIds result;
-    {
-        Microsoft::WRL::ComPtr<INetConnectionManager> manager;
-        if (SUCCEEDED(CoCreateInstance(
-                CLSID_ConnectionManager,
-                nullptr,
-                CLSCTX_LOCAL_SERVER,
-                IID_PPV_ARGS(&manager))))
-        {
-            Microsoft::WRL::ComPtr<IEnumNetConnection> connections;
-            if (SUCCEEDED(manager->EnumConnections(NCME_DEFAULT, &connections)))
-            {
-                result.available = true;
-                Microsoft::WRL::ComPtr<INetConnection> connection;
-                ULONG fetched = 0;
-                while (connections->Next(1, connection.ReleaseAndGetAddressOf(), &fetched) == S_OK)
-                {
-                    NETCON_PROPERTIES* properties = nullptr;
-                    if (SUCCEEDED(connection->GetProperties(&properties)) && properties != nullptr)
-                    {
-                        result.values.push_back(properties->guidId);
-                        CoTaskMemFree(properties->pszwName);
-                        CoTaskMemFree(properties->pszwDeviceName);
-                        CoTaskMemFree(properties);
-                    }
-                }
-            }
-        }
-    }
-
-    if (shouldUninitialize)
-    {
-        CoUninitialize();
-    }
-    return result;
-}
-
-bool ContainsConnectionId(const std::vector<GUID>& ids, const GUID& candidate) noexcept
-{
-    return std::any_of(ids.begin(), ids.end(), [&candidate](const GUID& id) {
-        return InlineIsEqualGUID(id, candidate) != FALSE;
-    });
-}
-
 bool AppendMenuItems(CMenu& menu, const std::vector<winmon::OperatorMenuItem>& items)
 {
     for (const auto& item : items)
@@ -263,56 +198,6 @@ void TrayMessageWindow::Shutdown() noexcept
     }
 }
 
-winmon::NetworkObservation TrayMessageWindow::ReadNetworkObservation()
-{
-    MIB_IF_TABLE2* table = nullptr;
-    const DWORD tableStatus = GetIfTable2(&table);
-    const auto sampledAt = std::chrono::steady_clock::now();
-    if (tableStatus != NO_ERROR || table == nullptr) return {{}, false, sampledAt};
-    std::vector<winmon::NicSnapshot> snapshots;
-    std::vector<GUID> interfaces;
-    interfaces.reserve(table->NumEntries);
-    for (ULONG index = 0; index < table->NumEntries; ++index)
-        interfaces.push_back(table->Table[index].InterfaceGuid);
-    std::sort(interfaces.begin(), interfaces.end(), [](const GUID& left, const GUID& right) {
-        return memcmp(&left, &right, sizeof(GUID)) < 0;
-    });
-    const bool topologyChanged = !std::equal(interfaces.begin(), interfaces.end(),
-        observedInterfaces_.begin(), observedInterfaces_.end(), [](const GUID& left, const GUID& right) {
-            return InlineIsEqualGUID(left, right) != FALSE;
-        });
-    if (topologyChanged || sampledAt >= classificationRefreshAt_)
-    {
-        auto classification = ReadClassicConnectionIds();
-        classicClassificationAvailable_ = classification.available;
-        classicConnectionIds_ = std::move(classification.values);
-        observedInterfaces_ = std::move(interfaces);
-        // ponytail: same-GUID classification changes can lag 30s; use notifications if immediate updates are needed.
-        classificationRefreshAt_ = sampledAt + std::chrono::seconds(classification.available ? 30 : 2);
-    }
-    snapshots.reserve(table->NumEntries);
-    for (ULONG index = 0; index < table->NumEntries; ++index)
-    {
-        const auto& row = table->Table[index];
-        winmon::NicSnapshot snapshot;
-        snapshot.stableId = std::to_string(row.InterfaceLuid.Value);
-        snapshot.friendlyName = row.Alias;
-        snapshot.description = row.Description;
-        snapshot.loopback = row.Type == IF_TYPE_SOFTWARE_LOOPBACK;
-        snapshot.visibleInClassicConnections =
-            classicClassificationAvailable_ && ContainsConnectionId(classicConnectionIds_, row.InterfaceGuid);
-        snapshot.up = row.OperStatus == IfOperStatusUp;
-        snapshot.hardwareInterface =
-            row.InterfaceAndOperStatusFlags.HardwareInterface != FALSE;
-        snapshot.inOctets = row.InOctets;
-        snapshot.outOctets = row.OutOctets;
-        snapshots.push_back(std::move(snapshot));
-    }
-    FreeMibTable(table);
-    return {std::move(snapshots), classicClassificationAvailable_, sampledAt};
-}
-
-
 LRESULT TrayMessageWindow::OnTaskbarCreated(WPARAM, LPARAM)
 {
     shellLifecycle_.OnShellCreated();
@@ -345,7 +230,7 @@ LRESULT TrayMessageWindow::OnThemeChanged()
 
 void TrayMessageWindow::SampleRates()
 {
-    core_.ObserveNetwork(ReadNetworkObservation());
+    core_.ObserveNetwork(networkReader_.Read());
     const auto display = core_.Sample();
     if (displayedNetworkGeneration_ != display.networkGeneration)
     {
@@ -535,7 +420,7 @@ winmon::OperatorAction TrayMessageWindow::ShowOperatorMenu()
 {
     CPoint cursorPosition;
     if (!GetCursorPos(&cursorPosition)) return {};
-    core_.ObserveNetwork(ReadNetworkObservation());
+    core_.ObserveNetwork(networkReader_.Read());
     const auto model = core_.BeginOperatorMenu(
         {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled(), settings::IsFloatingRateDisplayEnabled()},
         rateStrip_.GetRateFontName());
