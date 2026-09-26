@@ -13,12 +13,9 @@ double Rate(double value) noexcept { return std::isfinite(value) && value > 0 ? 
 FloatingRateRenderer::~FloatingRateRenderer()
 {
     ReleaseTarget();
-    for (auto& layout : layouts_) layout.layout.Reset();
     for (auto& path : paths_) path.Reset();
-    for (auto& format : formats_) format.Reset();
     stroke_.Reset();
     imagingFactory_.Reset();
-    textFactory_.Reset();
     factory_.Reset();
     if (comInitialized_) CoUninitialize();
 }
@@ -91,14 +88,15 @@ void FloatingRateRenderer::ReleaseTarget() noexcept
     bodyPixels_.clear();
     pixels_.clear();
     pixelsDirty_ = true;
+    for (auto& gradient : gradients_) gradient.Reset();
     brush_.Reset();
     target_.Reset();
     bitmap_.Reset();
     dpi_ = 0;
 }
 
-bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring& download,
-    const LOGFONTW& font, UINT dpi, double pulsePhase, float hoverProgress) noexcept
+bool FloatingRateRenderer::Render(const std::wstring&, const std::wstring&,
+    const LOGFONTW&, UINT dpi, double pulsePhase, float waterLevel) noexcept
 {
     try
     {
@@ -113,9 +111,6 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             }
             Check(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory_.ReleaseAndGetAddressOf()));
         }
-        if (!textFactory_)
-            Check(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
-                reinterpret_cast<IUnknown**>(textFactory_.ReleaseAndGetAddressOf())));
         if (!imagingFactory_)
             Check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
                 IID_PPV_ARGS(imagingFactory_.ReleaseAndGetAddressOf())));
@@ -125,23 +120,6 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             properties.startCap = properties.endCap = D2D1_CAP_STYLE_ROUND;
             properties.lineJoin = D2D1_LINE_JOIN_ROUND;
             Check(factory_->CreateStrokeStyle(properties, nullptr, 0, stroke_.ReleaseAndGetAddressOf()));
-        }
-        if (!formats_[0] || memcmp(&font_, &font, sizeof(font)) != 0)
-        {
-            constexpr float sizes[]{14, 9, 10};
-            std::array<ComPtr<IDWriteTextFormat>, 3> formats;
-            for (size_t i = 0; i < formats.size(); ++i)
-            {
-                Check(textFactory_->CreateTextFormat(font.lfFaceName, nullptr,
-                    static_cast<DWRITE_FONT_WEIGHT>(font.lfWeight ? font.lfWeight : FW_NORMAL),
-                    font.lfItalic ? DWRITE_FONT_STYLE_ITALIC : DWRITE_FONT_STYLE_NORMAL,
-                    DWRITE_FONT_STRETCH_NORMAL, sizes[i], L"en-us", &formats[i]));
-                Check(formats[i]->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));
-                Check(formats[i]->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER));
-            }
-            for (auto& layout : layouts_) layout.layout.Reset();
-            formats_ = std::move(formats);
-            font_ = font;
         }
         const SIZE size = SizeForDpi(dpi);
         if (!target_ || dpi_ != dpi)
@@ -155,6 +133,18 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             Check(factory_->CreateWicBitmapRenderTarget(bitmap_.Get(), properties, &target_));
             Check(target_->CreateSolidColorBrush(D2D1::ColorF(0xffffff), &brush_));
             target_->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            const UINT32 colors[]{0x61e5b7, 0x32bdeb, 0x43cfc9};
+            for (size_t i = 0; i < gradients_.size(); ++i)
+            {
+                const D2D1_GRADIENT_STOP stops[]{
+                    {0, D2D1::ColorF(colors[i], i == 2 ? 0.95f : 0.55f)},
+                    {1, D2D1::ColorF(i == 2 ? 0x1685b5 : colors[i], i == 2 ? 0.7f : 0.03f)}};
+                ComPtr<ID2D1GradientStopCollection> collection;
+                Check(target_->CreateGradientStopCollection(stops, 2, &collection));
+                Check(target_->CreateLinearGradientBrush(
+                    D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, 9), D2D1::Point2F(0, 40)),
+                    collection.Get(), &gradients_[i]));
+            }
             dpi_ = dpi;
         }
         const auto color = [&](UINT32 rgb, float alpha = 1) { brush_->SetColor(D2D1::ColorF(rgb, alpha)); };
@@ -216,28 +206,34 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         arc(1, 1, false, 0x46565f);
         arc(2, upload_ > 0 ? uploadHistory_.back() / maximum : 0, true, 0x61e5b7);
         arc(3, download_ > 0 ? downloadHistory_.back() / maximum : 0, false, 0x32bdeb);
-        const float activity = static_cast<float>(Activity());
-        if (activity > 0)
+        const float level = std::isfinite(waterLevel) && waterLevel >= 0
+            ? std::clamp(waterLevel, 0.0f, 1.0f) : static_cast<float>(Activity());
+        if (level > 0)
         {
-            const float phase = static_cast<float>(std::isfinite(pulsePhase) ? std::clamp(pulsePhase, 0.0, 1.0) : 0.5);
-            const float radius = 2 + 12 * phase;
-            const float opacity = (0.2f + 0.8f * activity) * std::sin(phase * 3.14159265f);
-            // Soft concentric fills expand from the center; radius + stroke stays
-            // below 14.5, safely inside the outer ring's inner radius of 16 DIP.
-            for (int layer = 12; layer > 0; --layer)
-            {
-                const float r = radius * layer / 12;
-                color(0x43cfc9, opacity * 0.035f);
-                target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(25, 25), r, r), brush_.Get());
-            }
-            color(0x61e5b7, opacity * 0.4f);
-            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(25, 25), radius, radius), brush_.Get(), 0.8f);
+            const float phase = static_cast<float>(std::isfinite(pulsePhase) ? pulsePhase : 0.5);
+            ComPtr<ID2D1EllipseGeometry> circle;
+            Check(factory_->CreateEllipseGeometry(D2D1::Ellipse(D2D1::Point2F(25, 25), 14.5f, 14.5f), &circle));
+            ComPtr<ID2D1PathGeometry> water;
+            ComPtr<ID2D1GeometrySink> sink;
+            Check(factory_->CreatePathGeometry(&water));
+            Check(water->Open(&sink));
+            sink->BeginFigure(D2D1::Point2F(10, 40), D2D1_FIGURE_BEGIN_FILLED);
+            const float amplitude = 1.2f * std::sin(level * 3.14159265f);
+            for (int x = 10; x <= 40; ++x)
+                sink->AddLine(D2D1::Point2F(static_cast<float>(x), 39.5f - 29 * level +
+                    amplitude * std::sin((x - 10) * 0.25f + phase * 6.2831853f)));
+            sink->AddLine(D2D1::Point2F(40, 40));
+            sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            Check(sink->Close());
+            target_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), circle.Get()), nullptr);
+            target_->FillGeometry(water.Get(), gradients_[2].Get());
+            target_->PopLayer();
         }
         if (count_ > 1)
         {
             const auto trend = [&](size_t slot, const auto& history, UINT32 rgb)
             {
-                color(rgb, 0.32f);
+
                 auto& path = paths_[slot];
                 if (!path)
                 {
@@ -260,76 +256,35 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                     ComPtr<ID2D1GeometrySink> sink;
                     Check(factory_->CreatePathGeometry(&path));
                     Check(path->Open(&sink));
+                    ComPtr<ID2D1GeometrySink> fillSink;
+                    Check(factory_->CreatePathGeometry(&paths_[slot + 2]));
+                    Check(paths_[slot + 2]->Open(&fillSink));
+                    fillSink->BeginFigure(point(first), D2D1_FIGURE_BEGIN_FILLED);
                     sink->BeginFigure(point(first), D2D1_FIGURE_BEGIN_HOLLOW);
                     for (size_t i = first + 1; i < 48; ++i)
                     {
                         const auto from = point(i - 1), to = point(i);
                         const float third = (to.x - from.x) / 3;
-                        sink->AddBezier(D2D1::BezierSegment(
+                        const auto segment = D2D1::BezierSegment(
                             D2D1::Point2F(from.x + third, from.y + tangent(i - 1) / 3),
-                            D2D1::Point2F(to.x - third, to.y - tangent(i) / 3), to));
+                            D2D1::Point2F(to.x - third, to.y - tangent(i) / 3), to);
+                        sink->AddBezier(segment);
+                        fillSink->AddBezier(segment);
                     }
+                    fillSink->AddLine(D2D1::Point2F(113, 40));
+                    fillSink->AddLine(D2D1::Point2F(point(first).x, 40));
+                    fillSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+                    Check(fillSink->Close());
                     sink->EndFigure(D2D1_FIGURE_END_OPEN);
                     Check(sink->Close());
                 }
-                target_->DrawGeometry(path.Get(), brush_.Get(), 1.6f, stroke_.Get());
+                target_->FillGeometry(paths_[slot + 2].Get(), gradients_[slot - 4].Get());
+                color(rgb);
+                target_->DrawGeometry(path.Get(), brush_.Get(), 1.8f, stroke_.Get());
             };
             trend(4, uploadHistory_, 0x61e5b7);
             trend(5, downloadHistory_, 0x32bdeb);
         }
-        hoverProgress = std::isfinite(hoverProgress) ? std::clamp(hoverProgress, 0.0f, 1.0f) : 0;
-        const float transition = hoverProgress * hoverProgress * (3 - 2 * hoverProgress);
-        const auto layoutFor = [&](size_t slot, const std::wstring& value, size_t style,
-            float width, float height, bool fit) -> TextLayout&
-        {
-            auto& cached = layouts_[slot];
-            if (!cached.layout || cached.text != value || cached.width != width || cached.height != height)
-            {
-                ComPtr<IDWriteTextLayout> layout;
-                const auto length = static_cast<UINT32>(value.size());
-                Check(textFactory_->CreateTextLayout(value.c_str(), length, formats_[style].Get(), width, height, &layout));
-                if (fit && font.lfUnderline) Check(layout->SetUnderline(TRUE, {0, length}));
-                if (fit && font.lfStrikeOut) Check(layout->SetStrikethrough(TRUE, {0, length}));
-                DWRITE_TEXT_METRICS metrics{};
-                Check(layout->GetMetrics(&metrics));
-                const float scale = std::min({1.0f, width / metrics.widthIncludingTrailingWhitespace, height / metrics.height});
-                if (fit && scale < 1)
-                {
-                    Check(layout->SetFontSize(formats_[style]->GetFontSize() * scale * 0.98f, {0, length}));
-                    Check(layout->GetMetrics(&metrics));
-                }
-                cached = {std::move(layout), value, width, height, metrics.widthIncludingTrailingWhitespace};
-            }
-            return cached;
-        };
-        const auto text = [&](size_t slot, const std::wstring& value, size_t style, D2D1_RECT_F rect, UINT32 rgb, float opacity)
-        {
-            auto& cached = layoutFor(slot, value, style, rect.right - rect.left, style == 2 ? 16.0f : 20.0f, true);
-            const auto& layout = cached.layout;
-            // A narrow glyph halo keeps overlapping trends from crossing the readings.
-            color(0x222e34, opacity);
-            for (const auto offset : {D2D1::Point2F(-0.75f, 0), D2D1::Point2F(0.75f, 0),
-                D2D1::Point2F(0, -0.75f), D2D1::Point2F(0, 0.75f)})
-                target_->DrawTextLayout(D2D1::Point2F(rect.left + offset.x, rect.top + offset.y), layout.Get(), brush_.Get());
-            color(rgb, opacity);
-            target_->DrawTextLayout(D2D1::Point2F(rect.left, rect.top), layout.Get(), brush_.Get());
-            return cached.measuredWidth;
-        };
-        const auto rateLine = [&](const std::wstring& value, const wchar_t* arrow,
-            size_t style, float top, float bottom, UINT32 rgb, float opacity)
-        {
-            if (opacity <= 0) return;
-            const size_t slot = style == 2 ? 0 : 4;
-            text(slot, arrow, style, D2D1::RectF(47, top, 58, bottom), rgb, opacity);
-            const auto split = value.find(L' ');
-            const std::wstring unit = split == std::wstring::npos ? std::wstring{} : value.substr(split);
-            const auto& unitLayout = layoutFor(slot + 1, unit, style, 66, style == 2 ? 16.0f : 20.0f, false);
-            const float width = text(slot + 2, value.substr(0, split), style,
-                D2D1::RectF(59, top, 113 - unitLayout.measuredWidth, bottom), rgb, opacity);
-            text(slot + 3, unit, style, D2D1::RectF(59 + width, top, 113, bottom), rgb, opacity);
-        };
-        rateLine(upload, L"\u2191", 2, 7, 23, 0x61e5b7, transition);
-        rateLine(download, L"\u2193", 0, 15 + 8 * transition, 35 + 8 * transition, 0x32bdeb, 1);
         Check(target_->EndDraw());
         copyPixels(bodyPixels_);
         pixelsDirty_ = true;

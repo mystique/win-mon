@@ -19,7 +19,7 @@ public:
     void AddSample(double upload, double download) noexcept;
     void ResetHistory() noexcept;
     bool Render(const std::wstring& upload, const std::wstring& download,
-        const LOGFONTW& font, UINT dpi, double pulsePhase = 0.5, float hoverProgress = 1) noexcept;
+        const LOGFONTW& font, UINT dpi, double pulsePhase = 0.5, float waterLevel = -1) noexcept;
     double Activity() const noexcept;
     bool Present(HWND window, HWND shadow = nullptr) noexcept;
     void ReleaseTarget() noexcept;
@@ -31,14 +31,8 @@ public:
 
 private:
     template<class T> using ComPtr = Microsoft::WRL::ComPtr<T>;
-    struct TextLayout
-    {
-        ComPtr<IDWriteTextLayout> layout;
-        std::wstring text;
-        float width = 0, height = 0, measuredWidth = 0;
-    };
-    std::array<TextLayout, 8> layouts_;
-    std::array<ComPtr<ID2D1PathGeometry>, 6> paths_;
+    std::array<ComPtr<ID2D1PathGeometry>, 8> paths_;
+    std::array<ComPtr<ID2D1LinearGradientBrush>, 3> gradients_;
     HDC surfaceDc_ = nullptr;
     HBITMAP surfaceBitmap_ = nullptr;
     HGDIOBJ surfacePrevious_ = nullptr;
@@ -46,14 +40,11 @@ private:
     HWND presentedShadow_ = nullptr;
     bool comInitialized_ = false;
     ComPtr<ID2D1Factory> factory_;
-    ComPtr<IDWriteFactory> textFactory_;
     ComPtr<IWICImagingFactory> imagingFactory_;
     ComPtr<IWICBitmap> bitmap_;
     ComPtr<ID2D1RenderTarget> target_;
     ComPtr<ID2D1SolidColorBrush> brush_;
     ComPtr<ID2D1StrokeStyle> stroke_;
-    std::array<ComPtr<IDWriteTextFormat>, 3> formats_;
-    LOGFONTW font_{};
     UINT dpi_ = 0;
     SIZE size_{};
     mutable std::vector<DWORD> pixels_;

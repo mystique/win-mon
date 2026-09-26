@@ -10,7 +10,7 @@ public:
     [[nodiscard]] bool ShowFloating(POINT position, bool restorePosition);
     [[nodiscard]] bool Refresh() noexcept { return Render(); }
     void Shutdown() noexcept;
-    void ResetHistory() noexcept { floatingRenderer_.ResetHistory(); }
+    void ResetHistory() noexcept { floatingRenderer_.ResetHistory(); waterLevel_ = 0; }
     void SetRates(const std::wstring& uploadText, const std::wstring& downloadText,
         double uploadBytesPerSecond, double downloadBytesPerSecond) noexcept;
     void SetContextMenuOwner(HWND owner, UINT notificationMessage) noexcept;
@@ -27,8 +27,6 @@ private:
     void UpdatePulseTimer() noexcept;
     afx_msg void OnTimer(UINT_PTR timer);
     afx_msg void OnSettingChange(UINT flags, LPCTSTR section);
-    afx_msg void OnMouseMove(UINT flags, CPoint point);
-    afx_msg void OnMouseLeave();
     afx_msg void OnPaint();
     afx_msg BOOL OnEraseBkgnd(CDC* deviceContext);
     afx_msg int OnMouseActivate(CWnd* desktopWindow, UINT hitTest, UINT message);
@@ -53,8 +51,7 @@ private:
     HWND positionChangedOwner_ = nullptr;
     UINT positionChangedMessage_ = 0;
     bool pulseTimerActive_ = false;
-    bool hovering_ = false;
-    float hoverProgress_ = 0;
+    float waterLevel_ = 0;
     double pulsePhase_ = 0;
     ULONGLONG pulseTick_ = 0;
 };

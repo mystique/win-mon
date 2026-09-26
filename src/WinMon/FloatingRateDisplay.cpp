@@ -82,8 +82,6 @@ void FloatingRateDisplay::SetPositionChangedOwner(HWND owner, UINT notificationM
 
 BEGIN_MESSAGE_MAP(FloatingRateDisplay, CWnd)
     ON_WM_PAINT()
-    ON_WM_MOUSEMOVE()
-    ON_WM_MOUSELEAVE()
     ON_WM_TIMER()
     ON_WM_SETTINGCHANGE()
     ON_WM_ERASEBKGND()
@@ -175,8 +173,7 @@ void FloatingRateDisplay::Shutdown() noexcept
     if (GetSafeHwnd() && pulseTimerActive_) KillTimer(1);
     pulseTimerActive_ = false;
     pulsePhase_ = 0;
-    hovering_ = false;
-    hoverProgress_ = 0;
+    waterLevel_ = 0;
     if (GetSafeHwnd()) DestroyWindow();
     if (floatingShadow_.GetSafeHwnd()) floatingShadow_.DestroyWindow();
     floatingRenderer_.ReleaseTarget();
@@ -195,7 +192,7 @@ bool FloatingRateDisplay::Render() noexcept
     RateFontSelection selection;
     return GetSafeHwnd() != nullptr && GetRateFont(selection) &&
         floatingRenderer_.Render(uploadText_, downloadText_, selection.logFont,
-            GetDpiForWindow(GetSafeHwnd()), pulseTimerActive_ ? pulsePhase_ : 0.5, hoverProgress_) &&
+            GetDpiForWindow(GetSafeHwnd()), pulseTimerActive_ ? pulsePhase_ : 0.5, waterLevel_) &&
         floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd());
 }
 
@@ -309,10 +306,10 @@ void FloatingRateDisplay::UpdatePulseTimer() noexcept
     if (!GetSafeHwnd()) return;
     BOOL animations = FALSE;
     SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
-    const float targetOpacity = hovering_ ? 1.0f : 0.0f;
-    if (!animations) hoverProgress_ = targetOpacity;
+    const float targetLevel = static_cast<float>(floatingRenderer_.Activity());
+    if (!animations) waterLevel_ = targetLevel;
     const bool animate = IsWindowVisible() && animations &&
-        (floatingRenderer_.Activity() > 0 || hoverProgress_ != targetOpacity);
+        (targetLevel > 0 || waterLevel_ != targetLevel);
     if (animate && !pulseTimerActive_)
     {
         pulseTick_ = GetTickCount64();
@@ -336,8 +333,9 @@ void FloatingRateDisplay::OnTimer(UINT_PTR timer)
             return;
         }
         const ULONGLONG now = GetTickCount64();
-        const float step = static_cast<float>(now - pulseTick_) / (hovering_ ? 180.0f : 220.0f);
-        hoverProgress_ = hovering_ ? std::min(1.0f, hoverProgress_ + step) : std::max(0.0f, hoverProgress_ - step);
+        const float targetLevel = static_cast<float>(floatingRenderer_.Activity());
+        const float step = static_cast<float>(now - pulseTick_) / 450.0f;
+        waterLevel_ += std::clamp(targetLevel - waterLevel_, -step, step);
         const double period = 2200 - 1200 * floatingRenderer_.Activity();
         pulsePhase_ = std::fmod(pulsePhase_ + (now - pulseTick_) / period, 1.0);
         pulseTick_ = now;
@@ -353,27 +351,4 @@ void FloatingRateDisplay::OnSettingChange(UINT flags, LPCTSTR section)
     UpdatePulseTimer();
     if (IsWindowVisible()) static_cast<void>(Render());
     CWnd::OnSettingChange(flags, section);
-}
-
-void FloatingRateDisplay::OnMouseMove(UINT flags, CPoint point)
-{
-    if (!hovering_)
-    {
-        TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, GetSafeHwnd(), 0};
-        if (::TrackMouseEvent(&tracking))
-        {
-            hovering_ = true;
-            UpdatePulseTimer();
-            static_cast<void>(Render());
-        }
-    }
-    CWnd::OnMouseMove(flags, point);
-}
-
-void FloatingRateDisplay::OnMouseLeave()
-{
-    hovering_ = false;
-    UpdatePulseTimer();
-    static_cast<void>(Render());
-    CWnd::OnMouseLeave();
 }

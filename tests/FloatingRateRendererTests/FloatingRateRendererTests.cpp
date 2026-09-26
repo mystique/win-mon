@@ -131,35 +131,42 @@ int main(int argc, char** argv)
     Require(FloatingRateRenderer::HitTest({25, 25}, 96), "capsule receives input");
     Require(!FloatingRateRenderer::IsPositionVisible({2000,0,2132,44}, {0,0,1920,1080}), "missing monitor rejected");
     Require(FloatingRateRenderer::IsPositionVisible({-84,0,48,44}, {0,0,1920,1080}), "usable partial body retained");
-    Require(renderer.Render(L"0.6 K/s", L"0.1 K/s", font, 96), "compact short upload");
-    bool nearbyReading = false;
-    for (int y = 12; y < 26; ++y)
-        for (int x = 60; x < 70; ++x)
-        {
-            const DWORD p = renderer.Pixels()[y * 138 + x];
-            nearbyReading |= ((p >> 16) & 255) > 65 && ((p >> 8) & 255) > 150 && (p & 255) > 140;
-        }
-    Require(nearbyReading, "short upload stays beside arrow instead of aligning to far right");
     renderer.ResetHistory();
-    renderer.AddSample(1000, 1000);
-    Require(renderer.Render(L"1.0 K/s", L"1.0 K/s", font, 96, 0.1), "early pulse");
-    const auto earlyPulse = renderer.Pixels();
-    Require(renderer.Render(L"1.0 K/s", L"1.0 K/s", font, 96, 0.8), "late pulse");
-    int pulseChanges = 0;
+    renderer.AddSample(500, 500);
+    Require(renderer.Render(L"1.0 K/s", L"1.0 K/s", font, 96, 0.1), "early water wave");
+    const auto earlyWave = renderer.Pixels();
+    Require(renderer.Render(L"1.0 K/s", L"1.0 K/s", font, 96, 0.8), "late water wave");
+    int waveChanges = 0;
     for (int y = 0; y < 54; ++y)
         for (int x = 0; x < 138; ++x)
-            if (earlyPulse[y * 138 + x] != renderer.Pixels()[y * 138 + x])
+            if (earlyWave[y * 138 + x] != renderer.Pixels()[y * 138 + x])
             {
-                ++pulseChanges;
+                ++waveChanges;
                 Require((x - 27) * (x - 27) + (y - 27) * (y - 27) < 17 * 17,
-                    "expanding pulse stays inside ring and never moves readings or history");
+                    "water wave stays inside the inner circle");
             }
-    Require(pulseChanges > 30, "pulse expands between animation phases");
+    Require(waveChanges > 15, "water surface moves between animation phases");
+    int previousArea = -1;
+    for (float level : {0.0f, 0.25f, 0.5f, 0.75f, 1.0f})
+    {
+        Require(renderer.Render(L"", L"", font, 96, 0.5, level), "water level frame");
+        int area = 0;
+        for (int y = 11; y <= 42; ++y)
+            for (int x = 11; x <= 42; ++x)
+                if ((x - 27) * (x - 27) + (y - 27) * (y - 27) < 15 * 15)
+                    area += renderer.Pixels()[y * 138 + x] != 0xff222e34;
+        Require(area > previousArea, "water fills progressively from empty to full");
+        previousArea = area;
+    }
+    Require(renderer.Render(L"", L"", font, 96, 0.5, 0.25f), "falling water frame");
+    const auto lowWater = renderer.Pixels();
+    Require(lowWater[18 * 138 + 27] == 0xff222e34 && lowWater[37 * 138 + 27] != 0xff222e34,
+        "receding water clears the top and retains the bottom");
     renderer.AddSample(0, 0);
-    Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 96, 0.1), "idle pulse frame");
+    Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 96, 0.1), "idle water frame");
     const auto idle = renderer.Pixels();
     Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 96, 0.8), "idle second phase");
-    Require(idle == renderer.Pixels(), "idle has no breathing motion");
+    Require(idle == renderer.Pixels(), "idle water is empty and still");
     renderer.ResetHistory();
     render();
     const auto emptyCurves = renderer.Pixels();
@@ -176,16 +183,13 @@ int main(int argc, char** argv)
             blueCurve |= b > r + 15 && b > g + 8;
         }
     Require(greenCurve && blueCurve, "both color-coded curves use the upper area too");
-    Require(renderer.Render(L"0.6 K/s", L"8.4 M/s", font, 96, 0.5, 0), "centered download frame");
-    const auto hiddenText = renderer.Pixels();
-    Require(renderer.Render(L"999.9 G/s", L"8.4 M/s", font, 96, 0.5, 0), "default ignores upload reading");
-    Require(hiddenText == renderer.Pixels(), "upload is absent in default state");
-    Require(renderer.Render(L"0.6 K/s", L"8.4 M/s", font, 96, 0.5, 0.5), "intermediate layout");
-    const auto halfText = renderer.Pixels();
-    Require(renderer.Render(L"0.6 K/s", L"8.4 M/s", font, 96, 0.5, 1), "visible text");
-    Require(halfText != hiddenText && halfText != renderer.Pixels(), "transition has intermediate layout and opacity");
-    Require(renderer.Render(L"0.6 K/s", L"1.2 M/s", font, 96, 0.5, 0), "default download updates");
-    Require(hiddenText != renderer.Pixels(), "download remains visible without hover");
+    const auto curves = renderer.Pixels();
+    Require(renderer.Render(L"999.9 G/s", L"123.4 M/s", font, 96), "changed rate text");
+    Require(curves == renderer.Pixels(), "upload and download text are both absent");
+    const DWORD upperFill = renderer.Pixels()[32 * 138 + 80];
+    const DWORD lowerFill = renderer.Pixels()[41 * 138 + 80];
+    Require(upperFill != 0xff222e34 && lowerFill != 0xff222e34 && upperFill != lowerFill,
+        "area below curves has a fading gradient");
     renderer.ResetHistory();
     for (int i = 0; i < 46; ++i) renderer.AddSample(0, 0);
     renderer.AddSample(0, 1000);
