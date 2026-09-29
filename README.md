@@ -57,6 +57,12 @@ ctest --test-dir build -C Release --output-on-failure
 build/Release/WinMon.exe
 ```
 
+## 发布
+
+版本号以 `src/WinMon/res/WinMon.rc` 为准。Windows 文件版本为四段（当前 `1.1.0.0`）；末段为 `0` 时，GitHub Release 使用前三段（当前 `v1.1.0`），否则使用完整四段。
+
+推送对应标签，或在 Actions 中手动运行 **Release**，会构建 Release x64、运行测试，并把 `WinMon-<version>-windows-x64.zip` 发布到该版本的 Release。压缩包内是 `WinMon.exe`，以及此构建链接的 Visual C++ 与 MFC 运行库。标签与资源版本不一致，或该标签已指向其他提交时，工作流会失败。同一版本的重新发布必须来自该标签已指向的提交；要发布新版本，先修改资源文件中的版本号。
+
 ## 使用方法
 
 1. 启动 `WinMon.exe`。
