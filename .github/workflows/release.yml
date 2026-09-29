@@ -1,0 +1,227 @@
+# Builds Release x64 WinMon.exe and publishes a GitHub Release whose tag
+# matches src/WinMon/res/WinMon.rc. File version 1.1.0.0 becomes v1.1.0
+# when the fourth component is 0; otherwise the tag keeps all four components.
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build and publish
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+
+          $rcPath = 'src/WinMon/res/WinMon.rc'
+          $rc = Get-Content -Raw -Path $rcPath
+          function Get-VersionParts([string]$label) {
+            if ($rc -notmatch "(?m)^\s*$label\s+(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*$") {
+              throw "$label not found in $rcPath"
+            }
+            return @($Matches[1], $Matches[2], $Matches[3], $Matches[4])
+          }
+
+          $fileParts = Get-VersionParts 'FILEVERSION'
+          $productParts = Get-VersionParts 'PRODUCTVERSION'
+          $fileVersion = $fileParts -join '.'
+          if (($productParts -join '.') -ne $fileVersion) {
+            throw "FILEVERSION and PRODUCTVERSION disagree in $rcPath"
+          }
+          foreach ($key in @('FileVersion', 'ProductVersion')) {
+            if ($rc -notmatch "VALUE `"$key`", `"$([regex]::Escape($fileVersion))\\0`"") {
+              throw "$key string does not match $fileVersion in $rcPath"
+            }
+          }
+
+          $version = if ($fileParts[3] -eq '0') { ($fileParts[0..2] -join '.') } else { $fileVersion }
+          $tag = "v$version"
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne $tag) {
+            throw "Tag $($env:GITHUB_REF_NAME) does not match resource version $tag. Update $rcPath or push $tag."
+          }
+
+          $stdoutFile = New-TemporaryFile
+          $stderrFile = New-TemporaryFile
+          gh api --silent "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" 1> $stdoutFile.FullName 2> $stderrFile.FullName
+          if ($LASTEXITCODE -eq 0) {
+            $ref = Get-Content -Raw $stdoutFile.FullName | ConvertFrom-Json
+            $sha = $ref.object.sha
+            if ($ref.object.type -eq 'tag') {
+              $tagObject = gh api --silent $ref.object.url | ConvertFrom-Json
+              $sha = $tagObject.object.sha
+            }
+            if ($sha -ne $env:GITHUB_SHA) {
+              throw "Tag $tag already points at $sha, not $($env:GITHUB_SHA). Bump the version in $rcPath before publishing again."
+            }
+          } else {
+            $refJson = "$(Get-Content -Raw $stdoutFile.FullName)$(Get-Content -Raw $stderrFile.FullName)"
+            if ($refJson -notmatch '404|Not Found') {
+              throw "Unable to check tag ${tag}: $refJson"
+            }
+          }
+
+          @(
+            "version=$version"
+            "tag=$tag"
+            "file_version=$fileVersion"
+          ) | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
+          Write-Host "Publishing $tag (file version $fileVersion) from $($env:GITHUB_SHA)"
+
+      - name: Ensure MFC
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found" }
+
+          $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vsVersion = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion
+          if (-not $installPath) { throw "MSVC is not installed" }
+          Write-Host "MSVC $vsVersion at $installPath"
+
+          $mfcPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.ATLMFC -property installationPath
+          if ($mfcPath) {
+            Write-Host "MFC already installed"
+            exit 0
+          }
+
+          Write-Host "Installing Microsoft.VisualStudio.Component.VC.ATLMFC"
+          $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          & $setup modify --installPath $installPath --add Microsoft.VisualStudio.Component.VC.ATLMFC --quiet --norestart --wait
+          if ($LASTEXITCODE -notin 0, 3010, 1641) {
+            throw "MFC install failed with exit code $LASTEXITCODE"
+          }
+          $mfcPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.ATLMFC -property installationPath
+          if (-not $mfcPath) { throw "MFC component is still missing after install" }
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsVersion = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.ATLMFC -property installationVersion
+          if (-not $vsVersion) { throw "MSVC with MFC was not found" }
+          $generator = switch ([int]$vsVersion.Split('.')[0]) {
+            17 { 'Visual Studio 17 2022' }
+            18 { 'Visual Studio 18 2026' }
+            default { throw "No CMake generator mapped for Visual Studio $vsVersion" }
+          }
+          Write-Host "Configuring with $generator"
+          cmake -S . -B build -G $generator -A x64
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config Release
+
+      - name: Test
+        shell: pwsh
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Package
+        id: package
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          FILE_VERSION: ${{ steps.version.outputs.file_version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+
+          $exe = Join-Path (Get-Location) 'build\Release\WinMon.exe'
+          if (-not (Test-Path $exe)) { throw "Build did not produce $exe" }
+          $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+          if ($info.FileVersion -ne $env:FILE_VERSION -or $info.ProductVersion -ne $env:FILE_VERSION) {
+            throw "Built exe version File=$($info.FileVersion) Product=$($info.ProductVersion) does not match $($env:FILE_VERSION)"
+          }
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.ATLMFC -property installationPath
+          $dumpbin = & $vswhere -latest -products * -find 'VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe' |
+            Sort-Object | Select-Object -Last 1
+          if (-not $dumpbin) { throw "dumpbin.exe not found" }
+
+          $stage = Join-Path (Get-Location) 'dist\WinMon'
+          if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item $exe (Join-Path $stage 'WinMon.exe')
+
+          $deps = & $dumpbin /dependents $exe | Out-String
+          $dlls = [regex]::Matches($deps, '(?im)^\s*([A-Za-z0-9_.-]+\.dll)\s*$') |
+            ForEach-Object { $_.Groups[1].Value } |
+            Sort-Object -Unique
+          $redistRoot = Get-ChildItem -Path (Join-Path $installPath 'VC\Redist\MSVC') -Directory |
+            Where-Object { $_.Name -match '^\d+\.\d+\.\d+' } |
+            Sort-Object { [version]($_.Name -replace '^(\d+\.\d+\.\d+).*', '$1') } -Descending |
+            Select-Object -First 1
+          if (-not $redistRoot) { throw "VC redist directory not found under $installPath" }
+          $redistDlls = @(Get-ChildItem -Path $redistRoot.FullName -Recurse -Filter '*.dll' |
+            Where-Object { $_.FullName -match '\\x64\\' })
+
+          foreach ($dll in $dlls) {
+            $match = $redistDlls | Where-Object { $_.Name -eq $dll } | Select-Object -First 1
+            if ($match) {
+              Copy-Item $match.FullName (Join-Path $stage $match.Name)
+              Write-Host "Bundled $($match.Name)"
+            }
+          }
+
+          $mfcMain = Get-ChildItem $stage -Filter 'mfc*u.dll' | Select-Object -First 1
+          if (-not $mfcMain) {
+            throw "Package is missing the MFC runtime. Imports: $($dlls -join ', ')"
+          }
+          $redistMfc = $redistDlls | Where-Object { $_.Name -eq $mfcMain.Name } | Select-Object -First 1
+          $prefix = $mfcMain.Name -replace 'u\.dll$', ''
+          Get-ChildItem -Path $redistMfc.DirectoryName -Filter "$prefix*.dll" | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path $stage $_.Name) -Force
+            Write-Host "Bundled $($_.Name)"
+          }
+          if (-not (Get-ChildItem $stage -Filter 'vcruntime140*.dll')) {
+            throw "Package is missing the VC++ runtime. Imports: $($dlls -join ', ')"
+          }
+
+          $zipName = "WinMon-$($env:RELEASE_VERSION)-windows-x64.zip"
+          $zip = Join-Path (Get-Location) "dist\$zipName"
+          if (Test-Path $zip) { Remove-Item -Force $zip }
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
+          "asset=dist/$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
+          Write-Host "Packaged $zip"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Win Mon ${{ steps.version.outputs.version }}
+          make_latest: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          files: ${{ steps.package.outputs.asset }}
+          body: |
+            Win Mon ${{ steps.version.outputs.version }}（Windows 11 x64，文件版本 ${{ steps.version.outputs.file_version }}）。
+
+            下载并解压 `WinMon-${{ steps.version.outputs.version }}-windows-x64.zip`，运行其中的 `WinMon.exe`。压缩包已包含此构建链接的 Visual C++ 与 MFC 运行库。
