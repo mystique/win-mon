@@ -80,6 +80,7 @@ jobs:
             if ($refJson -notmatch '404|Not Found') {
               throw "Unable to check tag ${tag}: $refJson"
             }
+            $global:LASTEXITCODE = 0
           }
 
           @(
