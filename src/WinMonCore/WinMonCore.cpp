@@ -227,6 +227,18 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
         network.children.push_back(std::move(nic));
     }
     menu.push_back(std::move(network));
+    OperatorMenuItem position;
+    position.label = L"Speed Text Position";
+    for (bool left : {true, false})
+    {
+        OperatorMenuItem side;
+        side.label = left ? L"Left" : L"Right";
+        side.checked = toggles.speedTextOnLeft == left;
+        side.radio = true;
+        AddChoice(side, {{left ? OperatorActionKind::SetSpeedTextLeft : OperatorActionKind::SetSpeedTextRight}});
+        position.children.push_back(std::move(side));
+    }
+    menu.push_back(std::move(position));
     menu.push_back({.separator = true});
 
     OperatorMenuItem autostart;

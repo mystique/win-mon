@@ -253,6 +253,20 @@ void OperatorMenuTransactionCorrelatesEveryAction()
     const auto& exit = FindItem(*menu, L"Exit");
     Require(core.CompleteOperatorMenu(exit.choiceToken).kind == OperatorActionKind::Exit, "exit choice meaning");
 }
+void SpeedTextPositionMenuReflectsAndSelectsSide()
+{
+    WinMonCore core;
+    auto menu = core.BeginOperatorMenu();
+    const auto& position = FindItem(*menu, L"Speed Text Position");
+    Require(position.children.size() == 2, "position offers two sides");
+    const auto& left = FindItem(position.children, L"Left");
+    const auto& right = FindItem(position.children, L"Right");
+    Require(left.radio && !left.checked && right.radio && right.checked, "default position is Right only");
+    Require(core.CompleteOperatorMenu(left.choiceToken).kind == OperatorActionKind::SetSpeedTextLeft, "Left action");
+    menu = core.BeginOperatorMenu({false, false, false, true});
+    Require(FindItem(FindItem(*menu, L"Speed Text Position").children, L"Left").checked, "selected Left is reflected");
+    Require(core.CompleteOperatorMenu(FindItem(FindItem(*menu, L"Speed Text Position").children, L"Right").choiceToken).kind == OperatorActionKind::SetSpeedTextRight, "Right action");
+}
 class FakeOperatorSettingChange final : public OperatorSettingChange
 {
 public:
@@ -468,6 +482,7 @@ int main()
         NetworkSessionPresentsOneCanonicalObservation();
         ClassificationFallbackPreservesAllAndSelectedNicRates();
         OperatorMenuTransactionCorrelatesEveryAction();
+        SpeedTextPositionMenuReflectsAndSelectsSide();
         OperatorSettingTransactionPreservesPreviousChoice();
         FirstSampleIsZero();
         RateSampleUsesCounterCaptureTimes();

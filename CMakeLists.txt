@@ -49,6 +49,17 @@ set_target_properties(WinMon PROPERTIES
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(RateStripLayoutTests tests/RateStripLayoutTests/RateStripLayoutTests.cpp)
+    target_include_directories(RateStripLayoutTests PRIVATE src/WinMon)
+    add_test(NAME RateStripLayoutTests COMMAND RateStripLayoutTests)
+    add_executable(RateStripWindowTests tests/RateStripLayoutTests/RateStripWindowTests.cpp
+        src/WinMon/RateStrip.cpp src/WinMon/Theme.cpp)
+    target_include_directories(RateStripWindowTests PRIVATE src/WinMon)
+    target_link_libraries(RateStripWindowTests PRIVATE WinMonCore ole32 oleaut32 dwmapi)
+    add_test(NAME RateStripWindowTests COMMAND RateStripWindowTests "${CMAKE_BINARY_DIR}/rate-strip-evidence")
+    add_executable(SettingsTests tests/RateStripLayoutTests/SettingsTests.cpp src/WinMon/Settings.cpp)
+    target_include_directories(SettingsTests PRIVATE src/WinMon)
+    add_test(NAME SettingsTests COMMAND SettingsTests)
     file(GLOB WINMONCORETESTS_SOURCES CONFIGURE_DEPENDS
         tests/WinMonCoreTests/*.cpp
     )

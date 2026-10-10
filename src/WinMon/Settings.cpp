@@ -12,6 +12,7 @@ constexpr wchar_t kRightClickSpeedTextValue[] = L"RightClickSpeedText";
 constexpr wchar_t kFloatingRateDisplayValue[] = L"FloatingRateDisplay";
 constexpr wchar_t kFloatingRateDisplayPositionValue[] = L"FloatingRateDisplayPosition";
 constexpr wchar_t kRateFontValue[] = L"RateFont";
+constexpr wchar_t kSpeedTextPositionValue[] = L"SpeedTextPosition";
 constexpr DWORD kRateFontVersion = 1;
 constexpr int kMinimumPointSizeTenths = 60;
 constexpr int kMaximumPointSizeTenths = 120;
@@ -60,6 +61,18 @@ bool WriteFlag(const wchar_t* valueName, bool enabled) noexcept
 
 namespace settings
 {
+bool IsSpeedTextOnLeft() noexcept
+{
+    DWORD value = 0, size = sizeof(value);
+    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, kSpeedTextPositionValue,
+        RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS &&
+        size == sizeof(value) && value == 1;
+}
+
+bool SetSpeedTextOnLeft(bool left) noexcept
+{
+    return WriteFlag(kSpeedTextPositionValue, left);
+}
 
 bool IsRightClickSpeedTextEnabled() noexcept
 {

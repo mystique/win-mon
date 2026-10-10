@@ -11,8 +11,6 @@ namespace
 {
 constexpr wchar_t kTaskbarClassName[] = L"Shell_TrayWnd";
 constexpr wchar_t kNotificationAreaClassName[] = L"TrayNotifyWnd";
-constexpr wchar_t kMaximumTopLine[] = L"999.9 G/s \u2191";
-constexpr wchar_t kMaximumBottomLine[] = L"999.9 G/s \u2193";
 struct NotificationAreaSearch
 {
     HWND notificationArea = nullptr;
@@ -47,6 +45,21 @@ void RateStrip::SetRates(
     }
 }
 
+bool RateStrip::SetSpeedTextOnLeft(bool left) noexcept
+{
+    if (speedTextOnLeft_ == left) return true;
+    speedTextOnLeft_ = left;
+    if (GetSafeHwnd() == nullptr) return true;
+    const HWND taskbar = FindPrimaryBottomTaskbar();
+    if (taskbar == nullptr || taskbar_ != taskbar)
+    {
+        Shutdown();
+        return true;
+    }
+    ShowWindow(SW_HIDE);
+    return Relayout(taskbar, FindNotificationArea(taskbar)) && Render();
+}
+
 std::wstring RateStrip::GetRateFontName() const
 {
     RateFontSelection selection;
@@ -64,7 +77,7 @@ bool RateStrip::UpdateRateFont(std::optional<RateFontSelection> selection) noexc
         if (GetSafeHwnd() == nullptr) return true;
         const HWND taskbar = FindPrimaryBottomTaskbar();
         const HWND area = taskbar == nullptr ? nullptr : FindNotificationArea(taskbar);
-        return area != nullptr && taskbar_ == taskbar && Relayout(taskbar, area) && Render();
+        return taskbar != nullptr && taskbar_ == taskbar && Relayout(taskbar, area) && Render();
     });
 }
 
@@ -111,7 +124,7 @@ bool RateStrip::Embed(bool shouldShow)
     }
 
     const HWND notificationArea = FindNotificationArea(taskbar);
-    if (notificationArea == nullptr)
+    if (notificationArea == nullptr && !speedTextOnLeft_)
     {
         Shutdown();
         return false;
@@ -129,7 +142,7 @@ bool RateStrip::Embed(bool shouldShow)
         }
         else
         {
-            ShowWindow(SW_SHOWNOACTIVATE);
+            ShowWindow(visible_ ? SW_SHOWNOACTIVATE : SW_HIDE);
             return true;
         }
     }
@@ -175,7 +188,7 @@ bool RateStrip::Embed(bool shouldShow)
         return false;
     }
 
-    ShowWindow(SW_SHOWNOACTIVATE);
+    ShowWindow(visible_ ? SW_SHOWNOACTIVATE : SW_HIDE);
     return Render();
 }
 
@@ -200,7 +213,7 @@ bool RateStrip::Refresh()
     }
 
     const HWND notificationArea = FindNotificationArea(taskbar);
-    if (notificationArea == nullptr)
+    if (notificationArea == nullptr && !speedTextOnLeft_)
     {
         // Windows 11 may temporarily make TrayNotifyWnd unavailable in the
         // taskbar child tree while Start is open. Keep the existing strip at
@@ -209,20 +222,19 @@ bool RateStrip::Refresh()
     }
 
     ShowWindow(SW_HIDE);
-    const COLORREF previousTextColor = textColor_;
-    if (!PlaceBesideNotificationArea(taskbar, notificationArea))
+    if (!PlaceOnTaskbar(taskbar, notificationArea))
     {
         Shutdown();
         return false;
     }
 
-    if (previousTextColor != textColor_ && !Render())
+    if (!Render())
     {
         Shutdown();
         return false;
     }
 
-    ShowWindow(SW_SHOWNOACTIVATE);
+    ShowWindow(visible_ ? SW_SHOWNOACTIVATE : SW_HIDE);
     return true;
 }
 
@@ -242,7 +254,7 @@ bool RateStrip::Relayout(HWND taskbar, HWND notificationArea) noexcept
     {
         return false;
     }
-    return PlaceBesideNotificationArea(taskbar, notificationArea);
+    return PlaceOnTaskbar(taskbar, notificationArea);
 }
 
 void RateStrip::Shutdown() noexcept
@@ -259,6 +271,7 @@ void RateStrip::Shutdown() noexcept
 
     taskbar_ = nullptr;
     size_ = {};
+    visible_ = false;
 }
 
 bool RateStrip::IsPrimaryBottomTaskbarAvailable() noexcept
@@ -312,7 +325,7 @@ bool RateStrip::CreateRateFont(HWND taskbar) noexcept
     return font_.CreateFontIndirectW(&selection.logFont) != FALSE;
 }
 
-CSize RateStrip::MeasureSize(HWND taskbar) const
+CSize RateStrip::MeasureSize(HWND taskbar)
 {
     const HDC deviceContext = ::GetDC(taskbar);
     if (deviceContext == nullptr)
@@ -333,13 +346,7 @@ CSize RateStrip::MeasureSize(HWND taskbar) const
         return {};
     }
 
-    SIZE topSize{};
-    SIZE bottomSize{};
-    TEXTMETRICW textMetrics{};
-    const bool measured =
-        GetTextExtentPoint32W(deviceContext, kMaximumTopLine, static_cast<int>(std::size(kMaximumTopLine) - 1), &topSize) != FALSE &&
-        GetTextExtentPoint32W(deviceContext, kMaximumBottomLine, static_cast<int>(std::size(kMaximumBottomLine) - 1), &bottomSize) != FALSE &&
-        GetTextMetricsW(deviceContext, &textMetrics) != FALSE;
+    const bool measured = layout_.Measure(deviceContext, GetDpiForWindow(taskbar));
 
     SelectObject(deviceContext, previousFont);
     ::ReleaseDC(taskbar, deviceContext);
@@ -349,44 +356,47 @@ CSize RateStrip::MeasureSize(HWND taskbar) const
         return {};
     }
 
-    const UINT dpi = GetDpiForWindow(taskbar);
-    const int horizontalPadding = MulDiv(8, static_cast<int>(dpi), 96);
-    const int verticalPadding = MulDiv(3, static_cast<int>(dpi), 96);
-    const int widestLine = topSize.cx > bottomSize.cx ? topSize.cx : bottomSize.cx;
-    return { widestLine + horizontalPadding * 2, textMetrics.tmHeight * 2 + verticalPadding * 2 };
+    return {layout_.width, layout_.height};
 }
 
-bool RateStrip::PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea) noexcept
+bool RateStrip::PlaceOnTaskbar(HWND taskbar, HWND notificationArea) noexcept
 {
     RECT notificationRect{};
     RECT taskbarClientRect{};
-    if (!::GetWindowRect(notificationArea, &notificationRect) ||
-        !::GetClientRect(taskbar, &taskbarClientRect))
+    if (!::GetClientRect(taskbar, &taskbarClientRect) ||
+        (!speedTextOnLeft_ && (notificationArea == nullptr || !::GetWindowRect(notificationArea, &notificationRect))))
     {
+        visible_ = false;
         return false;
     }
 
     ::MapWindowPoints(nullptr, taskbar, reinterpret_cast<POINT*>(&notificationRect), 2);
     const UINT dpi = GetDpiForWindow(taskbar);
     const int margin = MulDiv(4, static_cast<int>(dpi), 96);
-    const int availableWidth = notificationRect.left - margin - taskbarClientRect.left;
+    const int availableWidth = speedTextOnLeft_
+        ? taskbarClientRect.right - taskbarClientRect.left - margin * 2
+        : notificationRect.left - margin - taskbarClientRect.left;
     const int availableHeight = taskbarClientRect.bottom - taskbarClientRect.top;
-    if (availableWidth <= 0 || availableHeight <= 0)
+    size_ = naturalSize_;
+    visible_ = false;
+    if (naturalSize_.cx > availableWidth || naturalSize_.cy > availableHeight || availableWidth <= 0 || availableHeight <= 0)
     {
-        return false;
+        ShowWindow(SW_HIDE);
+        return true;
     }
-
-    // Keep every supported font applicable even when notification chrome
-    // leaves less room than its natural two-line extent.
-    size_.cx = std::min(static_cast<int>(naturalSize_.cx), availableWidth);
-    size_.cy = std::min(static_cast<int>(naturalSize_.cy), availableHeight);
-    const int x = notificationRect.left - size_.cx - margin;
+    const int x = speedTextOnLeft_ ? taskbarClientRect.left + margin : notificationRect.left - size_.cx - margin;
     const int y = taskbarClientRect.top + (availableHeight - size_.cy) / 2;
+    const RECT candidate{x, y, x + size_.cx, y + size_.cy};
+    if (speedTextOnLeft_ && !taskbarSpace_.IsFree(taskbar, candidate, GetSafeHwnd()))
+    {
+        ShowWindow(SW_HIDE);
+        return true;
+    }
 
     textColor_ = theme::ReadMode() == theme::Mode::Light
         ? RGB(24, 24, 24)
         : RGB(255, 255, 255);
-    return ::SetWindowPos(
+    visible_ = ::SetWindowPos(
                GetSafeHwnd(),
                HWND_TOP,
                x,
@@ -394,6 +404,8 @@ bool RateStrip::PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea)
                size_.cx,
                size_.cy,
                SWP_NOACTIVATE) != FALSE;
+    if (visible_) ShowWindow(SW_SHOWNOACTIVATE);
+    return visible_;
 }
 
 bool RateStrip::Render() noexcept
@@ -435,7 +447,6 @@ bool RateStrip::Render() noexcept
 
     const HGDIOBJ previousBitmap = ::SelectObject(memoryDc, bitmap);
     const HGDIOBJ previousFont = ::SelectObject(memoryDc, font_.GetSafeHandle());
-    const RECT clientRect{ 0, 0, size_.cx, size_.cy };
     auto* const pixels = static_cast<DWORD*>(bitmapBits);
     const size_t pixelCount = static_cast<size_t>(size_.cx) * static_cast<size_t>(size_.cy);
     std::fill_n(pixels, pixelCount, 0u);
@@ -444,14 +455,17 @@ bool RateStrip::Render() noexcept
         ::SetBkMode(memoryDc, TRANSPARENT);
         ::SetTextColor(memoryDc, RGB(255, 255, 255));
         const int midpoint = size_.cy / 2;
-        RECT topLineRect = clientRect;
-        topLineRect.bottom = midpoint;
-        RECT bottomLineRect = clientRect;
-        bottomLineRect.top = midpoint;
-        const std::wstring topLine = uploadText_ + L" \u2191";
-        const std::wstring bottomLine = downloadText_ + L" \u2193";
-        ::DrawTextW(memoryDc, topLine.c_str(), -1, &topLineRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
-        ::DrawTextW(memoryDc, bottomLine.c_str(), -1, &bottomLineRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+        const bool drawn = layout_.Draw(memoryDc, uploadText_, L"\u2191", layout_.Columns(speedTextOnLeft_, 0, midpoint)) &&
+            layout_.Draw(memoryDc, downloadText_, L"\u2193", layout_.Columns(speedTextOnLeft_, midpoint, size_.cy));
+        if (!drawn)
+        {
+            ::SelectObject(memoryDc, previousFont);
+            ::SelectObject(memoryDc, previousBitmap);
+            ::DeleteObject(bitmap);
+            ::DeleteDC(memoryDc);
+            ::ReleaseDC(nullptr, screenDc);
+            return false;
+        }
     }
 
     const DWORD red = GetRValue(textColor_);

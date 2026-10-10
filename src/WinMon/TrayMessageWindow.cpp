@@ -2,6 +2,7 @@
 #include "Autostart.h"
 #include "Settings.h"
 #include "RateFontSettingChange.h"
+#include "SpeedTextPositionSettingChange.h"
 #include "Theme.h"
 
 #include "res/resource.h"
@@ -160,6 +161,7 @@ bool TrayMessageWindow::Initialize()
     shuttingDown_ = false;
     rateStrip_.SetContextMenuOwner(GetSafeHwnd(), kRightClickSpeedTextMessage);
     rateStrip_.SetContextMenuEnabled(settings::IsRightClickSpeedTextEnabled());
+    static_cast<void>(rateStrip_.SetSpeedTextOnLeft(settings::IsSpeedTextOnLeft()));
     floatingRateDisplay_.SetContextMenuOwner(GetSafeHwnd(), kRightClickSpeedTextMessage);
     floatingRateDisplay_.SetPositionChangedOwner(GetSafeHwnd(), kFloatingRateDisplayMovedMessage);
     if (!shellLifecycle_.Start())
@@ -303,14 +305,15 @@ winmon::RateStripState TrayMessageWindow::RecreateRateStrip()
     {
         return winmon::RateStripState::Hidden;
     }
-    return rateStrip_.Embed(true) ? winmon::RateStripState::Visible : winmon::RateStripState::Retry;
+    if (!rateStrip_.Embed(true)) return winmon::RateStripState::Retry;
+    return rateStrip_.IsDisplayVisible() ? winmon::RateStripState::Visible : winmon::RateStripState::Hidden;
 }
 
 winmon::RateStripState TrayMessageWindow::RefreshRateStrip()
 {
     if (rateStrip_.GetSafeHwnd() != nullptr && rateStrip_.Refresh())
     {
-        return winmon::RateStripState::Visible;
+        return rateStrip_.IsDisplayVisible() ? winmon::RateStripState::Visible : winmon::RateStripState::Hidden;
     }
     if (!RateStrip::IsPrimaryBottomTaskbarAvailable())
     {
@@ -422,7 +425,7 @@ winmon::OperatorAction TrayMessageWindow::ShowOperatorMenu()
     if (!GetCursorPos(&cursorPosition)) return {};
     core_.ObserveNetwork(networkReader_.Read());
     const auto model = core_.BeginOperatorMenu(
-        {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled(), settings::IsFloatingRateDisplayEnabled()},
+        {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled(), settings::IsFloatingRateDisplayEnabled(), rateStrip_.IsSpeedTextOnLeft()},
         rateStrip_.GetRateFontName());
     if (!model.has_value()) return {};
     OperatorMenuScope transaction{core_};
@@ -517,6 +520,25 @@ void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
     case winmon::OperatorActionKind::SetRateFont:
         ChooseRateFont();
         break;
+    case winmon::OperatorActionKind::SetSpeedTextLeft:
+    case winmon::OperatorActionKind::SetSpeedTextRight:
+    {
+        const bool left = action.kind == winmon::OperatorActionKind::SetSpeedTextLeft;
+        if (rateStrip_.IsSpeedTextOnLeft() == left) break;
+        SpeedTextPositionSettingChange change{rateStrip_, left, settings::SetSpeedTextOnLeft};
+        const auto outcome = winmon::OperatorSettingTransaction::Commit(change);
+        if (outcome == winmon::OperatorSettingOutcome::RecoveryRequired)
+        {
+            rateStrip_.Shutdown();
+            static_cast<void>(rateStrip_.SetSpeedTextOnLeft(settings::IsSpeedTextOnLeft()));
+            shellLifecycle_.OnEnvironmentChanged();
+        }
+        if (outcome != winmon::OperatorSettingOutcome::Applied)
+        {
+            MessageBoxW(L"Win Mon could not change the speed text position.", L"Win Mon", MB_OK | MB_ICONERROR);
+        }
+        break;
+    }
     case winmon::OperatorActionKind::Exit:
         RequestExit();
         break;

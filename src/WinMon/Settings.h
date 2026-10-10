@@ -6,6 +6,8 @@ struct RateFontSelection;
 
 namespace settings
 {
+[[nodiscard]] bool IsSpeedTextOnLeft() noexcept;
+bool SetSpeedTextOnLeft(bool left) noexcept;
 // Returns true if the Rate Strip is allowed to answer right-click with the
 // Operator Menu. Defaults to false when the value is absent or unreadable.
 [[nodiscard]] bool IsRightClickSpeedTextEnabled() noexcept;

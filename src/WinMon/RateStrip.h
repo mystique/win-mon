@@ -1,6 +1,8 @@
 #pragma once
 #include <afxwin.h>
 #include "RateFont.h"
+#include "RateStripLayout.h"
+#include "TaskbarSpace.h"
 #include <string>
 
 class RateStrip final : public CWnd
@@ -11,6 +13,9 @@ public:
     void Shutdown() noexcept;
     [[nodiscard]] static bool IsPrimaryBottomTaskbarAvailable() noexcept;
     void SetRates(const std::wstring& uploadText, const std::wstring& downloadText) noexcept;
+    [[nodiscard]] bool SetSpeedTextOnLeft(bool left) noexcept;
+    [[nodiscard]] bool IsSpeedTextOnLeft() const noexcept { return speedTextOnLeft_; }
+    [[nodiscard]] bool IsDisplayVisible() const noexcept { return visible_; }
     void SetContextMenuOwner(HWND owner, UINT notificationMessage) noexcept;
     void SetContextMenuEnabled(bool enabled) noexcept;
     [[nodiscard]] bool IsContextMenuEnabled() const noexcept { return contextMenuEnabled_; }
@@ -24,8 +29,8 @@ private:
     [[nodiscard]] static HWND FindPrimaryBottomTaskbar() noexcept;
     [[nodiscard]] static HWND FindNotificationArea(HWND taskbar) noexcept;
     [[nodiscard]] bool CreateRateFont(HWND taskbar) noexcept;
-    [[nodiscard]] CSize MeasureSize(HWND taskbar) const;
-    [[nodiscard]] bool PlaceBesideNotificationArea(HWND taskbar, HWND notificationArea) noexcept;
+    [[nodiscard]] CSize MeasureSize(HWND taskbar);
+    [[nodiscard]] bool PlaceOnTaskbar(HWND taskbar, HWND notificationArea) noexcept;
     [[nodiscard]] bool Render() noexcept;
     [[nodiscard]] bool Relayout(HWND taskbar, HWND notificationArea) noexcept;
     afx_msg void OnPaint();
@@ -37,6 +42,8 @@ private:
 
     CFont font_;
     RateFont rateFont_;
+    RateStripLayout layout_;
+    TaskbarSpace taskbarSpace_;
     CSize naturalSize_{};
     CSize size_{};
     std::wstring uploadText_ = L"0.0 K/s";
@@ -46,4 +53,6 @@ private:
     HWND contextMenuOwner_ = nullptr;
     UINT contextMenuMessage_ = 0;
     bool contextMenuEnabled_ = false;
+    bool speedTextOnLeft_ = false;
+    bool visible_ = false;
 };
