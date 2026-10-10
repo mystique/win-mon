@@ -15,7 +15,7 @@ constexpr float kRingRadius = (kRingDiameter - kRingStroke) / 2;
 float BodyRight(float progress) noexcept
 {
     const float chartRight = 27 + (kChartLeft + kChartWidth - 20) * kContentScale;
-    const float textRight = 27 + (126 - 20) * kContentScale;
+    const float textRight = 27 + (126 - 2 * 1.05f - 20) * kContentScale;
     return chartRight + 15 + (textRight - chartRight) * progress;
 }
 
@@ -350,15 +350,18 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             {
                 const float pitch = cell < 6 ? 1.05f : 0.8f;
                 const auto* glyph = punctum::Find(characters[cell]);
+                const bool decimal = characters[cell] == L'.';
+                const int columns = decimal ? 3 : 5;
                 for (int row = 0; row < 7; ++row)
-                    for (int column = 0; column < 5; ++column)
+                    for (int column = 0; column < columns; ++column)
                     {
-                        const bool lit = glyph && (glyph->rows[row] & (1 << column));
-                        color(lit ? (cell < 6 ? rgb : 0x849da9) : 0x34424a, textProgress);
+                        const bool lit = glyph && (glyph->rows[row] & (1 << (column + (decimal ? 1 : 0))));
+                        const UINT32 digitColor = rgb == 0x61e5b7 ? 0x9affd4 : 0x80e4ff;
+                        color(lit ? (cell == 0 ? rgb : cell < 6 ? digitColor : 0x849da9) : 0x34424a, textProgress);
                         target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x + column * pitch, baseline - (6 - row) * pitch),
                             pitch * 0.36f, pitch * 0.36f), brush_.Get());
                     }
-                x += 4 * pitch + ((cell == 0 || cell == 5) ? 2 * 1.05f : 1.5f * pitch);
+                x += (columns - 1) * pitch + ((cell == 0 || cell == 5) ? 2 * 1.05f : 1.5f * pitch);
             }
         };
         if (textProgress > 0) readout(upCells, 23.8f, 0x61e5b7);

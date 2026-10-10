@@ -32,7 +32,7 @@ void SaveBitmap(const FloatingRateRenderer& renderer, const std::filesystem::pat
 }
 int main(int argc, char** argv)
 {
-    Require(FloatingRateRenderer::SizeForDpi(96).cx == 223 && FloatingRateRenderer::SizeForDpi(96).cy == 54,
+    Require(FloatingRateRenderer::SizeForDpi(96).cx == 220 && FloatingRateRenderer::SizeForDpi(96).cy == 54,
         "original ring and readable LED cells widen the window without changing height");
     FloatingRateRenderer renderer;
     const auto render = [&] { Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", 96, 0.3, 0), "render"); };
@@ -139,6 +139,19 @@ int main(int argc, char** argv)
             const DWORD reserved=renderer.Pixels()[y*renderer.PixelSize().cx+leadingX];
             Require(reserved!=0xff222e34 && ((reserved>>8)&255)<100, "reserved integer cell has 35 dark lamps and no leading zero");
         }
+    for (int row = 0; row < 7; ++row)
+        for (int column = 0; column < 3; ++column)
+        {
+            const int x = static_cast<int>((27 + (100.625f + column * 1.05f - 20) * (37.0f * 12 / 11 / 24)) * 4);
+            const int y = static_cast<int>((27 + (23.8f - (6 - row) * 1.05f - 27) * (37.0f * 12 / 11 / 24)) * 4);
+            const DWORD pixel = renderer.Pixels()[y * renderer.PixelSize().cx + x];
+            Require(pixel != 0xff222e34, "decimal owns 21 lamps in a 3x7 cell");
+            Require((((pixel >> 8) & 255) > 100) == (row == 6 && column == 1), "decimal lights only its middle baseline lamp");
+        }
+    const int brightX = static_cast<int>((27 + (95.9f - 20) * (37.0f * 12 / 11 / 24)) * 4);
+    const int brightY = static_cast<int>((27 + (17.5f - 27) * (37.0f * 12 / 11 / 24)) * 4);
+    Require(((renderer.Pixels()[brightY * renderer.PixelSize().cx + brightX] >> 8) & 255) > 245,
+        "numeric bright lamps have stronger luminance than the original green");
     for(wchar_t digit=L'0';digit<=L'9';++digit)
         for(wchar_t unit : {L'K',L'M',L'G'})
         {

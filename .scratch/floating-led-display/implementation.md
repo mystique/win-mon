@@ -22,3 +22,5 @@ Two-axis code review found one rollback issue and one final-position persistence
 Physical cross-monitor DPI migration and dragging during a real DPI switch were not exercised because only the available monitor was used. The remaining small-display readability judgement should be checked on the user's preferred monitor; render geometry is DPI-scaled and tested offscreen. GitHub release publication and restart of the user's running instance were not performed; CMake copies OFL to the executable directory and the release workflow includes it in the zip.
 
 Correction: restored pre-redesign ring diameter and stroke width, expanded charts at 5:8 and LED pitch by about 68%. Window height remains 48 DIP; visible body grows to approximately 217 DIP. Refreshed all visual evidence.
+
+Decimal refinement: cropped the decimal to its middle three columns (21 lamps), preserving baseline and fixed slots. Numeric lamps now use brighter green/blue, with arrows, units and dark lamps unchanged. Removed two dot-pitch columns from text/window width; refreshed all evidence. Release x64 and all eight CTest targets passed.

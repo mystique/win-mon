@@ -176,3 +176,7 @@ Win Mon 用户希望保留 Floating Rate Display 的深色胶囊结构和绿／�
 ## 2026-10-11 implementation correction
 
 User requires retaining the original ring diameter rather than shrinking it to fit 132 DIP. Original outer diameter is 37×12/11 = 40.36 DIP; chart width is 64.58 DIP (5:8). Preserve original ring stroke width, aligned semicircle/chart heights and fixed nine-cell LED geometry; enlarge LED pitch by 40.36/24 relative to the first implementation. Widen the visible body to about 217×48 DIP, overriding the original 132×48 limit. Compact mode removes the enlarged readout width without shrinking charts or ring.
+
+## 2026-10-11 decimal and brightness refinement
+
+User overrides the uniform 35-lamp rule for the decimal only: use its middle three Punctum columns as a 3×7 cell (21 lamps), with the bottom middle lamp lit. Keep nine fixed slots and all other glyphs 5×7. Reduce the readout/window width by the removed two columns, preserving ring/chart geometry. Increase numeric and decimal bright-lamp luminance while retaining upload green/download blue, existing arrow colors and dim backgrounds.
