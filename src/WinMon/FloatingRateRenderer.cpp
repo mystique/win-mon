@@ -253,20 +253,37 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             const float phase = static_cast<float>(std::isfinite(pulsePhase) ? pulsePhase : 0.5);
             ComPtr<ID2D1EllipseGeometry> circle;
             Check(factory_->CreateEllipseGeometry(D2D1::Ellipse(D2D1::Point2F(20, 27), 8.5f, 8.5f), &circle));
-            ComPtr<ID2D1PathGeometry> water;
+            ComPtr<ID2D1PathGeometry> water, surface;
+            ComPtr<ID2D1GeometrySink> surfaceSink;
+            Check(factory_->CreatePathGeometry(&surface));
+            Check(surface->Open(&surfaceSink));
             ComPtr<ID2D1GeometrySink> sink;
             Check(factory_->CreatePathGeometry(&water));
             Check(water->Open(&sink));
             sink->BeginFigure(D2D1::Point2F(11, 36), D2D1_FIGURE_BEGIN_FILLED);
             const float amplitude = 1.2f * std::sin(level * 3.14159265f);
             for (int x = 11; x <= 29; ++x)
-                sink->AddLine(D2D1::Point2F(static_cast<float>(x), 35.5f - 17 * level +
-                    amplitude * std::sin((x - 11) * 0.4f + phase * 6.2831853f)));
+            {
+                const auto point = D2D1::Point2F(static_cast<float>(x), 35.5f - 17 * level +
+                    amplitude * std::sin((x - 11) * 0.4f + phase * 6.2831853f));
+                sink->AddLine(point);
+                if (x == 11) surfaceSink->BeginFigure(point, D2D1_FIGURE_BEGIN_HOLLOW);
+                else surfaceSink->AddLine(point);
+            }
+            surfaceSink->EndFigure(D2D1_FIGURE_END_OPEN);
+            Check(surfaceSink->Close());
             sink->AddLine(D2D1::Point2F(29, 36));
             sink->EndFigure(D2D1_FIGURE_END_CLOSED);
             Check(sink->Close());
             target_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), circle.Get()), nullptr);
             target_->FillGeometry(water.Get(), gradients_[2].Get());
+            // Soft concentric strokes follow only the waterline, clipped inside the ring.
+            color(0x79efe5, 0.06f);
+            target_->DrawGeometry(surface.Get(), brush_.Get(), 3.0f, stroke_.Get());
+            color(0x79efe5, 0.12f);
+            target_->DrawGeometry(surface.Get(), brush_.Get(), 1.6f, stroke_.Get());
+            color(0xb4fff2, 0.45f);
+            target_->DrawGeometry(surface.Get(), brush_.Get(), 0.45f, stroke_.Get());
             target_->PopLayer();
         }
         {
