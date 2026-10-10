@@ -52,6 +52,49 @@ POINT DefaultFloatingPosition(CSize size) noexcept
 }
 }
 
+void FloatingRateDisplay::AdvanceTextTransition(ULONGLONG now) noexcept
+{
+    if (textDuration_ <= 0) return;
+    const float t = std::clamp(static_cast<float>(now - textTick_) / textDuration_, 0.0f, 1.0f);
+    const float progress = 1 - (1 - t) * (1 - t) * (1 - t);
+    const float target = textVisible_ ? 1.0f : 0.0f;
+    textProgress_ = textStart_ + (target - textStart_) * progress;
+    if (t >= 1) { textProgress_ = target; textDuration_ = 0; }
+}
+
+bool FloatingRateDisplay::SetTextVisible(bool visible) noexcept
+{
+    if (visible == textVisible_) return GetSafeHwnd() == nullptr || Render();
+    const bool previous = textVisible_;
+    const float previousProgress = textProgress_;
+    const float previousStart = textStart_;
+    const float previousDuration = textDuration_;
+    const ULONGLONG previousTick = textTick_;
+    const POINT previousPosition = GetFloatingPosition();
+    textVisible_ = visible;
+    textStart_ = textProgress_;
+    textTick_ = GetTickCount64();
+    textDuration_ = (visible ? 180.0f : 220.0f) * std::abs((visible ? 1.0f : 0.0f) - textProgress_);
+    if (!GetSafeHwnd() || !IsWindowVisible())
+    {
+        textProgress_ = visible ? 1.0f : 0.0f;
+        textDuration_ = 0;
+        return true;
+    }
+    UpdatePulseTimer();
+    if (Render()) return true;
+    textVisible_ = previous;
+    textProgress_ = previousProgress;
+    textStart_ = previousStart;
+    textDuration_ = previousDuration;
+    textTick_ = previousTick;
+    ::SetWindowPos(GetSafeHwnd(), nullptr, previousPosition.x, previousPosition.y, 0, 0,
+        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    UpdatePulseTimer();
+    static_cast<void>(Render());
+    return false;
+}
+
 void FloatingRateDisplay::SetRates(
     const std::wstring& uploadText,
     const std::wstring& downloadText,
@@ -84,6 +127,7 @@ BEGIN_MESSAGE_MAP(FloatingRateDisplay, CWnd)
     ON_WM_PAINT()
     ON_WM_TIMER()
     ON_WM_SETTINGCHANGE()
+    ON_WM_SHOWWINDOW()
     ON_WM_ERASEBKGND()
     ON_WM_MOUSEACTIVATE()
     ON_WM_NCHITTEST()
@@ -101,10 +145,12 @@ bool FloatingRateDisplay::ShowFloating(POINT position, bool restorePosition)
     if (GetSafeHwnd() != nullptr)
     {
         ShowWindow(SW_SHOWNOACTIVATE);
+        floatingShadow_.ShowWindow(SW_SHOWNOACTIVATE);
+        UpdatePulseTimer();
         return true;
     }
 
-    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForSystem());
+    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForSystem(), textProgress_);
     if (!restorePosition) position = DefaultFloatingPosition(size_);
 
     const CString windowClass = AfxRegisterWndClass(0, LoadCursorW(nullptr, IDC_ARROW), nullptr, nullptr);
@@ -147,6 +193,7 @@ bool FloatingRateDisplay::ShowFloating(POINT position, bool restorePosition)
     }
     floatingShadow_.ShowWindow(SW_SHOWNOACTIVATE);
     ShowWindow(SW_SHOWNOACTIVATE);
+    UpdatePulseTimer();
     return true;
 }
 
@@ -158,13 +205,13 @@ bool FloatingRateDisplay::RelayoutFloating() noexcept
         return false;
     }
     UINT dpi = GetDpiForWindow(GetSafeHwnd());
-    size_ = FloatingRateRenderer::SizeForDpi(dpi);
+    size_ = FloatingRateRenderer::SizeForDpi(dpi, textProgress_);
     POINT position{windowRect.left, windowRect.top};
     if (!IsFloatingPositionVisible(position, size_, dpi))
         position = DefaultFloatingPosition(size_);
     if (!::SetWindowPos(GetSafeHwnd(), HWND_TOPMOST, position.x, position.y, 0, 0,
             SWP_NOACTIVATE | SWP_NOSIZE)) return false;
-    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()));
+    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()), textProgress_);
     return true;
 }
 
@@ -174,26 +221,38 @@ void FloatingRateDisplay::Shutdown() noexcept
     pulseTimerActive_ = false;
     pulsePhase_ = 0;
     waterLevel_ = 0;
+    textDuration_ = 0;
+    textProgress_ = textVisible_ ? 1.0f : 0.0f;
     if (GetSafeHwnd()) DestroyWindow();
     if (floatingShadow_.GetSafeHwnd()) floatingShadow_.DestroyWindow();
     floatingRenderer_.ReleaseTarget();
     size_ = {};
 }
 
-bool FloatingRateDisplay::UpdateRateFont(std::optional<RateFontSelection> selection) noexcept
-{
-    return rateFont_.Apply(selection, [this] {
-        return GetSafeHwnd() == nullptr || (RelayoutFloating() && Render());
-    });
-}
-
 bool FloatingRateDisplay::Render() noexcept
 {
-    RateFontSelection selection;
-    return GetSafeHwnd() != nullptr && GetRateFont(selection) &&
-        floatingRenderer_.Render(uploadText_, downloadText_, selection.logFont,
-            GetDpiForWindow(GetSafeHwnd()), pulseTimerActive_ ? pulsePhase_ : 0.5, waterLevel_) &&
+    if (!GetSafeHwnd()) return false;
+    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()), textProgress_);
+    RECT rect{};
+    MONITORINFO monitor{sizeof(monitor)};
+    if (!::GetWindowRect(GetSafeHwnd(), &rect)) return false;
+    if (GetMonitorInfoW(MonitorFromWindow(GetSafeHwnd(), MONITOR_DEFAULTTONEAREST), &monitor))
+    {
+        const LONG x = std::clamp(rect.left, monitor.rcWork.left, std::max(monitor.rcWork.left, monitor.rcWork.right - size_.cx));
+        const LONG y = std::clamp(rect.top, monitor.rcWork.top, std::max(monitor.rcWork.top, monitor.rcWork.bottom - size_.cy));
+        positionDirty_ |= x != rect.left || y != rect.top;
+        if (!::SetWindowPos(GetSafeHwnd(), nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)) return false;
+    }
+    const bool rendered = floatingRenderer_.Render(uploadText_, downloadText_, GetDpiForWindow(GetSafeHwnd()),
+            pulseTimerActive_ ? pulsePhase_ : 0.5, waterLevel_, textProgress_) &&
         floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd());
+    if (rendered && positionDirty_ && textDuration_ <= 0)
+    {
+        if (positionChangedOwner_ && positionChangedMessage_)
+            ::PostMessageW(positionChangedOwner_, positionChangedMessage_, 0, 0);
+        positionDirty_ = false;
+    }
+    return rendered;
 }
 
 void FloatingRateDisplay::OnPaint()
@@ -215,7 +274,7 @@ int FloatingRateDisplay::OnMouseActivate(CWnd*, UINT, UINT)
 LRESULT FloatingRateDisplay::OnNcHitTest(CPoint point)
 {
     ScreenToClient(&point);
-    return FloatingRateRenderer::HitTest(point, GetDpiForWindow(GetSafeHwnd())) ? HTCLIENT : HTTRANSPARENT;
+    return FloatingRateRenderer::HitTest(point, GetDpiForWindow(GetSafeHwnd()), textProgress_) ? HTCLIENT : HTTRANSPARENT;
 }
 
 void FloatingRateDisplay::OnRButtonUp(UINT flags, CPoint point)
@@ -273,7 +332,7 @@ LRESULT FloatingRateDisplay::OnDpiChanged(WPARAM, LPARAM parameter)
     const auto* rect = reinterpret_cast<const RECT*>(parameter);
     ::SetWindowPos(GetSafeHwnd(), HWND_TOPMOST, rect->left, rect->top, 0, 0,
         SWP_NOSIZE | SWP_NOACTIVATE);
-    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()));
+    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()), textProgress_);
     static_cast<void>(Render());
     if (positionChangedOwner_ && positionChangedMessage_)
         ::PostMessageW(positionChangedOwner_, positionChangedMessage_, 0, 0);
@@ -306,14 +365,26 @@ void FloatingRateDisplay::UpdatePulseTimer() noexcept
     if (!GetSafeHwnd()) return;
     BOOL animations = FALSE;
     SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
-    const float targetLevel = static_cast<float>(floatingRenderer_.Activity());
-    if (!animations) waterLevel_ = targetLevel;
+    const double activity = floatingRenderer_.Activity();
+    const float targetLevel = activity > 0 ? 0.15f + 0.65f * static_cast<float>(activity) : 0;
+    if (!animations)
+    {
+        waterLevel_ = targetLevel;
+        textProgress_ = textVisible_ ? 1.0f : 0.0f;
+        textDuration_ = 0;
+    }
     const bool animate = IsWindowVisible() && animations &&
-        (targetLevel > 0 || waterLevel_ != targetLevel);
+        (targetLevel > 0 || waterLevel_ != targetLevel || textDuration_ > 0);
     if (animate && !pulseTimerActive_)
     {
         pulseTick_ = GetTickCount64();
         pulseTimerActive_ = SetTimer(1, 33, nullptr) != 0;
+        if (!pulseTimerActive_)
+        {
+            waterLevel_ = targetLevel;
+            textProgress_ = textVisible_ ? 1.0f : 0.0f;
+            textDuration_ = 0;
+        }
     }
     else if (!animate && pulseTimerActive_)
     {
@@ -333,7 +404,9 @@ void FloatingRateDisplay::OnTimer(UINT_PTR timer)
             return;
         }
         const ULONGLONG now = GetTickCount64();
-        const float targetLevel = static_cast<float>(floatingRenderer_.Activity());
+        AdvanceTextTransition(now);
+        const double activity = floatingRenderer_.Activity();
+        const float targetLevel = activity > 0 ? 0.15f + 0.65f * static_cast<float>(activity) : 0;
         const float step = static_cast<float>(now - pulseTick_) / 450.0f;
         waterLevel_ += std::clamp(targetLevel - waterLevel_, -step, step);
         const double period = 2200 - 1200 * floatingRenderer_.Activity();
@@ -351,4 +424,23 @@ void FloatingRateDisplay::OnSettingChange(UINT flags, LPCTSTR section)
     UpdatePulseTimer();
     if (IsWindowVisible()) static_cast<void>(Render());
     CWnd::OnSettingChange(flags, section);
+}
+
+void FloatingRateDisplay::OnShowWindow(BOOL show, UINT status)
+{
+    CWnd::OnShowWindow(show, status);
+    if (!show)
+    {
+        if (pulseTimerActive_) KillTimer(1);
+        pulseTimerActive_ = false;
+        textDuration_ = 0;
+        textProgress_ = textVisible_ ? 1.0f : 0.0f;
+        if (floatingShadow_.GetSafeHwnd()) floatingShadow_.ShowWindow(SW_HIDE);
+    }
+    else
+    {
+        static_cast<void>(Render());
+        if (floatingShadow_.GetSafeHwnd()) floatingShadow_.ShowWindow(SW_SHOWNOACTIVATE);
+        UpdatePulseTimer();
+    }
 }

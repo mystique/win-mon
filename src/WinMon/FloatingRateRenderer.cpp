@@ -1,10 +1,14 @@
 #include "FloatingRateRenderer.h"
+#include "PunctumGlyphs.h"
 #include <algorithm>
 #include <cmath>
 
 namespace
 {
-constexpr float kBodyScale = 12.0f / 11.0f; // Preserve the enlarged ring and text while narrowing the capsule.
+constexpr float kRingDiameter = 24;
+constexpr float kChartLeft = 35;
+constexpr float kChartWidth = kRingDiameter * 8 / 5;
+float BodyRight(float progress) noexcept { return kChartLeft + kChartWidth + 9 + (135 - kChartLeft - kChartWidth - 9) * progress; }
 
 void Check(HRESULT result) { if (FAILED(result)) throw result; }
 double Rate(double value) noexcept { return std::isfinite(value) && value > 0 ? value : 0; }
@@ -20,17 +24,17 @@ FloatingRateRenderer::~FloatingRateRenderer()
     if (comInitialized_) CoUninitialize();
 }
 
-SIZE FloatingRateRenderer::SizeForDpi(UINT dpi) noexcept
+SIZE FloatingRateRenderer::SizeForDpi(UINT dpi, float textProgress) noexcept
 {
-    return {MulDiv(138, static_cast<int>(dpi), 96), MulDiv(54, static_cast<int>(dpi), 96)};
+    return {static_cast<LONG>(std::lround((BodyRight(std::clamp(textProgress, 0.0f, 1.0f)) + 3) * dpi / 96)), MulDiv(54, static_cast<int>(dpi), 96)};
 }
 
-bool FloatingRateRenderer::HitTest(POINT client, UINT dpi) noexcept
+bool FloatingRateRenderer::HitTest(POINT client, UINT dpi, float textProgress) noexcept
 {
     if (!dpi) return false;
     const float x = client.x * 96.0f / dpi - 3;
     const float y = client.y * 96.0f / dpi - 27;
-    const float dx = x - std::clamp(x, 24.0f, 108.0f);
+    const float dx = x - std::clamp(x, 24.0f, BodyRight(std::clamp(textProgress, 0.0f, 1.0f)) - 27);
     return dx * dx + y * y <= 24 * 24;
 }
 
@@ -69,7 +73,7 @@ double FloatingRateRenderer::Activity() const noexcept
 {
     if (upload_ == 0 && download_ == 0) return 0;
     double peak = 1000;
-    for (size_t i = 48 - count_; i < 48; ++i)
+    for (size_t i = 32 - count_; i < 32; ++i)
         peak = std::max({peak, uploadHistory_[i], downloadHistory_[i]});
     return std::clamp(std::max(uploadHistory_.back(), downloadHistory_.back()) / peak, 0.0, 1.0);
 }
@@ -95,12 +99,28 @@ void FloatingRateRenderer::ReleaseTarget() noexcept
     dpi_ = 0;
 }
 
-bool FloatingRateRenderer::Render(const std::wstring&, const std::wstring&,
-    const LOGFONTW&, UINT dpi, double pulsePhase, float waterLevel) noexcept
+bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring& download,
+    UINT dpi, double pulsePhase, float waterLevel, float textProgress) noexcept
 {
     try
     {
-        if (dpi < 48 || dpi > 768) return false;
+        if (dpi < 48 || dpi > 768 || !std::isfinite(textProgress) || textProgress < 0 || textProgress > 1) return false;
+        const auto cells = [](const std::wstring& text, wchar_t arrow, std::array<wchar_t, 9>& out) {
+            const auto dot = text.find(L'.');
+            if (dot == std::wstring::npos || dot == 0 || text.size() != dot + 6 ||
+                text[dot + 1] < L'0' || text[dot + 1] > L'9' || text[dot + 2] != L' ' ||
+                (text[dot + 3] != L'K' && text[dot + 3] != L'M' && text[dot + 3] != L'G') ||
+                text.substr(dot + 4) != L"/s") return false;
+            for (size_t i = 0; i < dot; ++i) if (text[i] < L'0' || text[i] > L'9') return false;
+            out = {arrow, L' ', L' ', L' ', L'.', text[dot + 1], text[dot + 3], L'/', L's'};
+            const auto first = text.find_first_not_of(L'0');
+            const size_t digits = first < dot ? dot - first : 1;
+            if (digits > 3) { out[1] = out[2] = out[3] = out[5] = L'9'; }
+            else for (size_t i = 0; i < digits; ++i) out[4 - digits + i] = text[dot - digits + i];
+            return true;
+        };
+        std::array<wchar_t, 9> upCells{}, downCells{};
+        if (!cells(upload, L'\u2191', upCells) || !cells(download, L'\u2193', downCells)) return false;
         if (!factory_)
         {
             if (!comInitialized_)
@@ -121,8 +141,9 @@ bool FloatingRateRenderer::Render(const std::wstring&, const std::wstring&,
             properties.lineJoin = D2D1_LINE_JOIN_ROUND;
             Check(factory_->CreateStrokeStyle(properties, nullptr, 0, stroke_.ReleaseAndGetAddressOf()));
         }
-        const SIZE size = SizeForDpi(dpi);
-        if (!target_ || dpi_ != dpi)
+        const SIZE size = SizeForDpi(dpi, textProgress);
+        const float right = BodyRight(textProgress);
+        if (!target_ || dpi_ != dpi || size.cx != size_.cx || size.cy != size_.cy)
         {
             ReleaseTarget();
             Check(imagingFactory_->CreateBitmap(size.cx, size.cy, GUID_WICPixelFormat32bppPBGRA,
@@ -159,44 +180,52 @@ bool FloatingRateRenderer::Render(const std::wstring&, const std::wstring&,
             target_->SetTransform(D2D1::Matrix3x2F::Identity());
             target_->BeginDraw();
             target_->Clear(D2D1::ColorF(0, 0.0f));
-            // The shadow only changes with DPI.
+            // The shadow is cached until DPI or canvas size changes.
             color(0x000000, 0.06f);
-            target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(1, 1, 137, 53), 26, 26), brush_.Get());
+            target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(1, 1, right + 2, 53), 26, 26), brush_.Get());
             color(0x000000, 0.10f);
-            target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(2, 2, 136, 52), 25, 25), brush_.Get());
+            target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(2, 2, right + 1, 52), 25, 25), brush_.Get());
             Check(target_->EndDraw());
             copyPixels(shadowPixels_);
         }
         target_->BeginDraw();
         target_->Clear(D2D1::ColorF(0, 0.0f));
-        // Scale vectors and glyphs before rasterization, leaving the shadow margin at 3 DIP.
-        target_->SetTransform(D2D1::Matrix3x2F::Scale(kBodyScale, kBodyScale, D2D1::Point2F(3, 3)));
+        // All geometry uses DIP; the render target performs DPI scaling.
+        target_->SetTransform(D2D1::Matrix3x2F::Identity());
         color(0x222e34);
-        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(3, 3, 124, 47), 22, 22), brush_.Get());
+        target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(3, 3, right, 51), 24, 24), brush_.Get());
         double maximum = 1000;
-        for (size_t i = 48 - count_; i < 48; ++i)
+        for (size_t i = 32 - count_; i < 32; ++i)
             maximum = std::max({maximum, uploadHistory_[i], downloadHistory_[i]});
         const auto arc = [&](size_t slot, double ratio, bool up, UINT32 rgb)
         {
             if (ratio <= 0) return;
             // Leave about 2 DIP of clear space after accounting for the round caps.
-            constexpr double gapAngle = 0.13;
-            const double angle = gapAngle + std::clamp(ratio, 0.0, 1.0) * (3.141592653589793 - 2 * gapAngle);
+            constexpr double gapAngle = 0.24;
+            const double sweep = std::clamp(ratio, 0.0, 1.0) * (3.141592653589793 - 2 * gapAngle);
             auto& path = paths_[slot];
             if (!path)
             {
                 ComPtr<ID2D1GeometrySink> sink;
                 Check(factory_->CreatePathGeometry(&path));
                 Check(path->Open(&sink));
-                sink->BeginFigure(D2D1::Point2F(25 + 17.25f * static_cast<float>(std::cos(gapAngle)),
-                    25 + (up ? -17.25f : 17.25f) * static_cast<float>(std::sin(gapAngle))), D2D1_FIGURE_BEGIN_HOLLOW);
-                sink->AddArc(D2D1::ArcSegment(
-                    D2D1::Point2F(25 + 17.25f * static_cast<float>(std::cos(angle)),
-                        25 + (up ? -17.25f : 17.25f) * static_cast<float>(std::sin(angle))),
-                    D2D1::SizeF(17.25f, 17.25f), 0,
-                    up ? D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE : D2D1_SWEEP_DIRECTION_CLOCKWISE,
-                    D2D1_ARC_SIZE_SMALL));
-                sink->EndFigure(D2D1_FIGURE_END_OPEN);
+                const auto point = [&](double angle) {
+                    return D2D1::Point2F(20 + 10.75f * static_cast<float>(std::cos(angle)),
+                        27 + (up ? -10.75f : 10.75f) * static_cast<float>(std::sin(angle)));
+                };
+                const auto section = [&](double start, double end, bool reverse) {
+                    sink->BeginFigure(point(start), D2D1_FIGURE_BEGIN_HOLLOW);
+                    sink->AddArc(D2D1::ArcSegment(point(end), D2D1::SizeF(10.75f, 10.75f), 0,
+                        (up != reverse) ? D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE : D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                        D2D1_ARC_SIZE_SMALL));
+                    sink->EndFigure(D2D1_FIGURE_END_OPEN);
+                };
+                if (ratio >= 1) section(gapAngle, 3.141592653589793 - gapAngle, false);
+                else
+                {
+                    section(gapAngle, gapAngle + sweep / 2, false);
+                    section(3.141592653589793 - gapAngle, 3.141592653589793 - gapAngle - sweep / 2, true);
+                }
                 Check(sink->Close());
             }
             color(rgb);
@@ -207,46 +236,61 @@ bool FloatingRateRenderer::Render(const std::wstring&, const std::wstring&,
         arc(2, upload_ > 0 ? uploadHistory_.back() / maximum : 0, true, 0x61e5b7);
         arc(3, download_ > 0 ? downloadHistory_.back() / maximum : 0, false, 0x32bdeb);
         const float level = std::isfinite(waterLevel) && waterLevel >= 0
-            ? std::clamp(waterLevel, 0.0f, 1.0f) : static_cast<float>(Activity());
+            ? std::clamp(waterLevel, 0.0f, 1.0f) : (Activity() > 0 ? 0.15f + 0.65f * static_cast<float>(Activity()) : 0);
         if (level > 0)
         {
             const float phase = static_cast<float>(std::isfinite(pulsePhase) ? pulsePhase : 0.5);
             ComPtr<ID2D1EllipseGeometry> circle;
-            Check(factory_->CreateEllipseGeometry(D2D1::Ellipse(D2D1::Point2F(25, 25), 14.5f, 14.5f), &circle));
+            Check(factory_->CreateEllipseGeometry(D2D1::Ellipse(D2D1::Point2F(20, 27), 8.5f, 8.5f), &circle));
             ComPtr<ID2D1PathGeometry> water;
             ComPtr<ID2D1GeometrySink> sink;
             Check(factory_->CreatePathGeometry(&water));
             Check(water->Open(&sink));
-            sink->BeginFigure(D2D1::Point2F(10, 40), D2D1_FIGURE_BEGIN_FILLED);
+            sink->BeginFigure(D2D1::Point2F(11, 36), D2D1_FIGURE_BEGIN_FILLED);
             const float amplitude = 1.2f * std::sin(level * 3.14159265f);
-            for (int x = 10; x <= 40; ++x)
-                sink->AddLine(D2D1::Point2F(static_cast<float>(x), 39.5f - 29 * level +
-                    amplitude * std::sin((x - 10) * 0.25f + phase * 6.2831853f)));
-            sink->AddLine(D2D1::Point2F(40, 40));
+            for (int x = 11; x <= 29; ++x)
+                sink->AddLine(D2D1::Point2F(static_cast<float>(x), 35.5f - 17 * level +
+                    amplitude * std::sin((x - 11) * 0.4f + phase * 6.2831853f)));
+            sink->AddLine(D2D1::Point2F(29, 36));
             sink->EndFigure(D2D1_FIGURE_END_CLOSED);
             Check(sink->Close());
             target_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), circle.Get()), nullptr);
             target_->FillGeometry(water.Get(), gradients_[2].Get());
             target_->PopLayer();
         }
-        if (count_ > 1)
         {
             const auto trend = [&](size_t slot, const auto& history, UINT32 rgb)
             {
+                const float top = slot == 4 ? 15.0f : 27.75f;
+                const float bottom = slot == 4 ? 26.25f : 39.0f;
+                const auto clip = D2D1::RectF(kChartLeft, top, kChartLeft + kChartWidth, bottom);
+                target_->PushAxisAlignedClip(clip, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+                color(0x93afb9, 0.08f);
+                for (int column = 0; column <= 10; ++column)
+                {
+                    const float x = kChartLeft + kChartWidth * column / 10;
+                    target_->DrawLine(D2D1::Point2F(x, top), D2D1::Point2F(x, bottom), brush_.Get(), 0.5f);
+                }
+                for (int row = 0; row <= 3; ++row)
+                {
+                    const float y = top + (bottom - top) * row / 3;
+                    target_->DrawLine(D2D1::Point2F(kChartLeft, y), D2D1::Point2F(kChartLeft + kChartWidth, y), brush_.Get(), 0.5f);
+                }
+                if (count_ < 2) { target_->PopAxisAlignedClip(); return; }
 
                 auto& path = paths_[slot];
                 if (!path)
                 {
                     const auto point = [&](size_t i)
                     {
-                        return D2D1::Point2F(47 + 66.0f * static_cast<float>(i) / 47,
-                            40 - 31 * static_cast<float>(history[i] / maximum));
+                        return D2D1::Point2F(kChartLeft + kChartWidth * static_cast<float>(i) / 31,
+                            bottom - (bottom - top) * static_cast<float>(history[i] / maximum));
                     };
-                    const size_t first = 48 - count_;
+                    const size_t first = 32 - count_;
                     const auto tangent = [&](size_t i)
                     {
                         if (i == first) return point(i + 1).y - point(i).y;
-                        if (i == 47) return point(i).y - point(i - 1).y;
+                        if (i == 31) return point(i).y - point(i - 1).y;
                         const float before = point(i).y - point(i - 1).y;
                         const float after = point(i + 1).y - point(i).y;
                         // Monotone Hermite slopes retain every sampled peak and valley,
@@ -261,7 +305,7 @@ bool FloatingRateRenderer::Render(const std::wstring&, const std::wstring&,
                     Check(paths_[slot + 2]->Open(&fillSink));
                     fillSink->BeginFigure(point(first), D2D1_FIGURE_BEGIN_FILLED);
                     sink->BeginFigure(point(first), D2D1_FIGURE_BEGIN_HOLLOW);
-                    for (size_t i = first + 1; i < 48; ++i)
+                    for (size_t i = first + 1; i < 32; ++i)
                     {
                         const auto from = point(i - 1), to = point(i);
                         const float third = (to.x - from.x) / 3;
@@ -271,20 +315,44 @@ bool FloatingRateRenderer::Render(const std::wstring&, const std::wstring&,
                         sink->AddBezier(segment);
                         fillSink->AddBezier(segment);
                     }
-                    fillSink->AddLine(D2D1::Point2F(113, 40));
-                    fillSink->AddLine(D2D1::Point2F(point(first).x, 40));
+                    fillSink->AddLine(D2D1::Point2F(kChartLeft + kChartWidth, bottom));
+                    fillSink->AddLine(D2D1::Point2F(point(first).x, bottom));
                     fillSink->EndFigure(D2D1_FIGURE_END_CLOSED);
                     Check(fillSink->Close());
                     sink->EndFigure(D2D1_FIGURE_END_OPEN);
                     Check(sink->Close());
                 }
+                gradients_[slot - 4]->SetStartPoint(D2D1::Point2F(0, top));
+                gradients_[slot - 4]->SetEndPoint(D2D1::Point2F(0, bottom));
                 target_->FillGeometry(paths_[slot + 2].Get(), gradients_[slot - 4].Get());
                 color(rgb);
-                target_->DrawGeometry(path.Get(), brush_.Get(), 1.8f, stroke_.Get());
+                target_->DrawGeometry(path.Get(), brush_.Get(), 1.0f, stroke_.Get());
+                target_->PopAxisAlignedClip();
             };
             trend(4, uploadHistory_, 0x61e5b7);
             trend(5, downloadHistory_, 0x32bdeb);
         }
+        target_->PushAxisAlignedClip(D2D1::RectF(std::min(77 - 0.4f, right - 9), 15, right - 9, 39), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        const auto readout = [&](const auto& characters, float baseline, UINT32 rgb) {
+            float x = 77;
+            for (size_t cell = 0; cell < characters.size(); ++cell)
+            {
+                const float pitch = cell < 6 ? 1.05f : 0.8f;
+                const auto* glyph = punctum::Find(characters[cell]);
+                for (int row = 0; row < 7; ++row)
+                    for (int column = 0; column < 5; ++column)
+                    {
+                        const bool lit = glyph && (glyph->rows[row] & (1 << column));
+                        color(lit ? (cell < 6 ? rgb : 0x849da9) : 0x34424a, textProgress);
+                        target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x + column * pitch, baseline - (6 - row) * pitch),
+                            pitch * 0.36f, pitch * 0.36f), brush_.Get());
+                    }
+                x += 4 * pitch + ((cell == 0 || cell == 5) ? 2 * 1.05f : 1.5f * pitch);
+            }
+        };
+        if (textProgress > 0) readout(upCells, 23.8f, 0x61e5b7);
+        if (textProgress > 0) readout(downCells, 36.55f, 0x32bdeb);
+        target_->PopAxisAlignedClip();
         Check(target_->EndDraw());
         copyPixels(bodyPixels_);
         pixelsDirty_ = true;

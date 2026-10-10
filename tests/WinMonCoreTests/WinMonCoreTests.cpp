@@ -230,6 +230,9 @@ void OperatorMenuTransactionCorrelatesEveryAction()
     Require(!FindItem(*menu, L"Launch at Login").checked, "Launch at Login reflects live state");
     Require(FindItem(*menu, L"Right-Click Speed Text").checked, "Right-Click Speed Text reflects live state");
     Require(!FindItem(*menu, L"Show Floating Display").checked, "Floating Rate Display reflects live state");
+    Require(FindItem(*menu, L"Show Floating Speed Text").checked, "floating text defaults checked");
+    const auto displayItem = std::find_if(menu->begin(),menu->end(),[](const auto& item){ return item.label == L"Show Floating Display"; });
+    Require((displayItem+1)->label == L"Show Floating Speed Text", "text toggle follows display toggle");
     FindItem(*menu, L"Font: Cascadia Mono");
     Require(std::count_if(menu->begin(), menu->end(), [](const OperatorMenuItem& item) {
         return item.separator;
@@ -246,6 +249,11 @@ void OperatorMenuTransactionCorrelatesEveryAction()
     Require(core.CompleteOperatorMenu(floatingDisplay.choiceToken).kind == OperatorActionKind::DisableFloatingRateDisplay, "floating display choice meaning");
 
     menu = core.BeginOperatorMenu({}, L"Cascadia Mono");
+    Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Speed Text").choiceToken).kind == OperatorActionKind::HideFloatingSpeedText, "checked text action hides");
+    menu = core.BeginOperatorMenu({false,false,false,false,false}, L"Cascadia Mono");
+    Require(!FindItem(*menu,L"Show Floating Speed Text").checked, "hidden text unchecked even when whole display closed");
+    Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Speed Text").choiceToken).kind == OperatorActionKind::ShowFloatingSpeedText, "unchecked text action shows");
+    menu = core.BeginOperatorMenu({},L"Cascadia Mono");
     const auto& setFont = FindItem(*menu, L"Set Font...");
     Require(core.CompleteOperatorMenu(setFont.choiceToken).kind == OperatorActionKind::SetRateFont, "font choice meaning");
 

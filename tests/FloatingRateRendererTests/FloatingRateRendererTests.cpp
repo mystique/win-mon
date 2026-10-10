@@ -33,245 +33,126 @@ void SaveBitmap(const FloatingRateRenderer& renderer, const std::filesystem::pat
 int main(int argc, char** argv)
 {
     FloatingRateRenderer renderer;
-    LOGFONTW font{};
-    wcscpy_s(font.lfFaceName, L"Segoe UI");
-    Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 96), "offscreen render");
-    Require(renderer.PixelSize().cx == 138 && renderer.PixelSize().cy == 54, "132x48 body plus shadow");
-    bool partial = false;
-    const auto& pixels = renderer.Pixels();
-    for (size_t i = 0; i < pixels.size(); ++i)
-    {
-        const DWORD p = pixels[i], a = p >> 24;
-        Require((p & 255) <= a && ((p >> 8) & 255) <= a && ((p >> 16) & 255) <= a, "premultiplied alpha");
-        if (i < 138 || i >= pixels.size() - 138 || i % 138 == 0 || i % 138 == 137)
-            Require(p == 0, "transparent canvas boundary");
-        partial |= a > 0 && a < 255;
-    }
-    Require(partial, "antialiased silhouette");
-    Require(FloatingRateRenderer::IsPositionVisible({0,0,132,44}, {0,0,1920,1080}), "small saved body is visible");
-
-    const auto colored = [&](int x, int y, bool up)
-    {
-        x = 3 + (x - 3) * 12 / 11;
-        y = 3 + (y - 3) * 12 / 11;
+    const auto render = [&] { Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", 96, 0.3, 0), "render"); };
+    const auto colored = [&](int x, int y, bool up) {
         for (int dy = -1; dy <= 1; ++dy)
             for (int dx = -1; dx <= 1; ++dx)
             {
-                DWORD p = renderer.Pixels()[(y + dy) * 138 + x + dx];
-                int b = p & 255, g = (p >> 8) & 255, r = (p >> 16) & 255;
-                if (up ? (g > 120 && g > b + 15 && g > r + 30) : (b > 140 && b > g + 15 && b > r + 50)) return true;
+                const DWORD p = renderer.Pixels()[(y + dy) * renderer.PixelSize().cx + x + dx];
+                const int g = (p >> 8) & 255, b = p & 255;
+                if (up ? g > 120 && g > b + 15 : b > 140 && b > g + 15) return true;
             }
         return false;
     };
-    const auto render = [&] { Require(renderer.Render(L"0.5 K/s", L"0.5 K/s", font, 96), "sample render"); };
-    renderer.AddSample(500, 0);
-    render();
-    Require(colored(37, 13, true) && colored(25, 8, true), "half upload reaches top counterclockwise");
-    Require(!colored(13, 13, true) && !colored(37, 37, true), "upload stops at top and never enters bottom");
-    renderer.ResetHistory();
-    renderer.AddSample(0, 500);
-    render();
-    Require(colored(37, 37, false) && colored(25, 42, false), "half download reaches bottom clockwise");
-    Require(!colored(13, 37, false) && !colored(37, 13, false), "download stops at bottom and never enters top");
-    renderer.ResetHistory();
-    renderer.AddSample(1000, 1000);
-    render();
-    Require(colored(13, 13, true) && colored(13, 37, false), "full semicircles reach left");
-    for (UINT dpi : {96u, 120u, 144u, 192u})
-    {
-        for (bool active : {false, true})
+    for (bool up : {true, false})
+        for (double ratio : {0.0, 0.25, 0.5, 1.0})
         {
             renderer.ResetHistory();
-            if (active) renderer.AddSample(1000, 1000);
-            Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, dpi), "joint gap frame");
-            const int y = MulDiv(27, static_cast<int>(dpi), 96);
-            for (int x : {MulDiv(8, static_cast<int>(dpi), 96), MulDiv(46, static_cast<int>(dpi), 96)})
-                Require(renderer.Pixels()[y * renderer.PixelSize().cx + x] == 0xff222e34,
-                    "tracks and full arcs leave capsule-colored gaps at both joints");
+            renderer.AddSample(up ? ratio * 1000 : 0, up ? 0 : ratio * 1000);
+            render();
+            const int y = up ? 23 : 31;
+            Require(colored(10, y, up) == (ratio > 0) && colored(30, y, up) == (ratio > 0), "both arc ends grow symmetrically");
+            Require(colored(20, up ? 16 : 38, up) == (ratio == 1), "midpoint stays dark until full");
+            Require(renderer.Pixels()[27 * 138 + 8] == 0xff222e34 && renderer.Pixels()[27 * 138 + 32] == 0xff222e34, "joint gaps");
         }
-    }
-    renderer.AddSample(0, 0);
+    renderer.AddSample(0, 0); render();
+    Require(!colored(10, 31, false), "raw zero clears arc immediately");
+    renderer.AddSample(-1, std::numeric_limits<double>::quiet_NaN()); render();
+    Require(renderer.Activity() == 0, "invalid rates are idle");
+    renderer.ResetHistory(); render();
+    const auto empty = renderer.Pixels();
+    for (int i = 0; i < 32; ++i) renderer.AddSample(1000, 500);
     render();
-    Require(!colored(37, 13, true) && !colored(37, 37, false), "raw zero immediately clears arcs");
-
-    renderer.ResetHistory();
-    renderer.AddSample(1000, 500);
-    render();
-    Require(colored(13, 13, true) && !colored(13, 37, false), "independent ratios use common scale");
-    renderer.AddSample(std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN());
-    render();
-    Require(!colored(37, 13, true) && !colored(37, 37, false), "nonfinite raw input clears arcs");
-    renderer.AddSample(-1, -1);
-    render();
-    Require(!colored(37, 13, true), "negative input clears arcs");
-    renderer.ResetHistory();
-    renderer.AddSample(1e9, 0);
-    renderer.AddSample(1000, 0);
-    render();
-    Require(!colored(13, 13, true), "new lower rate retracts arc");
-    for (int i = 0; i < 100; ++i) renderer.AddSample(1000, 0);
-    render();
-    Require(colored(13, 13, true), "expired peak no longer holds scale");
-    renderer.ResetHistory();
-    render();
-    Require(!colored(37, 13, true), "network reset removes previous activity");
-    const auto blank = renderer.Pixels();
-    renderer.AddSample(0, 0);
-    renderer.AddSample(0, 0);
-    render();
-    Require(renderer.Pixels() != blank, "actual zero history has a quiet baseline");
+    for (int y = 0; y < 54; ++y)
+        for (int x = 33; x < 138; ++x)
+            if (renderer.Pixels()[y * 138 + x] != empty[y * 138 + x])
+                Require(x >= 35 && x < 74 && ((y >= 15 && y < 27) || (y >= 27 && y < 39)), "curves and fill clipped to independent regions");
+    Require(colored(50, 15, true) && colored(50, 33, false), "independent upload/download curves");
+    const auto beforeText = renderer.Pixels();
+    Require(renderer.Render(L"999.9 G/s", L"12.8 M/s", 96, 0.3, 0), "LED frame");
+    Require(renderer.Pixels() != beforeText, "readouts are actually rendered");
     const auto successful = renderer.Pixels();
-    Require(!renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 0), "invalid render rejected");
-    Require(renderer.Pixels() == successful, "failure preserves successful bitmap");
-    Require(!renderer.Present(nullptr), "failed submission contained");
-    renderer.ReleaseTarget();
-    render();
-    Require(renderer.Pixels() == successful, "target rebuild preserves sample state");
-    Require(!FloatingRateRenderer::HitTest({1, 25}, 96), "shadow passes input through");
-    Require(FloatingRateRenderer::HitTest({25, 25}, 96), "capsule receives input");
-    Require(!FloatingRateRenderer::IsPositionVisible({2000,0,2132,44}, {0,0,1920,1080}), "missing monitor rejected");
-    Require(FloatingRateRenderer::IsPositionVisible({-84,0,48,44}, {0,0,1920,1080}), "usable partial body retained");
-    renderer.ResetHistory();
-    renderer.AddSample(500, 500);
-    Require(renderer.Render(L"1.0 K/s", L"1.0 K/s", font, 96, 0.1), "early water wave");
-    const auto earlyWave = renderer.Pixels();
-    Require(renderer.Render(L"1.0 K/s", L"1.0 K/s", font, 96, 0.8), "late water wave");
-    int waveChanges = 0;
+    Require(!renderer.Render(L"0.0 K/s", L"0.0 K/s", 0), "invalid DPI rejected");
+    Require(renderer.Pixels() == successful, "invalid frame preserves success");
+    renderer.ReleaseTarget(); Require(renderer.Render(L"999.9 G/s", L"12.8 M/s", 96, 0.3, 0), "rebuild");
+    Require(renderer.Pixels() == successful, "target rebuild retains geometry");
+    Require(FloatingRateRenderer::HitTest({25,27}, 96) && !FloatingRateRenderer::HitTest({1,27}, 96), "body/shadow hit testing");
+    Require(FloatingRateRenderer::IsPositionVisible({0,0,132,48},{0,0,1920,1080}), "saved body visible");
+    renderer.ResetHistory(); renderer.AddSample(1000,1000);
+    Require(renderer.Render(L"1.0 K/s", L"1.0 K/s", 96, 0.1), "high activity first phase");
+    const auto water = renderer.Pixels();
+    Require(renderer.Render(L"1.0 K/s", L"1.0 K/s", 96, 0.7), "high activity next phase");
+    int changed = 0;
     for (int y = 0; y < 54; ++y)
         for (int x = 0; x < 138; ++x)
-            if (earlyWave[y * 138 + x] != renderer.Pixels()[y * 138 + x])
+            if (renderer.Pixels()[y * 138 + x] != water[y * 138 + x])
             {
-                ++waveChanges;
-                Require((x - 27) * (x - 27) + (y - 27) * (y - 27) < 17 * 17,
-                    "water wave stays inside the inner circle");
+                ++changed;
+                Require((x-20)*(x-20)+(y-27)*(y-27) < 100, "water stays inside circle, charts and text remain stationary");
             }
-    Require(waveChanges > 15, "water surface moves between animation phases");
-    int previousArea = -1;
-    for (float level : {0.0f, 0.25f, 0.5f, 0.75f, 1.0f})
+    Require(changed > 8, "high activity retains moving waterline");
+    for (UINT dpi : {96u,120u,144u,192u})
     {
-        Require(renderer.Render(L"", L"", font, 96, 0.5, level), "water level frame");
-        int area = 0;
-        for (int y = 11; y <= 42; ++y)
-            for (int x = 11; x <= 42; ++x)
-                if ((x - 27) * (x - 27) + (y - 27) * (y - 27) < 15 * 15)
-                    area += renderer.Pixels()[y * 138 + x] != 0xff222e34;
-        Require(area > previousArea, "water fills progressively from empty to full");
-        previousArea = area;
+        Require(renderer.Render(L"999.9 G/s", L"12.8 M/s", dpi, 0.3, 0.5f, 1), "expanded frame");
+        const auto expanded = renderer.Pixels();
+        const auto expandedSize = renderer.PixelSize();
+        Require(!renderer.Render(L"invalid", L"12.8 M/s", dpi), "unknown glyph rejected");
+        Require(expanded == renderer.Pixels(), "invalid glyph preserves frame");
+        for (float progress : {0.5f,0.0f,1.0f})
+        {
+            Require(renderer.Render(L"999.9 G/s", L"12.8 M/s", dpi, 0.3, 0.5f, progress), "text visibility frame");
+            const auto size = renderer.PixelSize();
+            Require(size.cy == expandedSize.cy && (progress == 1 || size.cx < expandedSize.cx), "real canvas narrows without changing height");
+            for (int y = MulDiv(15,dpi,96); y < MulDiv(39,dpi,96); ++y)
+                for (int x = MulDiv(8,dpi,96); x < MulDiv(74,dpi,96); ++x)
+                    Require(renderer.Pixels()[y * size.cx + x] == expanded[y * expandedSize.cx + x], "rings and charts remain fixed through transition");
+        }
+        Require(renderer.Render(L"1000.0 K/s", L"1000.0 M/s", dpi), "rounding overflow");
+        const auto saturated = renderer.Pixels();
+        Require(renderer.Render(L"999.9 K/s", L"999.9 M/s", dpi), "capacity frame");
+        Require(saturated == renderer.Pixels(), "overflow saturates full numeric field");
     }
-    Require(renderer.Render(L"", L"", font, 96, 0.5, 0.25f), "falling water frame");
-    const auto lowWater = renderer.Pixels();
-    Require(lowWater[18 * 138 + 27] == 0xff222e34 && lowWater[37 * 138 + 27] != 0xff222e34,
-        "receding water clears the top and retains the bottom");
-    renderer.AddSample(0, 0);
-    Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 96, 0.1), "idle water frame");
-    const auto idle = renderer.Pixels();
-    Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 96, 0.8), "idle second phase");
-    Require(idle == renderer.Pixels(), "idle water is empty and still");
-    renderer.ResetHistory();
+    renderer.ResetHistory(); renderer.AddSample(1000,0);
+    for(int i=0;i<31;++i) renderer.AddSample(0,0);
     render();
-    const auto emptyCurves = renderer.Pixels();
-    for (int i = 0; i < 48; ++i) renderer.AddSample(1000, 500);
-    render();
-    bool greenCurve = false, blueCurve = false;
-    for (int y = 8; y < 28; ++y)
-        for (int x = 52; x < 123; ++x)
-        {
-            const DWORD p = renderer.Pixels()[y * 138 + x];
-            if (p == emptyCurves[y * 138 + x]) continue;
-            const int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            greenCurve |= g > r + 15 && g > b + 5;
-            blueCurve |= b > r + 15 && b > g + 8;
-        }
-    Require(greenCurve && blueCurve, "both color-coded curves use the upper area too");
-    const auto curves = renderer.Pixels();
-    Require(renderer.Render(L"999.9 G/s", L"123.4 M/s", font, 96), "changed rate text");
-    Require(curves == renderer.Pixels(), "upload and download text are both absent");
-    const DWORD upperFill = renderer.Pixels()[32 * 138 + 80];
-    const DWORD lowerFill = renderer.Pixels()[41 * 138 + 80];
-    Require(upperFill != 0xff222e34 && lowerFill != 0xff222e34 && upperFill != lowerFill,
-        "area below curves has a fading gradient");
+    Require(colored(35,15,true), "oldest real sample reaches left edge at 32 samples");
+    renderer.AddSample(0,0); render();
+    Require(!colored(35,15,true), "oldest sample exits on next measurement");
     renderer.ResetHistory();
-    for (int i = 0; i < 46; ++i) renderer.AddSample(0, 0);
-    renderer.AddSample(0, 1000);
-    renderer.AddSample(0, 0);
-    Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", font, 96, 0.5, 0), "isolated trend peak");
-    bool retainedPeak = false;
-    for (int y = 5; y < 50; ++y)
-        for (int x = 115; x < 126; ++x)
+    Require(renderer.Render(L"0.0 K/s",L"0.0 K/s",384,0.3,0), "lamp-cell inspection frame");
+    const char* arrow[] = {"..#..", ".###.", "#.#.#", "..#..", "..#..", "..#..", "..#.."};
+    for(int row=0;row<7;++row)
+        for(int column=0;column<5;++column)
         {
-            const DWORD p = renderer.Pixels()[y * 138 + x];
-            const int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
-            if (b > r + 15 && b > g + 8)
-            {
-                Require(y >= 30 && y <= 45, "smooth trend stays inside sampled range plus stroke coverage");
-                retainedPeak |= x >= 119 && y <= 33;
-            }
+            const int x=static_cast<int>((77+column*1.05f)*4);
+            const int y=static_cast<int>((23.8f-(6-row)*1.05f)*4);
+            const DWORD pixel=renderer.Pixels()[y*renderer.PixelSize().cx+x];
+            const int green=(pixel>>8)&255;
+            Require((green>100)==(arrow[row][column]=='#'), "each of 35 arrow lamps matches Punctum data");
+            Require(pixel!=0xff222e34, "unlit lamps have their own dim background");
+            const int leadingX=static_cast<int>((83.3f+column*1.05f)*4);
+            const DWORD reserved=renderer.Pixels()[y*renderer.PixelSize().cx+leadingX];
+            Require(reserved!=0xff222e34 && ((reserved>>8)&255)<100, "reserved integer cell has 35 dark lamps and no leading zero");
         }
-    Require(retainedPeak, "smoothing preserves the isolated sampled peak");
+    for(wchar_t digit=L'0';digit<=L'9';++digit)
+        for(wchar_t unit : {L'K',L'M',L'G'})
+        {
+            std::wstring value{digit,digit,digit,L'.',digit,L' ',unit,L'/',L's'};
+            Require(renderer.Render(value,value,96), "all digit and unit glyphs render");
+        }
     const auto evidence = argc > 1 ? std::filesystem::path(argv[1]) : std::filesystem::path{};
     if (!evidence.empty()) std::filesystem::create_directories(evidence);
-    for (UINT dpi : {96u, 120u, 144u, 192u})
-        for (const wchar_t* family : {L"Segoe UI", L"Arial Black"})
-            for (const wchar_t* value : {L"0.0 K/s", L"999.9 K/s", L"999.9 G/s", L"123456789.0 G/s"})
-            {
-                wcscpy_s(font.lfFaceName, family);
-                Require(renderer.Render(value, value, font, dpi), "DPI/font/long value matrix");
-                const SIZE size = renderer.PixelSize();
-                Require(size.cx == (dpi == 96 ? 138 : dpi == 120 ? 173 : dpi == 144 ? 207 : 276), "scaled width");
-                Require(size.cy == (dpi == 96 ? 54 : dpi == 120 ? 68 : dpi == 144 ? 81 : 108), "scaled height");
-                for (size_t i = 0; i < renderer.Pixels().size(); ++i)
-                {
-                    DWORD p = renderer.Pixels()[i], a = p >> 24;
-                    Require((p & 255) <= a && ((p >> 8) & 255) <= a && ((p >> 16) & 255) <= a, "matrix premultiplication");
-                    if (i < static_cast<size_t>(size.cx) || i >= renderer.Pixels().size() - size.cx || i % size.cx == 0 || i % size.cx == size.cx - 1)
-                        Require(p == 0, "matrix no content escapes canvas");
-                }
-            }
-    wcscpy_s(font.lfFaceName, L"Segoe UI");
-    // A reused renderer must match a fresh one after text, font, DPI and history changes.
-    FloatingRateRenderer cached;
-    for (int sample = 0; sample < 4; ++sample)
-    {
-        cached.AddSample(sample * 1200, (4 - sample) * 9000);
-        for (UINT dpi : {96u, 192u, 96u})
-            for (BYTE decoration : {BYTE{0}, BYTE{1}})
-                for (float hover : {0.0f, 0.4f, 1.0f, 0.0f})
-                {
-                    LOGFONTW selected = font;
-                    selected.lfUnderline = decoration;
-                    selected.lfItalic = decoration;
-                    const auto value = sample % 2 ? L"999.9 G/s" : L"0.1 K/s";
-                    FloatingRateRenderer fresh;
-                    for (int i = 0; i <= sample; ++i) fresh.AddSample(i * 1200, (4 - i) * 9000);
-                    Require(cached.Render(value, value, selected, dpi, 0.3, hover), "cached frame");
-                    Require(fresh.Render(value, value, selected, dpi, 0.3, hover), "fresh frame");
-                    Require(cached.Pixels() == fresh.Pixels(), "cache invalidation matches fresh renderer");
-                    const auto expected = cached.Pixels();
-                    Require(cached.Render(value, value, selected, dpi, 0.3, hover), "repeat cached frame");
-                    Require(cached.Pixels() == expected, "cached frame remains identical");
-                }
-    }
-    cached.ResetHistory();
-    cached.ReleaseTarget();
-    FloatingRateRenderer empty;
-    Require(cached.Render(L"0.0 K/s", L"0.0 K/s", font, 96), "recreate cached target");
-    Require(empty.Render(L"0.0 K/s", L"0.0 K/s", font, 96), "empty reference");
-    Require(cached.Pixels() == empty.Pixels(), "reset clears cached sample geometry");
     renderer.ResetHistory();
-    for (int i = 0; i < 48; ++i) renderer.AddSample(128000, 400000 + (i % 7) * 120000);
-    Require(renderer.Render(L"128.0 K/s", L"8.4 M/s", font, 96), "evidence frame");
-    if (!evidence.empty())
+    for(int i=0;i<32;++i) renderer.AddSample(300000+(i%5)*70000, 700000+(i%7)*140000);
+    for (UINT dpi : {96u,120u,144u,192u})
     {
-        SaveBitmap(renderer, evidence / "actual-size-dark.bmp", 0x101419);
-        SaveBitmap(renderer, evidence / "actual-size-light.bmp", 0xf4f5f7);
-        Require(renderer.Render(L"999.9 G/s", L"999.9 G/s", font, 96), "long evidence");
-        SaveBitmap(renderer, evidence / "long-reading.bmp", 0xf4f5f7);
-        Require(renderer.Render(L"0.6 K/s", L"0.1 K/s", font, 96), "short evidence");
-        SaveBitmap(renderer, evidence / "short-reading.bmp", 0x181818);
-        for (int frame = 0; frame < 30; ++frame)
+        Require(renderer.Render(L"999.9 G/s", L"999.9 M/s", dpi), "DPI evidence");
+        for (DWORD pixel : renderer.Pixels())
         {
-            Require(renderer.Render(L"128.0 K/s", L"8.4 M/s", font, 96, frame / 30.0, frame < 15 ? frame / 14.0f : (29 - frame) / 14.0f), "hover transition preview frame");
-            SaveBitmap(renderer, evidence / ("pulse-" + std::to_string(frame) + ".bmp"), 0x181818);
+            const DWORD alpha = pixel >> 24;
+            Require((pixel & 255) <= alpha && ((pixel >> 8) & 255) <= alpha && ((pixel >> 16) & 255) <= alpha, "premultiplied output");
         }
+        if (!evidence.empty())
+            for (bool light : {false,true}) SaveBitmap(renderer, evidence / (std::to_string(dpi) + (light ? "-light.bmp" : "-dark.bmp")), light ? 0xf4f5f7 : 0x101419);
     }
 }

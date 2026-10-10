@@ -7,6 +7,12 @@
 #include <filesystem>
 
 CWinApp testApp;
+int positionNotifications = 0;
+LRESULT CALLBACK OwnerProcedure(HWND window,UINT message,WPARAM wParam,LPARAM lParam)
+{
+    if(message == WM_APP+11) ++positionNotifications;
+    return DefWindowProcW(window,message,wParam,lParam);
+}
 void Require(bool condition, const char* message)
 {
     if (!condition) throw std::runtime_error(message);
@@ -41,6 +47,17 @@ void CaptureWindow(HWND window, const std::filesystem::path& path)
     ::ReleaseDC(nullptr, screen);
     Require(copied && output.good(), "native screenshot saved");
 }
+void Pump(unsigned milliseconds)
+{
+    const auto end = GetTickCount64() + milliseconds;
+    while (GetTickCount64() < end)
+    {
+        MSG message{};
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); }
+        MsgWaitForMultipleObjects(0, nullptr, FALSE, 8, QS_ALLINPUT);
+    }
+}
+LONG Width(HWND window) { RECT rect{}; Require(::GetWindowRect(window,&rect), "width rectangle"); return rect.right-rect.left; }
 int main(int argc, char** argv)
 {
     if (!AfxWinInit(GetModuleHandleW(nullptr), nullptr, GetCommandLineW(), 0)) return 1;
@@ -53,6 +70,8 @@ int main(int argc, char** argv)
         Require(menuOwner.CreateEx(0, AfxRegisterWndClass(0), L"Floating test notifications", WS_POPUP,
             CRect(0, 0, 0, 0), nullptr, 0), "menu notification owner");
         display.SetContextMenuOwner(menuOwner.GetSafeHwnd(), WM_APP + 10);
+        SetWindowLongPtrW(menuOwner.GetSafeHwnd(),GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(OwnerProcedure));
+        display.SetPositionChangedOwner(menuOwner.GetSafeHwnd(), WM_APP+11);
         const HWND foreground = GetForegroundWindow();
         Require(display.ShowFloating({100, 100}, true), "real floating window initializes");
         const HWND window = display.GetSafeHwnd();
@@ -101,20 +120,35 @@ int main(int argc, char** argv)
                     Require(proposed.left == x && proposed.top == y, "interior drag remains unchanged");
             }
         }
-        RateFontSelection defaultFont, selectedFont, actualFont;
-        Require(display.GetRateFont(defaultFont), "floating default font");
-        selectedFont = defaultFont;
-        selectedFont.pointSizeTenths = 100;
-        wcscpy_s(selectedFont.logFont.lfFaceName, L"Segoe UI");
-        Require(display.SetRateFont(selectedFont) && display.GetRateFont(actualFont) &&
-            actualFont.pointSizeTenths == 100, "floating font updates and renders");
-        selectedFont.pointSizeTenths = 0;
-        Require(!display.SetRateFont(selectedFont) && display.GetRateFont(actualFont) &&
-            actualFont.pointSizeTenths == 100, "invalid font preserves floating selection");
-        Require(display.ResetRateFont() && display.GetRateFont(actualFont) &&
-            actualFont.pointSizeTenths == defaultFont.pointSizeTenths &&
-            wcscmp(actualFont.logFont.lfFaceName, defaultFont.logFont.lfFaceName) == 0,
-            "floating reset restores system font");
+        display.SetRates(L"0.0 K/s", L"0.0 K/s", 0, 0);
+        Pump(500);
+        const LONG expandedWidth = Width(window);
+        Require(display.SetTextVisible(false), "hide text live");
+        BOOL animations = FALSE;
+        SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
+        Pump(55);
+        const LONG middleWidth = Width(window);
+        if (animations) Require(middleWidth < expandedWidth && middleWidth > FloatingRateRenderer::SizeForDpi(GetDpiForWindow(window),0).cx, "idle transition has intermediate geometry");
+        Require(Width(shadow) == middleWidth, "shadow follows intermediate width");
+        Require(display.SetTextVisible(true), "reverse transition");
+        Require(std::abs(Width(window)-middleWidth) <= 3, "reversal does not jump");
+        Pump(250);
+        Require(Width(window)==expandedWidth, "reverse completes expansion");
+        Require(display.SetTextVisible(false), "collapse again");
+        Pump(300);
+        Require(Width(window) == FloatingRateRenderer::SizeForDpi(GetDpiForWindow(window),0).cx, "idle collapse completes");
+        Require(Width(shadow)==Width(window), "compact shadow size synchronized");
+        RECT compact{}; ::GetWindowRect(window,&compact);
+        Require(display.SendMessageW(WM_NCHITTEST,0,MAKELPARAM(compact.left+expandedWidth-15,compact.top+size.cy/2))==HTTRANSPARENT, "old text area passes input through");
+        Require(display.SetTextVisible(true), "restore visible text");
+        Pump(50);
+        const LONG beforeFailure = Width(window);
+        display.SetRates(L"invalid",L"0.0 K/s",0,0);
+        Require(!display.SetTextVisible(false), "invalid readout causes controlled application failure");
+        Require(display.IsTextVisible() && Width(window)==beforeFailure, "failed reversal preserves actual geometry and prior target");
+        display.SetRates(L"0.0 K/s",L"0.0 K/s",0,0);
+        Pump(250);
+        Require(Width(window)==expandedWidth, "previous transition resumes after rendering recovers");
         if (argc > 1)
         {
             const std::filesystem::path evidence(argv[1]);
@@ -145,12 +179,48 @@ int main(int argc, char** argv)
                 CaptureWindow(window, evidence / (light ? "native-light.bmp" : "native-dark.bmp"));
                 ::DestroyWindow(backdrop);
             }
+            display.SetRates(L"0.0 K/s", L"0.0 K/s",0,0);
+            Pump(500);
+            for (bool visible : {false,true})
+            {
+                Require(display.SetTextVisible(visible), "native transition evidence");
+                for (int frame=0;frame<16;++frame)
+                {
+                    Pump(16);
+                    CaptureWindow(window,evidence / ((visible ? "expand-" : "collapse-") + std::to_string(frame) + ".bmp"));
+                }
+            }
+            display.SetRates(L"1.0 K/s",L"1.0 K/s",1000,1000);
+            Pump(500);
+            for (int frame=0;frame<30;++frame)
+            {
+                Pump(33);
+                CaptureWindow(window,evidence / ("wave-"+std::to_string(frame)+".bmp"));
+            }
             std::cout << "Native screenshot DPI: " << GetDpiForWindow(window) << '\n';
         }
+        Require(display.SetTextVisible(false), "compact before edge expansion"); Pump(300);
+        ::SetWindowPos(window,nullptr,work.right-Width(window),work.top+20,0,0,SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOZORDER);
+        const int beforeExpansion = positionNotifications;
+        Require(display.SetTextVisible(true), "expand at work area edge");
+        for(int frame=0;frame<20;++frame)
+        {
+            Pump(16); RECT edge{}; ::GetWindowRect(window,&edge);
+            Require(edge.right<=work.right && edge.left>=work.left, "expansion stays in work area each frame");
+        }
+        Require(positionNotifications > beforeExpansion, "edge-adjusted position notifies owner after expansion");
+        Require(display.SetTextVisible(false), "hide during transition");
+        display.ShowWindow(SW_HIDE); Pump(50);
+        Require(!::IsWindowVisible(shadow), "whole-window hide also hides shadow");
+        Require(display.SetTextVisible(false) && display.ShowFloating({100,100},true), "hidden text state reapplied on show");
+        Require(Width(window)==FloatingRateRenderer::SizeForDpi(GetDpiForWindow(window),0).cx, "show opens compact endpoint without animation");
+        Require(display.SetTextVisible(true), "restore text"); Pump(250);
         const POINT restored = display.GetFloatingPosition();
         display.Shutdown();
         Require(!IsWindow(window) && !IsWindow(shadow), "shutdown destroys both layers");
+        Require(display.SetTextVisible(false), "configure while closed");
         Require(display.ShowFloating(restored, true), "show after hide succeeds");
+        Require(Width(display.GetSafeHwnd())==FloatingRateRenderer::SizeForDpi(GetDpiForWindow(display.GetSafeHwnd()),0).cx, "closed configuration opens compact");
         Require(display.GetFloatingPosition().x == restored.x && display.GetFloatingPosition().y == restored.y,
             "reopened position retained");
         display.Shutdown();
@@ -165,6 +235,21 @@ int main(int argc, char** argv)
             display.Shutdown();
         }
         Require(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS) <= before + 1, "no GDI growth after repeated hide/show");
+        {
+            struct AnimationPreference
+            {
+                BOOL previous = FALSE;
+                AnimationPreference() { Require(SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&previous,0), "read animation preference"); Require(SystemParametersInfoW(SPI_SETCLIENTAREAANIMATION,0,reinterpret_cast<void*>(FALSE),0), "temporarily disable animations"); }
+                ~AnimationPreference() { SystemParametersInfoW(SPI_SETCLIENTAREAANIMATION,0,reinterpret_cast<void*>(static_cast<INT_PTR>(previous)),0); }
+            } preference;
+            Require(display.SetTextVisible(true) && display.ShowFloating({100,100},true), "static animation mode show");
+            display.SetRates(L"1.0 K/s",L"1.0 K/s",1000,1000);
+            Require(display.SetTextVisible(false), "static mode hide text");
+            Require(Width(display.GetSafeHwnd())==FloatingRateRenderer::SizeForDpi(GetDpiForWindow(display.GetSafeHwnd()),0).cx, "disabled animations jump directly to compact endpoint");
+            Require(display.SetTextVisible(true), "static mode show text");
+            Require(Width(display.GetSafeHwnd())==FloatingRateRenderer::SizeForDpi(GetDpiForWindow(display.GetSafeHwnd())).cx, "disabled animations jump directly to expanded endpoint");
+            display.Shutdown();
+        }
         menuOwner.DestroyWindow();
         std::cout << "Native floating window checks passed\n";
     }

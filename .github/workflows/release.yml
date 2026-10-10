@@ -169,6 +169,7 @@ jobs:
           if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item $exe (Join-Path $stage 'WinMon.exe')
+          Copy-Item 'licenses' (Join-Path $stage 'licenses') -Recurse
 
           $deps = & $dumpbin /dependents $exe | Out-String
           $dlls = [regex]::Matches($deps, '(?im)^\s*([A-Za-z0-9_.-]+\.dll)\s*$') |

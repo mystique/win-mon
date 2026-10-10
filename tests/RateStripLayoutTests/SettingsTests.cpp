@@ -40,6 +40,15 @@ int main()
     try
     {
         IsolatedRegistry registry;
+        Require(settings::IsFloatingRateTextVisible(), "floating text defaults on");
+        Require(settings::SetFloatingRateTextVisible(false) && !settings::IsFloatingRateTextVisible(), "hidden text persists");
+        Require(settings::SetFloatingRateTextVisible(true) && settings::IsFloatingRateTextVisible(), "visible text persists");
+        for (DWORD invalid : {2u, 0xffffffffu})
+        {
+            Require(RegSetKeyValueW(HKEY_CURRENT_USER, L"Software\\Win Mon", L"FloatingRateTextVisible",
+                REG_DWORD, &invalid, sizeof(invalid)) == ERROR_SUCCESS, "unknown text flag fixture");
+            Require(settings::IsFloatingRateTextVisible(), "unknown text flag defaults visible");
+        }
         Require(!settings::IsSpeedTextOnLeft(), "absent position defaults Right");
         Require(settings::SetSpeedTextOnLeft(true) && settings::IsSpeedTextOnLeft(), "Left survives reread");
         Require(settings::SetSpeedTextOnLeft(false) && !settings::IsSpeedTextOnLeft(), "Right survives reread");
@@ -53,6 +62,9 @@ int main()
         Require(RegSetKeyValueW(HKEY_CURRENT_USER, L"Software\\Win Mon", L"SpeedTextPosition",
             REG_SZ, text, sizeof(text)) == ERROR_SUCCESS, "wrong type fixture");
         Require(!settings::IsSpeedTextOnLeft(), "wrong type defaults Right");
+        Require(RegSetKeyValueW(HKEY_CURRENT_USER, L"Software\\Win Mon", L"FloatingRateTextVisible",
+            REG_SZ, text, sizeof(text)) == ERROR_SUCCESS, "wrong type text fixture");
+        Require(settings::IsFloatingRateTextVisible(), "wrong type text defaults visible");
         const BYTE shortValue = 1;
         Require(RegSetKeyValueW(HKEY_CURRENT_USER, L"Software\\Win Mon", L"SpeedTextPosition",
             REG_DWORD, &shortValue, sizeof(shortValue)) == ERROR_SUCCESS, "short DWORD fixture");

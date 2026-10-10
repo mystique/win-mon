@@ -1,4 +1,5 @@
 #include "RateFontSettingChange.h"
+#include "FloatingRateTextSettingChange.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -31,6 +32,14 @@ struct Display
     }
 };
 
+struct FloatingText
+{
+    bool visible = true;
+    bool reject = false;
+    bool IsTextVisible() const { return visible; }
+    bool SetTextVisible(bool value) { if(reject) return false; visible = value; return true; }
+};
+bool PersistVisibility(bool) { return canSave; }
 int main()
 {
     try
@@ -39,35 +48,35 @@ int main()
         wcscpy_s(oldFont.logFont.lfFaceName, L"Segoe UI");
         auto newFont = oldFont;
         newFont.pointSizeTenths = 100;
-        Display strip, floating;
-        Require(strip.SetRateFont(oldFont) && floating.SetRateFont(oldFont), "initial fonts");
-        floating.rejectedSize = 100;
-        RateFontSettingChange change{strip, floating, oldFont, newFont, Persist};
+        Display strip;
+        Require(strip.SetRateFont(oldFont), "initial fonts");
+        strip.rejectedSize = 100;
+        RateFontSettingChange change{strip, oldFont, newFont, Persist};
         using winmon::OperatorSettingOutcome;
         using winmon::OperatorSettingTransaction;
         Require(OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::LiveApplicationFailed,
-            "second display failure rejects font change");
-        Require(strip.renderedSize == 90 && floating.renderedSize == 90 && savedSize == 90,
-            "partial application restores both rendered fonts without saving");
-        floating.rejectedSize = 0;
+            "taskbar redraw failure rejects font change");
+        Require(strip.renderedSize == 90 && savedSize == 90,
+            "taskbar failure restores font without saving");
+        strip.rejectedSize = 0;
         canSave = false;
         Require(OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::RolledBack,
             "save failure rolls back fonts");
-        Require(strip.renderedSize == 90 && floating.renderedSize == 90 && savedSize == 90,
-            "save failure leaves both displays and storage unchanged");
+        Require(strip.renderedSize == 90 && savedSize == 90,
+            "save failure leaves taskbar and storage unchanged");
         strip.rejectedSize = 90;
         Require(OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::RecoveryRequired,
             "failed first restoration requests recovery");
-        Require(strip.renderedSize == 100 && floating.renderedSize == 90 && savedSize == 90,
-            "second restoration still runs when first restoration fails");
+        Require(strip.renderedSize == 100 && savedSize == 90,
+            "failed restoration retains latest rendered font");
         strip.rejectedSize = 0;
-        Require(change.RollbackLive(), "later retry restores both displays");
-        Require(strip.renderedSize == 90 && floating.renderedSize == 90, "retry converges to old font");
+        Require(change.RollbackLive(), "later retry restores taskbar");
+        Require(strip.renderedSize == 90, "retry converges to old font");
         canSave = true;
         Require(OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::Applied,
             "successful font change");
-        Require(strip.renderedSize == 100 && floating.renderedSize == 100 && savedSize == 100,
-            "successful change updates displays and storage");
+        Require(strip.renderedSize == 100 && savedSize == 100,
+            "successful change updates taskbar and storage");
         auto invalid = newFont;
         invalid.logFont.lfFaceName[0] = L'\0';
         Require(!strip.SetRateFont(invalid) && strip.renderedSize == 100, "invalid font preserves rendered font");
@@ -80,6 +89,15 @@ int main()
         Require(strip.font.Apply(std::nullopt, [] { return true; }) && strip.font.Get(nullptr, resetFont), "reset to default font");
         Require(wcscmp(systemFont.logFont.lfFaceName, resetFont.logFont.lfFaceName) == 0 &&
             systemFont.pointSizeTenths == resetFont.pointSizeTenths, "reset follows system default");
+        FloatingText floating;
+        FloatingRateTextSettingChange textChange{floating, false, PersistVisibility};
+        canSave = false;
+        Require(OperatorSettingTransaction::Commit(textChange) == OperatorSettingOutcome::RolledBack && floating.visible, "text persistence failure restores visible state");
+        canSave = true;
+        floating.reject = true;
+        Require(OperatorSettingTransaction::Commit(textChange) == OperatorSettingOutcome::RecoveryRequired && floating.visible, "live text failure never persists");
+        floating.reject = false;
+        Require(OperatorSettingTransaction::Commit(textChange) == OperatorSettingOutcome::Applied && !floating.visible, "text transaction applies and persists");
         std::cout << "Rate font checks passed\n";
     }
     catch (const std::exception& error)

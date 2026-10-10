@@ -2,6 +2,7 @@
 #include "Autostart.h"
 #include "Settings.h"
 #include "RateFontSettingChange.h"
+#include "FloatingRateTextSettingChange.h"
 #include "SpeedTextPositionSettingChange.h"
 #include "Theme.h"
 
@@ -162,6 +163,7 @@ bool TrayMessageWindow::Initialize()
     rateStrip_.SetContextMenuOwner(GetSafeHwnd(), kRightClickSpeedTextMessage);
     rateStrip_.SetContextMenuEnabled(settings::IsRightClickSpeedTextEnabled());
     static_cast<void>(rateStrip_.SetSpeedTextOnLeft(settings::IsSpeedTextOnLeft()));
+    static_cast<void>(floatingRateDisplay_.SetTextVisible(settings::IsFloatingRateTextVisible()));
     floatingRateDisplay_.SetContextMenuOwner(GetSafeHwnd(), kRightClickSpeedTextMessage);
     floatingRateDisplay_.SetPositionChangedOwner(GetSafeHwnd(), kFloatingRateDisplayMovedMessage);
     if (!shellLifecycle_.Start())
@@ -349,18 +351,16 @@ void TrayMessageWindow::CancelRecovery() noexcept
 void TrayMessageWindow::LoadSavedRateFont()
 {
     RateFontSelection savedFont;
-    bool stripApplied, floatingApplied;
+    bool stripApplied;
     if (settings::GetRateFont(savedFont))
     {
         stripApplied = rateStrip_.SetRateFont(savedFont);
-        floatingApplied = floatingRateDisplay_.SetRateFont(savedFont);
     }
     else
     {
         stripApplied = rateStrip_.ResetRateFont();
-        floatingApplied = floatingRateDisplay_.ResetRateFont();
     }
-    rateFontRecoveryPending_ = !stripApplied || !floatingApplied;
+    rateFontRecoveryPending_ = !stripApplied;
 }
 
 void TrayMessageWindow::SaveFloatingRateDisplayPosition()
@@ -425,7 +425,7 @@ winmon::OperatorAction TrayMessageWindow::ShowOperatorMenu()
     if (!GetCursorPos(&cursorPosition)) return {};
     core_.ObserveNetwork(networkReader_.Read());
     const auto model = core_.BeginOperatorMenu(
-        {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled(), settings::IsFloatingRateDisplayEnabled(), rateStrip_.IsSpeedTextOnLeft()},
+        {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled(), settings::IsFloatingRateDisplayEnabled(), rateStrip_.IsSpeedTextOnLeft(), floatingRateDisplay_.IsTextVisible()},
         rateStrip_.GetRateFontName());
     if (!model.has_value()) return {};
     OperatorMenuScope transaction{core_};
@@ -477,10 +477,10 @@ void TrayMessageWindow::ChooseRateFont()
 
     dialog.GetCurrentFont(&selection.logFont);
     selection.pointSizeTenths = dialog.GetSize();
-    RateFontSettingChange change{rateStrip_, floatingRateDisplay_, previousSelection, selection, settings::SetRateFont};
+    RateFontSettingChange change{rateStrip_, previousSelection, selection, settings::SetRateFont};
     if (winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RecoveryRequired)
     {
-        // Retry both displays from persisted truth, including when the taskbar
+        // Retry the Rate Strip from persisted truth, including when the taskbar
         // is unavailable. The sample timer continues any failed restoration.
         rateFontRecoveryPending_ = true;
         shellLifecycle_.OnEnvironmentChanged();
@@ -515,6 +515,15 @@ void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
         {
             SaveFloatingRateDisplayPosition();
         }
+        break;
+    }
+    case winmon::OperatorActionKind::ShowFloatingSpeedText:
+    case winmon::OperatorActionKind::HideFloatingSpeedText:
+    {
+        FloatingRateTextSettingChange change{floatingRateDisplay_,
+            action.kind == winmon::OperatorActionKind::ShowFloatingSpeedText, settings::SetFloatingRateTextVisible};
+        if (winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RecoveryRequired)
+            static_cast<void>(floatingRateDisplay_.SetTextVisible(settings::IsFloatingRateTextVisible()));
         break;
     }
     case winmon::OperatorActionKind::SetRateFont:

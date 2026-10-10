@@ -1,7 +1,6 @@
 #pragma once
 #include <Windows.h>
 #include <d2d1.h>
-#include <dwrite.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 #include <array>
@@ -19,14 +18,14 @@ public:
     void AddSample(double upload, double download) noexcept;
     void ResetHistory() noexcept;
     bool Render(const std::wstring& upload, const std::wstring& download,
-        const LOGFONTW& font, UINT dpi, double pulsePhase = 0.5, float waterLevel = -1) noexcept;
+        UINT dpi, double pulsePhase = 0.5, float waterLevel = -1, float textProgress = 1) noexcept;
     double Activity() const noexcept;
     bool Present(HWND window, HWND shadow = nullptr) noexcept;
     void ReleaseTarget() noexcept;
     const std::vector<DWORD>& Pixels() const;
     SIZE PixelSize() const noexcept { return size_; }
-    static SIZE SizeForDpi(UINT dpi) noexcept;
-    static bool HitTest(POINT client, UINT dpi) noexcept;
+    static SIZE SizeForDpi(UINT dpi, float textProgress = 1) noexcept;
+    static bool HitTest(POINT client, UINT dpi, float textProgress = 1) noexcept;
     static bool IsPositionVisible(RECT body, RECT workArea) noexcept;
 
 private:
@@ -51,8 +50,8 @@ private:
     mutable bool pixelsDirty_ = true;
     std::vector<DWORD> bodyPixels_;
     std::vector<DWORD> shadowPixels_;
-    std::array<double, 48> uploadHistory_{};
-    std::array<double, 48> downloadHistory_{};
+    std::array<double, 32> uploadHistory_{};
+    std::array<double, 32> downloadHistory_{};
     size_t count_ = 0;
     double upload_ = 0;
     double download_ = 0;
