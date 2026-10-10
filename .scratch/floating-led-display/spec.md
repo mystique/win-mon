@@ -66,7 +66,7 @@ Win Mon 用户希望保留 Floating Rate Display 的深色胶囊结构和绿／�
 
 ### 范围、结构与现状
 
-- 仅修改 Floating Rate Display 的呈现及其字体关联，沿用现有 C++20、薄 MFC 宿主、Direct2D 离屏渲染、WIC 预乘 Alpha 与分层窗口。显示文字时主体基准为 132×48 DIP，隐藏文字时按下述规则缩窄，高度不变；阴影每侧最多 3 DIP。效果图是放大示意，不据此扩大窗口。
+- 仅修改 Floating Rate Display 的呈现及其字体关联，沿用现有 C++20、薄 MFC 宿主、Direct2D 离屏渲染、WIC 预乘 Alpha 与分层窗口。显示文字时主体基准为 约 217×48 DIP，隐藏文字时按下述规则缩窄，高度不变；阴影每侧最多 3 DIP。效果图是放大示意，不据此扩大窗口。
 - 左侧圆环及水波，右侧先图表后读数。默认上下两行读数均显示，可通过菜单一起隐藏；鼠标悬停不改变文字可见性或读数布局。保留无激活拖动、置顶、右键 Operator Menu、阴影点击穿透、保存位置及显示开关。
 - 当前离屏渲染器已有采样历史、Activity、波相位、水位和像素输出；当前 Render 忽略文字和字体参数，没有绘制读数。实施需要接通已有格式化字符串，不将此工作视为只换皮。
 - 修改覆盖离屏渲染器、Floating Rate Display 动画宿主、字体设置事务与启动／恢复调用、现有测试与视觉证据、资源许可及相应构建打包。复用现有接口边界，不引入通用主题系统、字体引擎或第二条采样链路。
@@ -169,6 +169,10 @@ Win Mon 用户希望保留 Floating Rate Display 的深色胶囊结构和绿／�
 
 - 视觉参考为会话中选定的独立字符暗灯方案。图片中局部字形与灯数不准确，必须以固定 Punctum 数据及每字符 35 灯规则修正。
 - 波速方向、32 次历史窗口、水位范围、灯径／暗灯亮度、网格透明度和中央间距是将描述落为可实施行为的默认值，不是用户逐项指定的数值。实际尺寸微调不得改变双端填弧、独立字符底灯、曲线分区与固定字体的要求。
-- 风险主要是 132×48 DIP 下多个 5×7 单元的可读性。先用现有离屏工具生成真实尺寸证据并校准，不能直接缩小概念图交付。
+- 风险主要是 约 217×48 DIP 下多个 5×7 单元的可读性。先用现有离屏工具生成真实尺寸证据并校准，不能直接缩小概念图交付。
 - 补充要求以本规格的固定九字符位、999.9 数值容量、菜单文字开关及平滑收窄／展开为准；所存参考图仍为短读数示意，未展示全部预留暗灯位及紧凑态。超量程饱和、过渡时长与缓动是实现默认值；隐藏时保留原宽度的旧方案已被取代，固定布局也不再按当前读数长度缩放。
 - 上游资料：[Punctum](https://github.com/sundyme/punctum)、[固定版本字形](https://github.com/sundyme/punctum/blob/56caad6cb7295c98fede26edb196d763e124b75d/src/glyphs.py)、[固定版本 OFL](https://github.com/sundyme/punctum/blob/56caad6cb7295c98fede26edb196d763e124b75d/OFL.txt)、[许可范围](https://github.com/sundyme/punctum/blob/56caad6cb7295c98fede26edb196d763e124b75d/LICENSE)。
+
+## 2026-10-11 implementation correction
+
+User requires retaining the original ring diameter rather than shrinking it to fit 132 DIP. Original outer diameter is 37×12/11 = 40.36 DIP; chart width is 64.58 DIP (5:8). Preserve original ring stroke width, aligned semicircle/chart heights and fixed nine-cell LED geometry; enlarge LED pitch by 40.36/24 relative to the first implementation. Widen the visible body to about 217×48 DIP, overriding the original 132×48 limit. Compact mode removes the enlarged readout width without shrinking charts or ring.

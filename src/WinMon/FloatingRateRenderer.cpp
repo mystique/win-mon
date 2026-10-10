@@ -8,7 +8,16 @@ namespace
 constexpr float kRingDiameter = 24;
 constexpr float kChartLeft = 35;
 constexpr float kChartWidth = kRingDiameter * 8 / 5;
-float BodyRight(float progress) noexcept { return kChartLeft + kChartWidth + 9 + (135 - kChartLeft - kChartWidth - 9) * progress; }
+// The original ring was 37 DIP before its 12/11 body transform.
+constexpr float kContentScale = (37.0f * 12 / 11) / kRingDiameter;
+constexpr float kRingStroke = (2.5f * 12 / 11) / kContentScale;
+constexpr float kRingRadius = (kRingDiameter - kRingStroke) / 2;
+float BodyRight(float progress) noexcept
+{
+    const float chartRight = 27 + (kChartLeft + kChartWidth - 20) * kContentScale;
+    const float textRight = 27 + (126 - 20) * kContentScale;
+    return chartRight + 15 + (textRight - chartRight) * progress;
+}
 
 void Check(HRESULT result) { if (FAILED(result)) throw result; }
 double Rate(double value) noexcept { return std::isfinite(value) && value > 0 ? value : 0; }
@@ -194,6 +203,8 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         target_->SetTransform(D2D1::Matrix3x2F::Identity());
         color(0x222e34);
         target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(3, 3, right, 51), 24, 24), brush_.Get());
+        target_->SetTransform(D2D1::Matrix3x2F::Scale(kContentScale, kContentScale, D2D1::Point2F(20, 27)) *
+            D2D1::Matrix3x2F::Translation(7, 0));
         double maximum = 1000;
         for (size_t i = 32 - count_; i < 32; ++i)
             maximum = std::max({maximum, uploadHistory_[i], downloadHistory_[i]});
@@ -201,7 +212,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         {
             if (ratio <= 0) return;
             // Leave about 2 DIP of clear space after accounting for the round caps.
-            constexpr double gapAngle = 0.24;
+            constexpr double gapAngle = 0.13;
             const double sweep = std::clamp(ratio, 0.0, 1.0) * (3.141592653589793 - 2 * gapAngle);
             auto& path = paths_[slot];
             if (!path)
@@ -210,12 +221,12 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                 Check(factory_->CreatePathGeometry(&path));
                 Check(path->Open(&sink));
                 const auto point = [&](double angle) {
-                    return D2D1::Point2F(20 + 10.75f * static_cast<float>(std::cos(angle)),
-                        27 + (up ? -10.75f : 10.75f) * static_cast<float>(std::sin(angle)));
+                    return D2D1::Point2F(20 + kRingRadius * static_cast<float>(std::cos(angle)),
+                        27 + (up ? -kRingRadius : kRingRadius) * static_cast<float>(std::sin(angle)));
                 };
                 const auto section = [&](double start, double end, bool reverse) {
                     sink->BeginFigure(point(start), D2D1_FIGURE_BEGIN_HOLLOW);
-                    sink->AddArc(D2D1::ArcSegment(point(end), D2D1::SizeF(10.75f, 10.75f), 0,
+                    sink->AddArc(D2D1::ArcSegment(point(end), D2D1::SizeF(kRingRadius, kRingRadius), 0,
                         (up != reverse) ? D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE : D2D1_SWEEP_DIRECTION_CLOCKWISE,
                         D2D1_ARC_SIZE_SMALL));
                     sink->EndFigure(D2D1_FIGURE_END_OPEN);
@@ -229,7 +240,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                 Check(sink->Close());
             }
             color(rgb);
-            target_->DrawGeometry(path.Get(), brush_.Get(), 2.5f, stroke_.Get());
+            target_->DrawGeometry(path.Get(), brush_.Get(), kRingStroke, stroke_.Get());
         };
         arc(0, 1, true, 0x46565f);
         arc(1, 1, false, 0x46565f);
@@ -332,7 +343,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             trend(4, uploadHistory_, 0x61e5b7);
             trend(5, downloadHistory_, 0x32bdeb);
         }
-        target_->PushAxisAlignedClip(D2D1::RectF(std::min(77 - 0.4f, right - 9), 15, right - 9, 39), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        target_->PushAxisAlignedClip(D2D1::RectF(std::min(77 - 0.4f, 20 + (right - 15 - 27) / kContentScale), 15, 20 + (right - 15 - 27) / kContentScale, 39), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         const auto readout = [&](const auto& characters, float baseline, UINT32 rgb) {
             float x = 77;
             for (size_t cell = 0; cell < characters.size(); ++cell)

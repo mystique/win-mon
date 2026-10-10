@@ -32,9 +32,14 @@ void SaveBitmap(const FloatingRateRenderer& renderer, const std::filesystem::pat
 }
 int main(int argc, char** argv)
 {
+    Require(FloatingRateRenderer::SizeForDpi(96).cx == 223 && FloatingRateRenderer::SizeForDpi(96).cy == 54,
+        "original ring and readable LED cells widen the window without changing height");
     FloatingRateRenderer renderer;
     const auto render = [&] { Require(renderer.Render(L"0.0 K/s", L"0.0 K/s", 96, 0.3, 0), "render"); };
+    const auto X = [](float x) { return static_cast<int>(27 + (x-20)*(37.0f*12/11/24)); };
+    const auto Y = [](float y) { return static_cast<int>(27 + (y-27)*(37.0f*12/11/24)); };
     const auto colored = [&](int x, int y, bool up) {
+        x = X(static_cast<float>(x)); y = Y(static_cast<float>(y));
         for (int dy = -1; dy <= 1; ++dy)
             for (int dx = -1; dx <= 1; ++dx)
             {
@@ -53,7 +58,7 @@ int main(int argc, char** argv)
             const int y = up ? 23 : 31;
             Require(colored(10, y, up) == (ratio > 0) && colored(30, y, up) == (ratio > 0), "both arc ends grow symmetrically");
             Require(colored(20, up ? 16 : 38, up) == (ratio == 1), "midpoint stays dark until full");
-            Require(renderer.Pixels()[27 * 138 + 8] == 0xff222e34 && renderer.Pixels()[27 * 138 + 32] == 0xff222e34, "joint gaps");
+            Require(renderer.Pixels()[27 * renderer.PixelSize().cx + X(8)] == 0xff222e34 && renderer.Pixels()[27 * renderer.PixelSize().cx + X(32)] == 0xff222e34, "joint gaps");
         }
     renderer.AddSample(0, 0); render();
     Require(!colored(10, 31, false), "raw zero clears arc immediately");
@@ -64,9 +69,9 @@ int main(int argc, char** argv)
     for (int i = 0; i < 32; ++i) renderer.AddSample(1000, 500);
     render();
     for (int y = 0; y < 54; ++y)
-        for (int x = 33; x < 138; ++x)
-            if (renderer.Pixels()[y * 138 + x] != empty[y * 138 + x])
-                Require(x >= 35 && x < 74 && ((y >= 15 && y < 27) || (y >= 27 && y < 39)), "curves and fill clipped to independent regions");
+        for (int x = X(33); x < renderer.PixelSize().cx; ++x)
+            if (renderer.Pixels()[y * renderer.PixelSize().cx + x] != empty[y * renderer.PixelSize().cx + x])
+                Require(x >= X(35) && x <= X(74) && y >= Y(15) && y <= Y(39), "curves and fill clipped to independent regions");
     Require(colored(50, 15, true) && colored(50, 33, false), "independent upload/download curves");
     const auto beforeText = renderer.Pixels();
     Require(renderer.Render(L"999.9 G/s", L"12.8 M/s", 96, 0.3, 0), "LED frame");
@@ -84,11 +89,11 @@ int main(int argc, char** argv)
     Require(renderer.Render(L"1.0 K/s", L"1.0 K/s", 96, 0.7), "high activity next phase");
     int changed = 0;
     for (int y = 0; y < 54; ++y)
-        for (int x = 0; x < 138; ++x)
-            if (renderer.Pixels()[y * 138 + x] != water[y * 138 + x])
+        for (int x = 0; x < renderer.PixelSize().cx; ++x)
+            if (renderer.Pixels()[y * renderer.PixelSize().cx + x] != water[y * renderer.PixelSize().cx + x])
             {
                 ++changed;
-                Require((x-20)*(x-20)+(y-27)*(y-27) < 100, "water stays inside circle, charts and text remain stationary");
+                Require((x-27)*(x-27)+(y-27)*(y-27) < 290, "water stays inside circle, charts and text remain stationary");
             }
     Require(changed > 8, "high activity retains moving waterline");
     for (UINT dpi : {96u,120u,144u,192u})
@@ -103,8 +108,8 @@ int main(int argc, char** argv)
             Require(renderer.Render(L"999.9 G/s", L"12.8 M/s", dpi, 0.3, 0.5f, progress), "text visibility frame");
             const auto size = renderer.PixelSize();
             Require(size.cy == expandedSize.cy && (progress == 1 || size.cx < expandedSize.cx), "real canvas narrows without changing height");
-            for (int y = MulDiv(15,dpi,96); y < MulDiv(39,dpi,96); ++y)
-                for (int x = MulDiv(8,dpi,96); x < MulDiv(74,dpi,96); ++x)
+            for (int y = MulDiv(Y(15)+1,dpi,96); y < MulDiv(Y(39),dpi,96); ++y)
+                for (int x = MulDiv(X(8),dpi,96); x < MulDiv(X(74),dpi,96); ++x)
                     Require(renderer.Pixels()[y * size.cx + x] == expanded[y * expandedSize.cx + x], "rings and charts remain fixed through transition");
         }
         Require(renderer.Render(L"1000.0 K/s", L"1000.0 M/s", dpi), "rounding overflow");
@@ -124,13 +129,13 @@ int main(int argc, char** argv)
     for(int row=0;row<7;++row)
         for(int column=0;column<5;++column)
         {
-            const int x=static_cast<int>((77+column*1.05f)*4);
-            const int y=static_cast<int>((23.8f-(6-row)*1.05f)*4);
+            const int x=static_cast<int>((27+(77+column*1.05f-20)*(37.0f*12/11/24))*4);
+            const int y=static_cast<int>((27+(23.8f-(6-row)*1.05f-27)*(37.0f*12/11/24))*4);
             const DWORD pixel=renderer.Pixels()[y*renderer.PixelSize().cx+x];
             const int green=(pixel>>8)&255;
             Require((green>100)==(arrow[row][column]=='#'), "each of 35 arrow lamps matches Punctum data");
             Require(pixel!=0xff222e34, "unlit lamps have their own dim background");
-            const int leadingX=static_cast<int>((83.3f+column*1.05f)*4);
+            const int leadingX=static_cast<int>((27+(83.3f+column*1.05f-20)*(37.0f*12/11/24))*4);
             const DWORD reserved=renderer.Pixels()[y*renderer.PixelSize().cx+leadingX];
             Require(reserved!=0xff222e34 && ((reserved>>8)&255)<100, "reserved integer cell has 35 dark lamps and no leading zero");
         }
