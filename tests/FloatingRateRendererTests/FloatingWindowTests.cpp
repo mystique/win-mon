@@ -246,10 +246,28 @@ int main(int argc, char** argv)
             display.SetRates(L"1.0 K/s",L"1.0 K/s",1000,1000);
             Require(display.SetTextVisible(false), "static mode hide text");
             Require(Width(display.GetSafeHwnd())==FloatingRateRenderer::SizeForDpi(GetDpiForWindow(display.GetSafeHwnd()),0).cx, "disabled animations jump directly to compact endpoint");
+            Require(display.SetChartVisible(false), "hide chart with text hidden");
+            const UINT circleDpi = GetDpiForWindow(display.GetSafeHwnd());
+            Require(Width(display.GetSafeHwnd()) == MulDiv(54, circleDpi, 96), "both hidden leaves circular body");
+            Require(display.SetTextVisible(true), "show text without chart");
+            Require(Width(display.GetSafeHwnd()) == FloatingRateRenderer::SizeForDpi(circleDpi,1,0).cx, "text-only geometry");
+            Require(display.SetChartVisible(true), "restore charts");
             Require(display.SetTextVisible(true), "static mode show text");
             Require(Width(display.GetSafeHwnd())==FloatingRateRenderer::SizeForDpi(GetDpiForWindow(display.GetSafeHwnd())).cx, "disabled animations jump directly to expanded endpoint");
             display.Shutdown();
         }
+        Require(display.SetTextVisible(false) && display.ShowFloating({100,100},true), "show compact for chart transition");
+        const int chartWidth = Width(display.GetSafeHwnd());
+        Require(display.SetChartVisible(false), "animate charts away"); Pump(70);
+        Require(Width(display.GetSafeHwnd()) < chartWidth, "chart transition shrinks live body");
+        Require(display.SetChartVisible(true), "reverse chart collapse"); Pump(250);
+        Require(Width(display.GetSafeHwnd()) == chartWidth, "chart reversal restores geometry");
+        Require(display.SetChartVisible(false), "collapse to circle"); Pump(300);
+        Require(Width(display.GetSafeHwnd()) == MulDiv(54,GetDpiForWindow(display.GetSafeHwnd()),96), "animated circle endpoint");
+        display.SetRates(L"invalid",L"invalid",0,0);
+        Require(!display.SetChartVisible(true) && !display.IsChartVisible(), "failed chart expansion restores preference");
+        display.SetRates(L"0.0 K/s",L"0.0 K/s",0,0);
+        display.Shutdown();
         menuOwner.DestroyWindow();
         std::cout << "Native floating window checks passed\n";
     }

@@ -270,6 +270,12 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
     AddChoice(floatingText, {{toggles.floatingRateTextVisible
         ? OperatorActionKind::HideFloatingSpeedText : OperatorActionKind::ShowFloatingSpeedText}});
     menu.push_back(std::move(floatingText));
+    OperatorMenuItem floatingChart;
+    floatingChart.label = L"Show Floating Chart";
+    floatingChart.checked = toggles.floatingRateChartVisible;
+    AddChoice(floatingChart, {{toggles.floatingRateChartVisible
+        ? OperatorActionKind::HideFloatingChart : OperatorActionKind::ShowFloatingChart}});
+    menu.push_back(std::move(floatingChart));
     menu.push_back({.separator = true});
 
     menu.push_back({L"Font: " + rateFontName, 0, false, false, false});

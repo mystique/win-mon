@@ -61,6 +61,17 @@ bool WriteFlag(const wchar_t* valueName, bool enabled) noexcept
 
 namespace settings
 {
+bool IsFloatingRateChartVisible() noexcept
+{
+    DWORD value = 1, size = sizeof(value);
+    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, L"FloatingRateChartVisible",
+        RRF_RT_REG_DWORD, nullptr, &value, &size) != ERROR_SUCCESS || size != sizeof(value) || value != 0;
+}
+bool SetFloatingRateChartVisible(bool visible) noexcept
+{
+    return WriteFlag(L"FloatingRateChartVisible", visible);
+}
+
 bool IsFloatingRateTextVisible() noexcept
 {
     DWORD value = 1, size = sizeof(value);

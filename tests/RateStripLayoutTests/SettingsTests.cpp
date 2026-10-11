@@ -40,6 +40,9 @@ int main()
     try
     {
         IsolatedRegistry registry;
+        Require(settings::IsFloatingRateChartVisible(), "chart defaults on");
+        Require(settings::SetFloatingRateChartVisible(false) && !settings::IsFloatingRateChartVisible(), "chart off persists");
+        Require(settings::SetFloatingRateChartVisible(true) && settings::IsFloatingRateChartVisible(), "chart on persists");
         Require(settings::IsFloatingRateTextVisible(), "floating text defaults on");
         Require(settings::SetFloatingRateTextVisible(false) && !settings::IsFloatingRateTextVisible(), "hidden text persists");
         Require(settings::SetFloatingRateTextVisible(true) && settings::IsFloatingRateTextVisible(), "visible text persists");

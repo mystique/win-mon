@@ -231,6 +231,10 @@ void OperatorMenuTransactionCorrelatesEveryAction()
     Require(FindItem(*menu, L"Right-Click Speed Text").checked, "Right-Click Speed Text reflects live state");
     Require(!FindItem(*menu, L"Show Floating Display").checked, "Floating Rate Display reflects live state");
     Require(FindItem(*menu, L"Show Floating Speed Text").checked, "floating text defaults checked");
+    Require(FindItem(*menu, L"Show Floating Chart").checked, "chart defaults checked");
+    Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Chart").choiceToken).kind == OperatorActionKind::HideFloatingChart, "checked chart hides");
+    menu = core.BeginOperatorMenu({false,true,false,false,true,false}, L"Cascadia Mono");
+    Require(!FindItem(*menu,L"Show Floating Chart").checked, "hidden chart unchecked independently");
     const auto displayItem = std::find_if(menu->begin(),menu->end(),[](const auto& item){ return item.label == L"Show Floating Display"; });
     Require((displayItem+1)->label == L"Show Floating Speed Text", "text toggle follows display toggle");
     FindItem(*menu, L"Font: Cascadia Mono");

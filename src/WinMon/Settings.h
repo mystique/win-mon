@@ -6,6 +6,8 @@ struct RateFontSelection;
 
 namespace settings
 {
+[[nodiscard]] bool IsFloatingRateChartVisible() noexcept;
+bool SetFloatingRateChartVisible(bool visible) noexcept;
 [[nodiscard]] bool IsFloatingRateTextVisible() noexcept;
 bool SetFloatingRateTextVisible(bool visible) noexcept;
 [[nodiscard]] bool IsSpeedTextOnLeft() noexcept;

@@ -57,6 +57,8 @@ enum class OperatorActionKind
     DisableRightClickSpeedText,
     EnableFloatingRateDisplay,
     DisableFloatingRateDisplay,
+    ShowFloatingChart,
+    HideFloatingChart,
     ShowFloatingSpeedText,
     HideFloatingSpeedText,
     SetRateFont,
@@ -101,6 +103,7 @@ struct OperatorMenuToggles final
     bool floatingRateDisplayEnabled = false;
     bool speedTextOnLeft = false;
     bool floatingRateTextVisible = true;
+    bool floatingRateChartVisible = true;
 };
 
 struct NicSnapshot final

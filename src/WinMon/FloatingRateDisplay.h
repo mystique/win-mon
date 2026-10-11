@@ -11,6 +11,8 @@ public:
     void Shutdown() noexcept;
     [[nodiscard]] bool SetTextVisible(bool visible) noexcept;
     [[nodiscard]] bool IsTextVisible() const noexcept { return textVisible_; }
+    [[nodiscard]] bool SetChartVisible(bool visible) noexcept;
+    [[nodiscard]] bool IsChartVisible() const noexcept { return chartVisible_; }
     void ResetHistory() noexcept { floatingRenderer_.ResetHistory(); waterLevel_ = 0; pulsePhase_ = 0; UpdatePulseTimer(); }
     void SetRates(const std::wstring& uploadText, const std::wstring& downloadText,
         double uploadBytesPerSecond, double downloadBytesPerSecond) noexcept;
@@ -20,6 +22,7 @@ public:
 
 private:
     void AdvanceTextTransition(ULONGLONG now) noexcept;
+    void AdvanceChartTransition(ULONGLONG now) noexcept;
     bool RelayoutFloating() noexcept;
     bool Render() noexcept;
     void UpdatePulseTimer() noexcept;
@@ -55,6 +58,11 @@ private:
     float textStart_ = 1;
     ULONGLONG textTick_ = 0;
     float textDuration_ = 0;
+    bool chartVisible_ = true;
+    float chartProgress_ = 1;
+    float chartStart_ = 1;
+    ULONGLONG chartTick_ = 0;
+    float chartDuration_ = 0;
     bool positionDirty_ = false;
     bool pulseTimerActive_ = false;
     float waterLevel_ = 0;

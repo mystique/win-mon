@@ -3,6 +3,7 @@
 #include "Settings.h"
 #include "RateFontSettingChange.h"
 #include "FloatingRateTextSettingChange.h"
+#include "FloatingRateChartSettingChange.h"
 #include "SpeedTextPositionSettingChange.h"
 #include "Theme.h"
 
@@ -164,6 +165,7 @@ bool TrayMessageWindow::Initialize()
     rateStrip_.SetContextMenuEnabled(settings::IsRightClickSpeedTextEnabled());
     static_cast<void>(rateStrip_.SetSpeedTextOnLeft(settings::IsSpeedTextOnLeft()));
     static_cast<void>(floatingRateDisplay_.SetTextVisible(settings::IsFloatingRateTextVisible()));
+    static_cast<void>(floatingRateDisplay_.SetChartVisible(settings::IsFloatingRateChartVisible()));
     floatingRateDisplay_.SetContextMenuOwner(GetSafeHwnd(), kRightClickSpeedTextMessage);
     floatingRateDisplay_.SetPositionChangedOwner(GetSafeHwnd(), kFloatingRateDisplayMovedMessage);
     if (!shellLifecycle_.Start())
@@ -425,7 +427,7 @@ winmon::OperatorAction TrayMessageWindow::ShowOperatorMenu()
     if (!GetCursorPos(&cursorPosition)) return {};
     core_.ObserveNetwork(networkReader_.Read());
     const auto model = core_.BeginOperatorMenu(
-        {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled(), settings::IsFloatingRateDisplayEnabled(), rateStrip_.IsSpeedTextOnLeft(), floatingRateDisplay_.IsTextVisible()},
+        {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled(), settings::IsFloatingRateDisplayEnabled(), rateStrip_.IsSpeedTextOnLeft(), floatingRateDisplay_.IsTextVisible(), floatingRateDisplay_.IsChartVisible()},
         rateStrip_.GetRateFontName());
     if (!model.has_value()) return {};
     OperatorMenuScope transaction{core_};
@@ -524,6 +526,15 @@ void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
             action.kind == winmon::OperatorActionKind::ShowFloatingSpeedText, settings::SetFloatingRateTextVisible};
         if (winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RecoveryRequired)
             static_cast<void>(floatingRateDisplay_.SetTextVisible(settings::IsFloatingRateTextVisible()));
+        break;
+    }
+    case winmon::OperatorActionKind::ShowFloatingChart:
+    case winmon::OperatorActionKind::HideFloatingChart:
+    {
+        FloatingRateChartSettingChange change{floatingRateDisplay_,
+            action.kind == winmon::OperatorActionKind::ShowFloatingChart, settings::SetFloatingRateChartVisible};
+        if (winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RecoveryRequired)
+            static_cast<void>(floatingRateDisplay_.SetChartVisible(settings::IsFloatingRateChartVisible()));
         break;
     }
     case winmon::OperatorActionKind::SetRateFont:

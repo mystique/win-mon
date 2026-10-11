@@ -25,14 +25,14 @@ public:
     void AddSample(double upload, double download) noexcept;
     void ResetHistory() noexcept;
     bool Render(const std::wstring& upload, const std::wstring& download,
-        UINT dpi, double pulsePhase = 0.5, float waterLevel = -1, float textProgress = 1, const LedReadoutTransition* transition = nullptr) noexcept;
+        UINT dpi, double pulsePhase = 0.5, float waterLevel = -1, float textProgress = 1, const LedReadoutTransition* transition = nullptr, float chartProgress = 1) noexcept;
     double Activity() const noexcept;
     bool Present(HWND window, HWND shadow = nullptr) noexcept;
     void ReleaseTarget() noexcept;
     const std::vector<DWORD>& Pixels() const;
     SIZE PixelSize() const noexcept { return size_; }
-    static SIZE SizeForDpi(UINT dpi, float textProgress = 1) noexcept;
-    static bool HitTest(POINT client, UINT dpi, float textProgress = 1) noexcept;
+    static SIZE SizeForDpi(UINT dpi, float textProgress = 1, float chartProgress = 1) noexcept;
+    static bool HitTest(POINT client, UINT dpi, float textProgress = 1, float chartProgress = 1) noexcept;
     static bool IsPositionVisible(RECT body, RECT workArea) noexcept;
 
 private:

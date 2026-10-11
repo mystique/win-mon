@@ -82,3 +82,5 @@ _Avoid_: restart app, relaunch
 **Speed Text Position**:
 The operator's persisted choice of the primary bottom taskbar's left-side or notification-side location for the Rate Strip, with Right as the default. Direction arrows sit on the outer side of the reading; stable numeric and unit columns keep rate changes from moving the unit or arrow anchors. Left temporarily hides when its region is occupied or the Windows shell geometry cannot be verified, retaining the selection and retrying each Rate Sample.
 _Avoid_: alignment toggle, taskbar orientation
+
+Extension (2026-10-11): Show Floating Chart independently controls both trend regions and persists as FloatingRateChartVisible (DWORD, default on). It uses the existing reversible 220ms hide/180ms show animation and shared timer; hiding shifts speed text left. Hiding both charts and text leaves a circular 48 DIP body with the original ring diameter, 54 DIP canvas including shadow. Sampling history continues while charts are hidden.

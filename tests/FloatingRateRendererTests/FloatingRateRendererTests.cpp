@@ -188,6 +188,13 @@ int main(int argc, char** argv)
             SaveBitmap(renderer,evidence/("led-"+std::to_string(frame)+".bmp"),0x101419);
         }
     }
+    Require(renderer.Render(L"12.3 K/s",L"45.6 M/s",96,0.3,0.5,0,nullptr,0), "circle-only render");
+    Require(renderer.PixelSize().cx == 54 && renderer.PixelSize().cy == 54, "circle canvas dimensions");
+    Require(!FloatingRateRenderer::HitTest({50,5},96,0,0) && FloatingRateRenderer::HitTest({27,27},96,0,0), "circle hit shape");
+    if (!evidence.empty()) SaveBitmap(renderer,evidence/"circle-only.bmp",0x101419);
+    for(float charts : {0.0f,0.5f,1.0f})
+        for(float text : {0.0f,0.5f,1.0f})
+            Require(renderer.Render(L"12.3 K/s",L"45.6 M/s",144,0.3,0.5,text,nullptr,charts), "independent visibility combinations");
     renderer.ResetHistory();
     for(int i=0;i<32;++i) renderer.AddSample(300000+(i%5)*70000, 700000+(i%7)*140000);
     for (UINT dpi : {96u,120u,144u,192u})

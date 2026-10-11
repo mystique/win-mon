@@ -12,11 +12,11 @@ constexpr float kChartWidth = kRingDiameter * 8 / 5;
 constexpr float kContentScale = (37.0f * 12 / 11) / kRingDiameter;
 constexpr float kRingStroke = (2.5f * 12 / 11) / kContentScale;
 constexpr float kRingRadius = (kRingDiameter - kRingStroke) / 2;
-float BodyRight(float progress) noexcept
+float BodyRight(float progress, float chartProgress) noexcept
 {
     const float chartRight = 27 + (kChartLeft + kChartWidth - 20) * kContentScale;
     const float textRight = 27 + (126 - 2 * 1.05f - 20) * kContentScale;
-    return chartRight + 15 + 8 * (1 - progress) + (textRight - chartRight) * progress;
+    return chartRight + 15 + 8 * (1 - progress) + (textRight - chartRight) * progress - (chartRight + 23 - 51) * (1 - chartProgress);
 }
 
 void Check(HRESULT result) { if (FAILED(result)) throw result; }
@@ -33,17 +33,17 @@ FloatingRateRenderer::~FloatingRateRenderer()
     if (comInitialized_) CoUninitialize();
 }
 
-SIZE FloatingRateRenderer::SizeForDpi(UINT dpi, float textProgress) noexcept
+SIZE FloatingRateRenderer::SizeForDpi(UINT dpi, float textProgress, float chartProgress) noexcept
 {
-    return {static_cast<LONG>(std::lround((BodyRight(std::clamp(textProgress, 0.0f, 1.0f)) + 3) * dpi / 96)), MulDiv(54, static_cast<int>(dpi), 96)};
+    return {static_cast<LONG>(std::lround((BodyRight(std::clamp(textProgress, 0.0f, 1.0f), std::clamp(chartProgress, 0.0f, 1.0f)) + 3) * dpi / 96)), MulDiv(54, static_cast<int>(dpi), 96)};
 }
 
-bool FloatingRateRenderer::HitTest(POINT client, UINT dpi, float textProgress) noexcept
+bool FloatingRateRenderer::HitTest(POINT client, UINT dpi, float textProgress, float chartProgress) noexcept
 {
     if (!dpi) return false;
     const float x = client.x * 96.0f / dpi - 3;
     const float y = client.y * 96.0f / dpi - 27;
-    const float dx = x - std::clamp(x, 24.0f, BodyRight(std::clamp(textProgress, 0.0f, 1.0f)) - 27);
+    const float dx = x - std::clamp(x, 24.0f, BodyRight(std::clamp(textProgress, 0.0f, 1.0f), std::clamp(chartProgress, 0.0f, 1.0f)) - 27);
     return dx * dx + y * y <= 24 * 24;
 }
 
@@ -109,10 +109,11 @@ void FloatingRateRenderer::ReleaseTarget() noexcept
 }
 
 bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring& download,
-    UINT dpi, double pulsePhase, float waterLevel, float textProgress, const LedReadoutTransition* transition) noexcept
+    UINT dpi, double pulsePhase, float waterLevel, float textProgress, const LedReadoutTransition* transition, float chartProgress) noexcept
 {
     try
     {
+        if (!std::isfinite(chartProgress) || chartProgress < 0 || chartProgress > 1) return false;
         if (dpi < 48 || dpi > 768 || !std::isfinite(textProgress) || textProgress < 0 || textProgress > 1) return false;
         const auto cells = [](const std::wstring& text, wchar_t arrow, std::array<wchar_t, 9>& out) {
             const auto dot = text.find(L'.');
@@ -157,8 +158,8 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             properties.lineJoin = D2D1_LINE_JOIN_ROUND;
             Check(factory_->CreateStrokeStyle(properties, nullptr, 0, stroke_.ReleaseAndGetAddressOf()));
         }
-        const SIZE size = SizeForDpi(dpi, textProgress);
-        const float right = BodyRight(textProgress);
+        const SIZE size = SizeForDpi(dpi, textProgress, chartProgress);
+        const float right = BodyRight(textProgress, chartProgress);
         if (!target_ || dpi_ != dpi || size.cx != size_.cx || size.cy != size_.cy)
         {
             ReleaseTarget();
@@ -293,7 +294,9 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             target_->DrawGeometry(surface.Get(), brush_.Get(), 0.45f, stroke_.Get());
             target_->PopLayer();
         }
+        if (chartProgress > 0)
         {
+            target_->PushLayer(D2D1::LayerParameters(D2D1::RectF(kChartLeft, 15, kChartLeft + kChartWidth * chartProgress, 39), nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1::IdentityMatrix(), chartProgress), nullptr);
             const auto trend = [&](size_t slot, const auto& history, UINT32 rgb)
             {
                 const float top = slot == 4 ? 15.0f : 27.75f;
@@ -366,10 +369,12 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             };
             trend(4, uploadHistory_, 0x61e5b7);
             trend(5, downloadHistory_, 0x32bdeb);
+            target_->PopLayer();
         }
-        target_->PushAxisAlignedClip(D2D1::RectF(std::min(77 - 0.4f, 20 + (right - 15 - 27) / kContentScale), 15, 20 + (right - 15 - 27) / kContentScale, 39), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        const float textOffset = (BodyRight(0, 1) - 51) * (1 - chartProgress) / kContentScale;
+        target_->PushAxisAlignedClip(D2D1::RectF(std::min(77 - textOffset - 0.4f, 20 + (right - 15 - 27) / kContentScale), 15, 20 + (right - 15 - 27) / kContentScale, 39), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         const auto readout = [&](const auto& characters, const auto& previous, float baseline, UINT32 rgb) {
-            float x = 77;
+            float x = 77 - textOffset;
             for (size_t cell = 0; cell < characters.size(); ++cell)
             {
                 const float pitch = cell < 6 ? 1.05f : 0.8f;
