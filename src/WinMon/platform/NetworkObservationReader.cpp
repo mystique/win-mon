@@ -1,4 +1,7 @@
-#include "NetworkObservationReader.h"
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
+#include "platform/NetworkObservationReader.h"
 #include <iphlpapi.h>
 #include <netcon.h>
 #include <wrl/client.h>
@@ -46,6 +49,7 @@ ClassicConnectionIds ReadClassicConnectionIds()
                     if (SUCCEEDED(connection->GetProperties(&properties)) && properties != nullptr)
                     {
                         result.values.push_back(properties->guidId);
+                        // GetProperties allocates the names and containing structure with the COM task allocator.
                         CoTaskMemFree(properties->pszwName);
                         CoTaskMemFree(properties->pszwDeviceName);
                         CoTaskMemFree(properties);
@@ -97,6 +101,7 @@ winmon::NetworkObservation NetworkObservationReader::Read()
         observedInterfaces_ = std::move(interfaces);
         hasClassification_ = true;
         // ponytail: same-GUID classification changes can lag 30s; use notifications if immediate updates are needed.
+        // Retry unavailable shell classification sooner; successful results are cached between topology changes.
         classificationRefreshAt_ = sampledAt + std::chrono::seconds(classification_.available ? 30 : 2);
     }
     std::vector<winmon::NicSnapshot> snapshots;

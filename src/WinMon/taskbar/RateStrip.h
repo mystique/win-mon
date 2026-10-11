@@ -1,8 +1,11 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
 #pragma once
 #include <afxwin.h>
-#include "RateFont.h"
-#include "RateStripLayout.h"
-#include "TaskbarSpace.h"
+#include "taskbar/RateFont.h"
+#include "taskbar/RateStripLayout.h"
+#include "taskbar/TaskbarSpaceProbe.h"
 #include <string>
 
 class RateStrip final : public CWnd
@@ -43,12 +46,12 @@ private:
     CFont font_;
     RateFont rateFont_;
     RateStripLayout layout_;
-    TaskbarSpace taskbarSpace_;
+    TaskbarSpaceProbe taskbarSpace_;
     CSize naturalSize_{};
     CSize size_{};
     std::wstring uploadText_ = L"0.0 K/s";
     std::wstring downloadText_ = L"0.0 K/s";
-    HWND taskbar_ = nullptr;
+    HWND taskbar_ = nullptr; // Borrowed from Explorer; invalidated by shell recovery.
     COLORREF textColor_ = RGB(255, 255, 255);
     HWND contextMenuOwner_ = nullptr;
     UINT contextMenuMessage_ = 0;

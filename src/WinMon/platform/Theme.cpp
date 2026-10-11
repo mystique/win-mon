@@ -1,4 +1,7 @@
-#include "Theme.h"
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
+#include "platform/Theme.h"
 
 #include <windows.h>
 

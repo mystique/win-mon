@@ -1,67 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="Source Files">
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
-    </Filter>
-    <Filter Include="Header Files">
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-10A99F5964AB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
-    </Filter>
-    <Filter Include="Resource Files">
-      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
-      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
-    </Filter>
+    <Filter Include="app" />
+    <Filter Include="taskbar" />
+    <Filter Include="floating" />
+    <Filter Include="settings" />
+    <Filter Include="platform" />
+    <Filter Include="res" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Autostart.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="RateStrip.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Settings.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="TrayMessageWindow.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="WinMonApp.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Theme.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="Autostart.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="RateStrip.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Settings.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="TrayMessageWindow.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="WinMonApp.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="res\resource.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <ResourceCompile Include="res\WinMon.rc">
-      <Filter>Resource Files</Filter>
-    </ResourceCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <Image Include="res\WinMon.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
+    <ClCompile Include="app\TrayMessageWindow.cpp"><Filter>app</Filter></ClCompile>
+    <ClInclude Include="app\TrayMessageWindow.h"><Filter>app</Filter></ClInclude>
+    <ClCompile Include="app\WinMonApp.cpp"><Filter>app</Filter></ClCompile>
+    <ClInclude Include="app\WinMonApp.h"><Filter>app</Filter></ClInclude>
+    <ClCompile Include="floating\FloatingRateDisplay.cpp"><Filter>floating</Filter></ClCompile>
+    <ClInclude Include="floating\FloatingRateDisplay.h"><Filter>floating</Filter></ClInclude>
+    <ClCompile Include="floating\FloatingRateRenderer.cpp"><Filter>floating</Filter></ClCompile>
+    <ClInclude Include="floating\FloatingRateRenderer.h"><Filter>floating</Filter></ClInclude>
+    <ClInclude Include="floating\PunctumGlyphs.h"><Filter>floating</Filter></ClInclude>
+    <ClCompile Include="platform\LaunchAtLogin.cpp"><Filter>platform</Filter></ClCompile>
+    <ClInclude Include="platform\LaunchAtLogin.h"><Filter>platform</Filter></ClInclude>
+    <ClCompile Include="platform\NetworkObservationReader.cpp"><Filter>platform</Filter></ClCompile>
+    <ClInclude Include="platform\NetworkObservationReader.h"><Filter>platform</Filter></ClInclude>
+    <ClCompile Include="platform\Theme.cpp"><Filter>platform</Filter></ClCompile>
+    <ClInclude Include="platform\Theme.h"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="res\resource.h"><Filter>res</Filter></ClInclude>
+    <Image Include="res\WinMon.ico"><Filter>res</Filter></Image>
+    <ResourceCompile Include="res\WinMon.rc"><Filter>res</Filter></ResourceCompile>
+    <Image Include="res\WinMonTrayDark.ico"><Filter>res</Filter></Image>
+    <Image Include="res\WinMonTrayLight.ico"><Filter>res</Filter></Image>
+    <ClInclude Include="settings\FloatingRateChartSettingChange.h"><Filter>settings</Filter></ClInclude>
+    <ClInclude Include="settings\FloatingRateTextSettingChange.h"><Filter>settings</Filter></ClInclude>
+    <ClCompile Include="settings\OperatorSettings.cpp"><Filter>settings</Filter></ClCompile>
+    <ClInclude Include="settings\OperatorSettings.h"><Filter>settings</Filter></ClInclude>
+    <ClInclude Include="settings\RateFontSettingChange.h"><Filter>settings</Filter></ClInclude>
+    <ClInclude Include="settings\SpeedTextPositionSettingChange.h"><Filter>settings</Filter></ClInclude>
+    <ClInclude Include="taskbar\RateFont.h"><Filter>taskbar</Filter></ClInclude>
+    <ClCompile Include="taskbar\RateStrip.cpp"><Filter>taskbar</Filter></ClCompile>
+    <ClInclude Include="taskbar\RateStrip.h"><Filter>taskbar</Filter></ClInclude>
+    <ClInclude Include="taskbar\RateStripLayout.h"><Filter>taskbar</Filter></ClInclude>
+    <ClInclude Include="taskbar\TaskbarSpaceProbe.h"><Filter>taskbar</Filter></ClInclude>
   </ItemGroup>
 </Project>

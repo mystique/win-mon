@@ -1,11 +1,14 @@
-#include "TrayMessageWindow.h"
-#include "Autostart.h"
-#include "Settings.h"
-#include "RateFontSettingChange.h"
-#include "FloatingRateTextSettingChange.h"
-#include "FloatingRateChartSettingChange.h"
-#include "SpeedTextPositionSettingChange.h"
-#include "Theme.h"
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
+#include "app/TrayMessageWindow.h"
+#include "platform/LaunchAtLogin.h"
+#include "settings/OperatorSettings.h"
+#include "settings/RateFontSettingChange.h"
+#include "settings/FloatingRateTextSettingChange.h"
+#include "settings/FloatingRateChartSettingChange.h"
+#include "settings/SpeedTextPositionSettingChange.h"
+#include "platform/Theme.h"
 
 #include "res/resource.h"
 
@@ -60,6 +63,7 @@ struct OperatorMenuScope final
     explicit OperatorMenuScope(winmon::WinMonCore& core) noexcept : core(core) {}
     ~OperatorMenuScope() noexcept
     {
+        // A failed menu build or an early return must release the core's menu state.
         if (!completed) core.CancelOperatorMenu();
     }
     OperatorMenuScope(const OperatorMenuScope&) = delete;

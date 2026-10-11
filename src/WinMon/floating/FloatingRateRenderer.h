@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
 #pragma once
 #include <Windows.h>
 #include <d2d1.h>

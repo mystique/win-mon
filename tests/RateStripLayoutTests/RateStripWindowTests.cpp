@@ -1,7 +1,7 @@
 #include <afxwin.h>
-#include "RateStrip.h"
-#include "TaskbarSpace.h"
-#include "SpeedTextPositionSettingChange.h"
+#include "taskbar/RateStrip.h"
+#include "taskbar/TaskbarSpaceProbe.h"
+#include "settings/SpeedTextPositionSettingChange.h"
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -78,7 +78,7 @@ int main(int argc, char** argv)
             Require(SUCCEEDED(start->get_CurrentBoundingRectangle(&startBounds)), "Start clickable bounds");
             RECT startPadding{startBounds.left + 1, startBounds.top + 1, startBounds.left + 2, startBounds.top + 2};
             MapWindowPoints(nullptr, taskbar, reinterpret_cast<POINT*>(&startPadding), 2);
-            Require(!TaskbarSpace{}.IsFree(taskbar, startPadding, strip.GetSafeHwnd()), "Start clickable padding is occupied even outside icon content");
+            Require(!TaskbarSpaceProbe{}.IsFree(taskbar, startPadding, strip.GetSafeHwnd()), "Start clickable padding is occupied even outside icon content");
             RECT rect{}, client{};
             Require(::GetWindowRect(strip.GetSafeHwnd(), &rect), "Left bounds");
             MapWindowPoints(nullptr, taskbar, reinterpret_cast<POINT*>(&rect), 2);
@@ -101,7 +101,7 @@ int main(int argc, char** argv)
         CWnd unknown;
         Require(unknown.CreateEx(0, AfxRegisterWndClass(0), L"Unknown taskbar", WS_POPUP,
             CRect(0, 0, 200, 60), nullptr, 0), "unknown surface");
-        Require(!TaskbarSpace{}.IsFree(unknown.GetSafeHwnd(), {0, 0, 100, 40}), "unknown shell cannot prove free space");
+        Require(!TaskbarSpaceProbe{}.IsFree(unknown.GetSafeHwnd(), {0, 0, 100, 40}), "unknown shell cannot prove free space");
         Require(strip.SetSpeedTextOnLeft(false) && strip.IsDisplayVisible(), "switch back to Right");
         if (!evidence.empty()) Capture(strip.GetSafeHwnd(), evidence / "right.bmp");
         Require(!strip.IsSpeedTextOnLeft(), "Right selection retained");

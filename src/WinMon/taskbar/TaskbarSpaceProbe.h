@@ -1,18 +1,22 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
 #pragma once
 #include <windows.h>
 #include <UIAutomation.h>
 #include <atlbase.h>
 #include <cwchar>
 
-class TaskbarSpace final
+class TaskbarSpaceProbe final
 {
 public:
-    TaskbarSpace() = default;
-    TaskbarSpace(const TaskbarSpace&) = delete;
-    TaskbarSpace& operator=(const TaskbarSpace&) = delete;
-    ~TaskbarSpace()
+    TaskbarSpaceProbe() = default;
+    TaskbarSpaceProbe(const TaskbarSpaceProbe&) = delete;
+    TaskbarSpaceProbe& operator=(const TaskbarSpaceProbe&) = delete;
+    ~TaskbarSpaceProbe()
     {
         automation_.Release();
+        // CoUninitialize only balances an apartment this object initialized.
         if (apartmentOwned_) CoUninitialize();
     }
 

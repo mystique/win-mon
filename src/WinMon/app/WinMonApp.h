@@ -1,8 +1,11 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
 #pragma once
 
 #include <afxwin.h>
 
-#include "TrayMessageWindow.h"
+#include "app/TrayMessageWindow.h"
 
 class WinMonApp final : public CWinApp
 {

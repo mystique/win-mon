@@ -1,5 +1,5 @@
-#include "RateFontSettingChange.h"
-#include "FloatingRateTextSettingChange.h"
+#include "settings/RateFontSettingChange.h"
+#include "settings/FloatingRateTextSettingChange.h"
 #include <iostream>
 #include <stdexcept>
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
 #pragma once
 #include <windows.h>
 #include <optional>
@@ -8,7 +11,7 @@ struct RateFontSelection final
     int pointSizeTenths = 90;
 };
 
-// Shared selection and rollback rules; each display supplies its own redraw.
+// Owns the Rate Strip font selection; the caller redraws on apply and rollback.
 class RateFont final
 {
 public:
@@ -26,6 +29,7 @@ public:
             return false;
         selection.logFont = metrics.lfMessageFont;
         const int height = selection.logFont.lfHeight;
+        // LOGFONT height is in pixels while persisted font size is in tenths of points.
         selection.pointSizeTenths = MulDiv(height < 0 ? -height : height, 720, static_cast<int>(dpi));
         return selection.logFont.lfFaceName[0] != L'\0' && selection.pointSizeTenths > 0;
     }

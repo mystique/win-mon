@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
 #pragma once
-#include "../WinMonCore/WinMonCore.h"
+#include "WinMonCore.h"
 template<class Display>
 class FloatingRateChartSettingChange final : public winmon::OperatorSettingChange
 {

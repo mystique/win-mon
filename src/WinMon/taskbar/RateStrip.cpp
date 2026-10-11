@@ -1,5 +1,8 @@
-#include "RateStrip.h"
-#include "Theme.h"
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
+#include "taskbar/RateStrip.h"
+#include "platform/Theme.h"
 
 #include <algorithm>
 #include <array>

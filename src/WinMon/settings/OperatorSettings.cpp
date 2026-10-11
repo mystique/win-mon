@@ -1,5 +1,8 @@
-#include "Settings.h"
-#include "RateFont.h"
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
+#include "settings/OperatorSettings.h"
+#include "taskbar/RateFont.h"
 
 #include <windows.h>
 
@@ -19,6 +22,7 @@ constexpr int kMaximumPointSizeTenths = 120;
 
 struct PersistedRateFont final
 {
+    // Version and fixed layout let future formats reject incompatible registry data.
     DWORD version = kRateFontVersion;
     LOGFONTW logFont{};
     DWORD pointSizeTenths = 90;
@@ -168,6 +172,7 @@ bool GetRateFont(RateFontSelection& selection) noexcept
         nullptr,
         &persisted,
         &size);
+    // Validate the full binary record before copying any user-controlled font fields.
     if (status != ERROR_SUCCESS || size != sizeof(persisted) ||
         persisted.version != kRateFontVersion ||
         persisted.pointSizeTenths < kMinimumPointSizeTenths ||

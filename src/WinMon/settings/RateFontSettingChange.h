@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
 #pragma once
-#include "RateFont.h"
-#include "../WinMonCore/WinMonCore.h"
+#include "taskbar/RateFont.h"
+#include "WinMonCore.h"
 
 template<class Strip>
 class RateFontSettingChange final : public winmon::OperatorSettingChange

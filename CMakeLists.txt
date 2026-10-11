@@ -41,6 +41,7 @@ file(GLOB_RECURSE WINMON_SOURCES CONFIGURE_DEPENDS
     src/WinMon/res/*.rc
 )
 add_executable(WinMon WIN32 ${WINMON_SOURCES})
+target_include_directories(WinMon PRIVATE src/WinMon)
 target_link_libraries(WinMon PRIVATE WinMonCore Shell32 Iphlpapi d2d1 dwrite windowscodecs ole32)
 set_target_properties(WinMon PROPERTIES
     VS_DPI_AWARE "PerMonitor"
@@ -53,11 +54,11 @@ if(BUILD_TESTING)
     target_include_directories(RateStripLayoutTests PRIVATE src/WinMon)
     add_test(NAME RateStripLayoutTests COMMAND RateStripLayoutTests)
     add_executable(RateStripWindowTests tests/RateStripLayoutTests/RateStripWindowTests.cpp
-        src/WinMon/RateStrip.cpp src/WinMon/Theme.cpp)
+        src/WinMon/taskbar/RateStrip.cpp src/WinMon/platform/Theme.cpp)
     target_include_directories(RateStripWindowTests PRIVATE src/WinMon)
     target_link_libraries(RateStripWindowTests PRIVATE WinMonCore ole32 oleaut32 dwmapi)
     add_test(NAME RateStripWindowTests COMMAND RateStripWindowTests "${CMAKE_BINARY_DIR}/rate-strip-evidence")
-    add_executable(SettingsTests tests/RateStripLayoutTests/SettingsTests.cpp src/WinMon/Settings.cpp)
+    add_executable(SettingsTests tests/RateStripLayoutTests/SettingsTests.cpp src/WinMon/settings/OperatorSettings.cpp)
     target_include_directories(SettingsTests PRIVATE src/WinMon)
     add_test(NAME SettingsTests COMMAND SettingsTests)
     file(GLOB WINMONCORETESTS_SOURCES CONFIGURE_DEPENDS
@@ -70,7 +71,7 @@ if(BUILD_TESTING)
 
     add_executable(FloatingRateRendererTests
         tests/FloatingRateRendererTests/FloatingRateRendererTests.cpp
-        src/WinMon/FloatingRateRenderer.cpp)
+        src/WinMon/floating/FloatingRateRenderer.cpp)
     target_include_directories(FloatingRateRendererTests PRIVATE src/WinMon)
     target_link_libraries(FloatingRateRendererTests PRIVATE d2d1 dwrite windowscodecs ole32)
     add_test(NAME FloatingRateRendererTests COMMAND FloatingRateRendererTests "${CMAKE_BINARY_DIR}/floating-evidence")
@@ -82,14 +83,14 @@ if(BUILD_TESTING)
 
     add_executable(NetworkObservationTests
         tests/NetworkObservationTests/NetworkObservationTests.cpp
-        src/WinMon/NetworkObservationReader.cpp)
-    target_include_directories(NetworkObservationTests PRIVATE src/WinMon)
+        src/WinMon/platform/NetworkObservationReader.cpp)
+    target_include_directories(NetworkObservationTests PRIVATE src/WinMon src/WinMonCore)
     target_link_libraries(NetworkObservationTests PRIVATE Iphlpapi ole32)
     add_test(NAME NetworkObservationTests COMMAND NetworkObservationTests)
 
     add_executable(FloatingWindowTests
         tests/FloatingRateRendererTests/FloatingWindowTests.cpp
-        src/WinMon/FloatingRateDisplay.cpp src/WinMon/FloatingRateRenderer.cpp)
+        src/WinMon/floating/FloatingRateDisplay.cpp src/WinMon/floating/FloatingRateRenderer.cpp)
     target_include_directories(FloatingWindowTests PRIVATE src/WinMon)
     target_link_libraries(FloatingWindowTests PRIVATE d2d1 dwrite windowscodecs ole32 dwmapi)
     add_test(NAME FloatingWindowTests COMMAND FloatingWindowTests "${CMAKE_BINARY_DIR}/floating-evidence")

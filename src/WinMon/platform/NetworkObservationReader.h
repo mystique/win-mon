@@ -1,9 +1,12 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
 #pragma once
 #include <windows.h>
 #include <ws2def.h>
 #include <ws2ipdef.h>
 #include <iphlpapi.h>
-#include "../WinMonCore/WinMonCore.h"
+#include "WinMonCore.h"
 #include <functional>
 #include <optional>
 

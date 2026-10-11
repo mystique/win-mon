@@ -1,4 +1,7 @@
-#include "WinMonApp.h"
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
+#include "app/WinMonApp.h"
 
 namespace
 {
@@ -29,6 +32,7 @@ BOOL WinMonApp::InitInstance()
 
     if (GetLastError() == ERROR_ALREADY_EXISTS)
     {
+        // The existing process owns the surface; this launch exits silently.
         ReleaseInstanceGuard();
         return FALSE;
     }

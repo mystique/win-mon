@@ -1,5 +1,5 @@
 #include <afxwin.h>
-#include "FloatingRateDisplay.h"
+#include "floating/FloatingRateDisplay.h"
 #include <iostream>
 #include <stdexcept>
 #include <dwmapi.h>
@@ -150,6 +150,15 @@ int main(int argc, char** argv)
         display.SetRates(L"0.0 K/s",L"0.0 K/s",0,0);
         Pump(250);
         Require(Width(window)==expandedWidth, "previous transition resumes after rendering recovers");
+        Require(display.SetTextVisible(false) && display.SetChartVisible(false), "collapse text and charts together");
+        Pump(55);
+        const LONG combinedWidth = Width(window);
+        Require(Width(shadow) == combinedWidth, "shadow follows combined transition");
+        Require(display.SetTextVisible(true) && display.SetChartVisible(true), "reverse both transitions together");
+        if (animations) Require(std::abs(Width(window) - combinedWidth) <= 3, "combined reversal does not jump");
+        Pump(250);
+        Require(display.IsTextVisible() && display.IsChartVisible() && Width(window) == expandedWidth &&
+            Width(shadow) == expandedWidth, "both transitions finish at expanded geometry");
         if (argc > 1)
         {
             const std::filesystem::path evidence(argv[1]);

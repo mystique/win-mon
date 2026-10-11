@@ -1,14 +1,18 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
 #pragma once
 
 #include <afxwin.h>
 #include <string>
 #include <vector>
 
-#include "RateStrip.h"
-#include "FloatingRateDisplay.h"
-#include "NetworkObservationReader.h"
-#include "../WinMonCore/WinMonCore.h"
+#include "taskbar/RateStrip.h"
+#include "floating/FloatingRateDisplay.h"
+#include "platform/NetworkObservationReader.h"
+#include "WinMonCore.h"
 
+// A hidden top-level window receives shell broadcasts and owns their recovery lifecycle.
 class TrayMessageWindow final : public CWnd, private winmon::ShellSurface
 {
 public:

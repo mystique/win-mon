@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
 #pragma once
 
 #include <chrono>
@@ -190,11 +193,13 @@ private:
     bool hasPrevious_ = false;
     void ReconcileSelection(const std::vector<NicSnapshot>& snapshots) noexcept;
     std::vector<NicSnapshot> snapshots_;
+    // Choice tokens belong to one open menu and are discarded on completion or cancellation.
     std::vector<PendingMenuChoice> pendingMenuChoices_;
     bool classicClassificationAvailable_ = false;
     std::chrono::steady_clock::time_point sampledAt_{};
     bool menuOpen_ = false;
     std::string selectedNicId_;
+    // Selection changes tell the display layer to clear history tied to the previous network.
     std::uint64_t networkGeneration_ = 0;
 };
 }

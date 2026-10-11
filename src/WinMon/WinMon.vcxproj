@@ -55,6 +55,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\WinMonCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;WINVER=0x0A00;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
@@ -78,6 +79,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\WinMonCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;WINVER=0x0A00;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -99,31 +101,52 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="Autostart.h" />
+    <ClInclude Include="platform\LaunchAtLogin.h" />
     <ClInclude Include="res\resource.h" />
-    <ClInclude Include="Settings.h" />
-    <ClInclude Include="TrayMessageWindow.h" />
-    <ClInclude Include="RateStrip.h" />
-    <ClInclude Include="WinMonApp.h" />
+    <ClInclude Include="settings\OperatorSettings.h" />
+    <ClInclude Include="app\TrayMessageWindow.h" />
+    <ClInclude Include="taskbar\RateStrip.h" />
+    <ClInclude Include="app\WinMonApp.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Autostart.cpp" />
-    <ClCompile Include="TrayMessageWindow.cpp" />
-    <ClCompile Include="Settings.cpp" />
-    <ClCompile Include="RateStrip.cpp" />
-    <ClCompile Include="Theme.cpp" />
-    <ClCompile Include="WinMonApp.cpp" />
+    <ClCompile Include="platform\LaunchAtLogin.cpp" />
+    <ClCompile Include="app\TrayMessageWindow.cpp" />
+    <ClCompile Include="settings\OperatorSettings.cpp" />
+    <ClCompile Include="taskbar\RateStrip.cpp" />
+    <ClCompile Include="platform\Theme.cpp" />
+    <ClCompile Include="app\WinMonApp.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="res\WinMon.rc" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="res\WinMon.ico" />
+    <Image Include="res\WinMonTrayDark.ico" />
+    <Image Include="res\WinMonTrayLight.ico" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\WinMonCore\WinMonCore.vcxproj">
       <Project>{F1E2D3C4-B5A6-4789-8FED-CBA987654321}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="floating\FloatingRateDisplay.h" />
+    <ClInclude Include="floating\FloatingRateRenderer.h" />
+    <ClInclude Include="floating\PunctumGlyphs.h" />
+    <ClInclude Include="platform\NetworkObservationReader.h" />
+    <ClInclude Include="platform\Theme.h" />
+    <ClInclude Include="settings\FloatingRateChartSettingChange.h" />
+    <ClInclude Include="settings\FloatingRateTextSettingChange.h" />
+    <ClInclude Include="settings\RateFontSettingChange.h" />
+    <ClInclude Include="settings\SpeedTextPositionSettingChange.h" />
+    <ClInclude Include="taskbar\RateFont.h" />
+    <ClInclude Include="taskbar\RateStripLayout.h" />
+    <ClInclude Include="taskbar\TaskbarSpaceProbe.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="floating\FloatingRateDisplay.cpp" />
+    <ClCompile Include="floating\FloatingRateRenderer.cpp" />
+    <ClCompile Include="platform\NetworkObservationReader.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

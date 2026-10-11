@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+// SPDX-License-Identifier: OFL-1.1
 // Copyright 2026 The Punctum Project Authors. Derived subset under SIL OFL 1.1.
 // Source: sundyme/punctum, 56caad6cb7295c98fede26edb196d763e124b75d/src/glyphs.py
 // Full license: licenses/Punctum-OFL.txt (distributed beside WinMon.exe).

@@ -1,4 +1,7 @@
-#include "Autostart.h"
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
+#include "platform/LaunchAtLogin.h"
 
 #include <windows.h>
 

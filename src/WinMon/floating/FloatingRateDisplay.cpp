@@ -1,4 +1,7 @@
-#include "FloatingRateDisplay.h"
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
+#include "floating/FloatingRateDisplay.h"
 #include <algorithm>
 #include <cmath>
 
@@ -52,87 +55,56 @@ POINT DefaultFloatingPosition(CSize size) noexcept
 }
 }
 
-void FloatingRateDisplay::AdvanceTextTransition(ULONGLONG now) noexcept
+void FloatingRateDisplay::VisibilityTransition::Begin(bool show, ULONGLONG now) noexcept
 {
-    if (textDuration_ <= 0) return;
-    const float t = std::clamp(static_cast<float>(now - textTick_) / textDuration_, 0.0f, 1.0f);
-    const float progress = 1 - (1 - t) * (1 - t) * (1 - t);
-    const float target = textVisible_ ? 1.0f : 0.0f;
-    textProgress_ = textStart_ + (target - textStart_) * progress;
-    if (t >= 1) { textProgress_ = target; textDuration_ = 0; }
+    visible = show;
+    start = progress;
+    tick = now;
+    // Scale duration to the remaining distance so reversing mid-transition stays continuous.
+    duration = (show ? 180.0f : 220.0f) * std::abs((show ? 1.0f : 0.0f) - progress);
+}
+
+void FloatingRateDisplay::VisibilityTransition::Advance(ULONGLONG now) noexcept
+{
+    if (duration <= 0) return;
+    const float t = std::clamp(static_cast<float>(now - tick) / duration, 0.0f, 1.0f);
+    const float eased = 1 - (1 - t) * (1 - t) * (1 - t);
+    const float target = visible ? 1.0f : 0.0f;
+    progress = start + (target - start) * eased;
+    if (t >= 1) Finish();
+}
+
+void FloatingRateDisplay::VisibilityTransition::Finish() noexcept
+{
+    progress = visible ? 1.0f : 0.0f;
+    duration = 0;
 }
 
 bool FloatingRateDisplay::SetTextVisible(bool visible) noexcept
 {
-    expandingVisibility_ = false;
-    if (visible == textVisible_) return GetSafeHwnd() == nullptr || Render();
-    const bool previous = textVisible_;
-    const float previousProgress = textProgress_;
-    const float previousStart = textStart_;
-    const float previousDuration = textDuration_;
-    const ULONGLONG previousTick = textTick_;
-    const POINT previousPosition = GetFloatingPosition();
-    textVisible_ = visible;
-    textStart_ = textProgress_;
-    textTick_ = GetTickCount64();
-    textDuration_ = (visible ? 180.0f : 220.0f) * std::abs((visible ? 1.0f : 0.0f) - textProgress_);
-    if (!GetSafeHwnd() || !IsWindowVisible())
-    {
-        textProgress_ = visible ? 1.0f : 0.0f;
-        textDuration_ = 0;
-        return true;
-    }
-    UpdatePulseTimer();
-    if (Render()) return true;
-    textVisible_ = previous;
-    textProgress_ = previousProgress;
-    textStart_ = previousStart;
-    textDuration_ = previousDuration;
-    textTick_ = previousTick;
-    ::SetWindowPos(GetSafeHwnd(), nullptr, previousPosition.x, previousPosition.y, 0, 0,
-        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-    UpdatePulseTimer();
-    static_cast<void>(Render());
-    return false;
-}
-
-void FloatingRateDisplay::AdvanceChartTransition(ULONGLONG now) noexcept
-{
-    if (chartDuration_ <= 0) return;
-    const float t = std::clamp(static_cast<float>(now - chartTick_) / chartDuration_, 0.0f, 1.0f);
-    const float progress = 1 - (1 - t) * (1 - t) * (1 - t);
-    const float target = chartVisible_ ? 1.0f : 0.0f;
-    chartProgress_ = chartStart_ + (target - chartStart_) * progress;
-    if (t >= 1) { chartProgress_ = target; chartDuration_ = 0; }
+    return SetVisible(textTransition_, visible);
 }
 
 bool FloatingRateDisplay::SetChartVisible(bool visible) noexcept
 {
+    return SetVisible(chartTransition_, visible);
+}
+
+bool FloatingRateDisplay::SetVisible(VisibilityTransition& transition, bool visible) noexcept
+{
     expandingVisibility_ = false;
-    if (visible == chartVisible_) return GetSafeHwnd() == nullptr || Render();
-    const bool previous = chartVisible_;
-    const float previousProgress = chartProgress_;
-    const float previousStart = chartStart_;
-    const float previousDuration = chartDuration_;
-    const ULONGLONG previousTick = chartTick_;
+    if (visible == transition.visible) return GetSafeHwnd() == nullptr || Render();
+    const auto previous = transition;
     const POINT previousPosition = GetFloatingPosition();
-    chartVisible_ = visible;
-    chartStart_ = chartProgress_;
-    chartTick_ = GetTickCount64();
-    chartDuration_ = (visible ? 180.0f : 220.0f) * std::abs((visible ? 1.0f : 0.0f) - chartProgress_);
+    transition.Begin(visible, GetTickCount64());
     if (!GetSafeHwnd() || !IsWindowVisible())
     {
-        chartProgress_ = visible ? 1.0f : 0.0f;
-        chartDuration_ = 0;
+        transition.Finish();
         return true;
     }
     UpdatePulseTimer();
     if (Render()) return true;
-    chartVisible_ = previous;
-    chartProgress_ = previousProgress;
-    chartStart_ = previousStart;
-    chartDuration_ = previousDuration;
-    chartTick_ = previousTick;
+    transition = previous;
     ::SetWindowPos(GetSafeHwnd(), nullptr, previousPosition.x, previousPosition.y, 0, 0,
         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     UpdatePulseTimer();
@@ -212,7 +184,7 @@ bool FloatingRateDisplay::ShowFloating(POINT position, bool restorePosition)
         return true;
     }
 
-    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForSystem(), textProgress_, chartProgress_);
+    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForSystem(), textTransition_.progress, chartTransition_.progress);
     if (!restorePosition) position = DefaultFloatingPosition(size_);
 
     const CString windowClass = AfxRegisterWndClass(CS_DBLCLKS, LoadCursorW(nullptr, IDC_ARROW), nullptr, nullptr);
@@ -267,13 +239,13 @@ bool FloatingRateDisplay::RelayoutFloating() noexcept
         return false;
     }
     UINT dpi = GetDpiForWindow(GetSafeHwnd());
-    size_ = FloatingRateRenderer::SizeForDpi(dpi, textProgress_, chartProgress_);
+    size_ = FloatingRateRenderer::SizeForDpi(dpi, textTransition_.progress, chartTransition_.progress);
     POINT position{windowRect.left, windowRect.top};
     if (!IsFloatingPositionVisible(position, size_, dpi))
         position = DefaultFloatingPosition(size_);
     if (!::SetWindowPos(GetSafeHwnd(), HWND_TOPMOST, position.x, position.y, 0, 0,
             SWP_NOACTIVATE | SWP_NOSIZE)) return false;
-    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()), textProgress_, chartProgress_);
+    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()), textTransition_.progress, chartTransition_.progress);
     return true;
 }
 
@@ -284,10 +256,8 @@ void FloatingRateDisplay::Shutdown() noexcept
     pulsePhase_ = 0;
     waterLevel_ = 0;
     readoutTransition_.progress = 1;
-    textDuration_ = 0;
-    textProgress_ = textVisible_ ? 1.0f : 0.0f;
-    chartProgress_ = chartVisible_ ? 1.0f : 0.0f;
-    chartDuration_ = 0;
+    textTransition_.Finish();
+    chartTransition_.Finish();
     if (GetSafeHwnd()) DestroyWindow();
     if (floatingShadow_.GetSafeHwnd()) floatingShadow_.DestroyWindow();
     floatingRenderer_.ReleaseTarget();
@@ -297,7 +267,7 @@ void FloatingRateDisplay::Shutdown() noexcept
 bool FloatingRateDisplay::Render() noexcept
 {
     if (!GetSafeHwnd()) return false;
-    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()), textProgress_, chartProgress_);
+    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()), textTransition_.progress, chartTransition_.progress);
     RECT rect{};
     MONITORINFO monitor{sizeof(monitor)};
     if (!::GetWindowRect(GetSafeHwnd(), &rect)) return false;
@@ -309,9 +279,9 @@ bool FloatingRateDisplay::Render() noexcept
         if (!::SetWindowPos(GetSafeHwnd(), nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)) return false;
     }
     const bool rendered = floatingRenderer_.Render(uploadText_, downloadText_, GetDpiForWindow(GetSafeHwnd()),
-            pulseTimerActive_ ? pulsePhase_ : 0.5, waterLevel_, textProgress_, &readoutTransition_, chartProgress_) &&
+            pulseTimerActive_ ? pulsePhase_ : 0.5, waterLevel_, textTransition_.progress, &readoutTransition_, chartTransition_.progress) &&
         floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd(), static_cast<BYTE>(MulDiv(opacity_,255,100)));
-    if (rendered && positionDirty_ && textDuration_ <= 0 && chartDuration_ <= 0)
+    if (rendered && positionDirty_ && textTransition_.duration <= 0 && chartTransition_.duration <= 0)
     {
         if (positionChangedOwner_ && positionChangedMessage_)
             ::PostMessageW(positionChangedOwner_, positionChangedMessage_, 0, 0);
@@ -339,7 +309,7 @@ int FloatingRateDisplay::OnMouseActivate(CWnd*, UINT, UINT)
 LRESULT FloatingRateDisplay::OnNcHitTest(CPoint point)
 {
     ScreenToClient(&point);
-    return FloatingRateRenderer::HitTest(point, GetDpiForWindow(GetSafeHwnd()), textProgress_, chartProgress_) ? HTCLIENT : HTTRANSPARENT;
+    return FloatingRateRenderer::HitTest(point, GetDpiForWindow(GetSafeHwnd()), textTransition_.progress, chartTransition_.progress) ? HTCLIENT : HTTRANSPARENT;
 }
 
 void FloatingRateDisplay::OnRButtonUp(UINT flags, CPoint point)
@@ -364,8 +334,8 @@ void FloatingRateDisplay::OnLButtonDown(UINT, CPoint point)
 void FloatingRateDisplay::OnLButtonDblClk(UINT, CPoint point)
 {
     if (!FloatingRateRenderer::HitTest(point, GetDpiForWindow(GetSafeHwnd()), 0, 0)) return;
-    const bool changeText = textVisible_ || (chartVisible_ && expandingVisibility_);
-    const bool visible = changeText ? !textVisible_ : !chartVisible_;
+    const bool changeText = textTransition_.visible || (chartTransition_.visible && expandingVisibility_);
+    const bool visible = changeText ? !textTransition_.visible : !chartTransition_.visible;
     const bool previousDirection = expandingVisibility_;
     const bool applied = visibilityChangeHandler_
         ? visibilityChangeHandler_(changeText, visible)
@@ -409,7 +379,7 @@ LRESULT FloatingRateDisplay::OnDpiChanged(WPARAM, LPARAM parameter)
     const auto* rect = reinterpret_cast<const RECT*>(parameter);
     ::SetWindowPos(GetSafeHwnd(), HWND_TOPMOST, rect->left, rect->top, 0, 0,
         SWP_NOSIZE | SWP_NOACTIVATE);
-    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()), textProgress_, chartProgress_);
+    size_ = FloatingRateRenderer::SizeForDpi(GetDpiForWindow(GetSafeHwnd()), textTransition_.progress, chartTransition_.progress);
     static_cast<void>(Render());
     if (positionChangedOwner_ && positionChangedMessage_)
         ::PostMessageW(positionChangedOwner_, positionChangedMessage_, 0, 0);
@@ -444,18 +414,17 @@ void FloatingRateDisplay::UpdatePulseTimer() noexcept
     SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
     const double activity = floatingRenderer_.Activity();
     const float targetLevel = activity > 0 ? 0.15f + 0.65f * static_cast<float>(activity) : 0;
-    if (!IsWindowVisible() || !textVisible_) readoutTransition_.progress = 1;
+    if (!IsWindowVisible() || !textTransition_.visible) readoutTransition_.progress = 1;
     if (!animations)
     {
         readoutTransition_.progress = 1;
         waterLevel_ = targetLevel;
-        textProgress_ = textVisible_ ? 1.0f : 0.0f;
-        chartProgress_ = chartVisible_ ? 1.0f : 0.0f;
-        chartDuration_ = 0;
-        textDuration_ = 0;
+        textTransition_.Finish();
+        chartTransition_.Finish();
     }
+    // Sampling continues elsewhere; this timer runs only while visible animation has work.
     const bool animate = IsWindowVisible() && animations &&
-        (targetLevel > 0 || waterLevel_ != targetLevel || textDuration_ > 0 || chartDuration_ > 0 || readoutTransition_.progress < 1);
+        (targetLevel > 0 || waterLevel_ != targetLevel || textTransition_.duration > 0 || chartTransition_.duration > 0 || readoutTransition_.progress < 1);
     if (animate && !pulseTimerActive_)
     {
         pulseTick_ = GetTickCount64();
@@ -464,10 +433,8 @@ void FloatingRateDisplay::UpdatePulseTimer() noexcept
         {
             readoutTransition_.progress = 1;
             waterLevel_ = targetLevel;
-            textProgress_ = textVisible_ ? 1.0f : 0.0f;
-            chartProgress_ = chartVisible_ ? 1.0f : 0.0f;
-            chartDuration_ = 0;
-            textDuration_ = 0;
+            textTransition_.Finish();
+            chartTransition_.Finish();
         }
     }
     else if (!animate && pulseTimerActive_)
@@ -488,8 +455,8 @@ void FloatingRateDisplay::OnTimer(UINT_PTR timer)
             return;
         }
         const ULONGLONG now = GetTickCount64();
-        AdvanceTextTransition(now);
-        AdvanceChartTransition(now);
+        textTransition_.Advance(now);
+        chartTransition_.Advance(now);
         readoutTransition_.progress = std::min(1.0f, static_cast<float>(now - readoutTick_) / 180.0f);
         const double activity = floatingRenderer_.Activity();
         const float targetLevel = activity > 0 ? 0.15f + 0.65f * static_cast<float>(activity) : 0;
@@ -520,10 +487,8 @@ void FloatingRateDisplay::OnShowWindow(BOOL show, UINT status)
         if (pulseTimerActive_) KillTimer(1);
         pulseTimerActive_ = false;
         readoutTransition_.progress = 1;
-        textDuration_ = 0;
-        textProgress_ = textVisible_ ? 1.0f : 0.0f;
-        chartProgress_ = chartVisible_ ? 1.0f : 0.0f;
-        chartDuration_ = 0;
+        textTransition_.Finish();
+        chartTransition_.Finish();
         if (floatingShadow_.GetSafeHwnd()) floatingShadow_.ShowWindow(SW_HIDE);
     }
     else

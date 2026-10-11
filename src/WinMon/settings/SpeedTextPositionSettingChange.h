@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
 #pragma once
-#include "../WinMonCore/WinMonCore.h"
+#include "WinMonCore.h"
 
 template<class Strip>
 class SpeedTextPositionSettingChange final : public winmon::OperatorSettingChange

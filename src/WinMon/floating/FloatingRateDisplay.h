@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
 #pragma once
 #include <afxwin.h>
-#include "FloatingRateRenderer.h"
+#include "floating/FloatingRateRenderer.h"
 #include <string>
 #include <functional>
 
@@ -11,9 +14,9 @@ public:
     [[nodiscard]] bool Refresh() noexcept { return Render(); }
     void Shutdown() noexcept;
     [[nodiscard]] bool SetTextVisible(bool visible) noexcept;
-    [[nodiscard]] bool IsTextVisible() const noexcept { return textVisible_; }
+    [[nodiscard]] bool IsTextVisible() const noexcept { return textTransition_.visible; }
     [[nodiscard]] bool SetChartVisible(bool visible) noexcept;
-    [[nodiscard]] bool IsChartVisible() const noexcept { return chartVisible_; }
+    [[nodiscard]] bool IsChartVisible() const noexcept { return chartTransition_.visible; }
     void SetVisibilityChangeHandler(std::function<bool(bool, bool)> handler) { visibilityChangeHandler_ = std::move(handler); }
     [[nodiscard]] bool SetOpacity(int percent) noexcept;
     int GetOpacity() const noexcept { return opacity_; }
@@ -25,8 +28,19 @@ public:
     [[nodiscard]] POINT GetFloatingPosition() const noexcept;
 
 private:
-    void AdvanceTextTransition(ULONGLONG now) noexcept;
-    void AdvanceChartTransition(ULONGLONG now) noexcept;
+    struct VisibilityTransition
+    {
+        bool visible = true;
+        float progress = 1;
+        float start = 1;
+        ULONGLONG tick = 0;
+        float duration = 0;
+
+        void Begin(bool show, ULONGLONG now) noexcept;
+        void Advance(ULONGLONG now) noexcept;
+        void Finish() noexcept;
+    };
+    bool SetVisible(VisibilityTransition& transition, bool visible) noexcept;
     bool RelayoutFloating() noexcept;
     bool Render() noexcept;
     void UpdatePulseTimer() noexcept;
@@ -58,19 +72,11 @@ private:
     UINT positionChangedMessage_ = 0;
     LedReadoutTransition readoutTransition_;
     ULONGLONG readoutTick_ = 0;
-    bool textVisible_ = true;
+    VisibilityTransition textTransition_;
     int opacity_ = 100;
-    float textProgress_ = 1;
-    float textStart_ = 1;
-    ULONGLONG textTick_ = 0;
-    float textDuration_ = 0;
-    bool chartVisible_ = true;
+    VisibilityTransition chartTransition_;
     bool expandingVisibility_ = false;
     std::function<bool(bool, bool)> visibilityChangeHandler_;
-    float chartProgress_ = 1;
-    float chartStart_ = 1;
-    ULONGLONG chartTick_ = 0;
-    float chartDuration_ = 0;
     bool positionDirty_ = false;
     bool pulseTimerActive_ = false;
     float waterLevel_ = 0;

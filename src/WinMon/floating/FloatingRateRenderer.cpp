@@ -1,5 +1,8 @@
-#include "FloatingRateRenderer.h"
-#include "PunctumGlyphs.h"
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
+#include "floating/FloatingRateRenderer.h"
+#include "floating/PunctumGlyphs.h"
 #include <algorithm>
 #include <cmath>
 
@@ -7,6 +10,7 @@ namespace
 {
 constexpr float kRingDiameter = 24;
 constexpr float kChartLeft = 35;
+// Keep the ring diameter and chart clip width in the specified 5:8 ratio.
 constexpr float kChartWidth = kRingDiameter * 8 / 5;
 // The original ring was 37 DIP before its 12/11 body transform.
 constexpr float kContentScale = (37.0f * 12 / 11) / kRingDiameter;
@@ -168,6 +172,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             ReleaseTarget();
             Check(imagingFactory_->CreateBitmap(size.cx, size.cy, GUID_WICPixelFormat32bppPBGRA,
                 WICBitmapCacheOnLoad, &bitmap_));
+            // UpdateLayeredWindow expects premultiplied BGRA pixels from this target.
             auto properties = D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_SOFTWARE,
                 D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
                 static_cast<float>(dpi), static_cast<float>(dpi));

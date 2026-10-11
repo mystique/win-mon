@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 mk2.app
+
 #include "WinMonCore.h"
 
 #include <algorithm>
@@ -59,6 +62,7 @@ void ShellLifecycle::RestoreShellSurface()
 {
     if (!surface_.EnsureTrayIcon())
     {
+        // Restore the tray entry first; without it the strip has no usable operator entry.
         surface_.ScheduleRecovery();
         return;
     }
