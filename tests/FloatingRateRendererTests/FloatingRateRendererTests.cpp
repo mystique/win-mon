@@ -192,6 +192,16 @@ int main(int argc, char** argv)
     Require(renderer.PixelSize().cx == 54 && renderer.PixelSize().cy == 54, "circle canvas dimensions");
     Require(!FloatingRateRenderer::HitTest({50,5},96,0,0) && FloatingRateRenderer::HitTest({27,27},96,0,0), "circle hit shape");
     if (!evidence.empty()) SaveBitmap(renderer,evidence/"circle-only.bmp",0x101419);
+    const auto circlePixels = renderer.Pixels();
+    Require(renderer.Render(L"999.9 G/s",L"999.9 M/s",96,0.3,0.5,1,nullptr,0), "text-only render");
+    for (int y = 7; y <= 47; ++y)
+        for (int x = 7; x <= 47; ++x)
+            if ((x-27)*(x-27)+(y-27)*(y-27) <= 420)
+                Require(renderer.Pixels()[y*renderer.PixelSize().cx+x] == circlePixels[y*54+x],
+                    "text-only lamps do not overlap the unchanged ring and wave");
+    Require(renderer.PixelSize().cx >= 149, "text-only width includes ring-to-text clearance");
+    Require(renderer.Render(L"0.7 K/s",L"0.6 K/s",144,0.3,0.5,1,nullptr,0), "text-only evidence");
+    if (!evidence.empty()) SaveBitmap(renderer,evidence/"text-only.bmp",0x101419);
     for(float charts : {0.0f,0.5f,1.0f})
         for(float text : {0.0f,0.5f,1.0f})
             Require(renderer.Render(L"12.3 K/s",L"45.6 M/s",144,0.3,0.5,text,nullptr,charts), "independent visibility combinations");

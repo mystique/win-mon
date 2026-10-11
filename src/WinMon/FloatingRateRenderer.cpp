@@ -16,7 +16,10 @@ float BodyRight(float progress, float chartProgress) noexcept
 {
     const float chartRight = 27 + (kChartLeft + kChartWidth - 20) * kContentScale;
     const float textRight = 27 + (126 - 2 * 1.05f - 20) * kContentScale;
-    return chartRight + 15 + 8 * (1 - progress) + (textRight - chartRight) * progress - (chartRight + 23 - 51) * (1 - chartProgress);
+    const float compactRight = chartRight + 23;
+    const float textShift = (77 - kChartLeft) * kContentScale;
+    return 51 + (compactRight - 51) * chartProgress +
+        (textRight + 15 - compactRight + (compactRight - 51 - textShift) * (1 - chartProgress)) * progress;
 }
 
 void Check(HRESULT result) { if (FAILED(result)) throw result; }
@@ -371,7 +374,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             trend(5, downloadHistory_, 0x32bdeb);
             target_->PopLayer();
         }
-        const float textOffset = (BodyRight(0, 1) - 51) * (1 - chartProgress) / kContentScale;
+        const float textOffset = (77 - kChartLeft) * (1 - chartProgress);
         target_->PushAxisAlignedClip(D2D1::RectF(std::min(77 - textOffset - 0.4f, 20 + (right - 15 - 27) / kContentScale), 15, 20 + (right - 15 - 27) / kContentScale, 39), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         const auto readout = [&](const auto& characters, const auto& previous, float baseline, UINT32 rgb) {
             float x = 77 - textOffset;
