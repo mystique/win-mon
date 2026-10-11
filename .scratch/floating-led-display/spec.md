@@ -186,3 +186,5 @@ User overrides the uniform 35-lamp rule for the decimal only: use its middle thr
 User requests an extinguish/illuminate transition instead of abrupt rate changes. Animate only changing character cells over 180ms (old pattern dims during the first half, new pattern lights during the second half), preserving dim lamps and unchanged cells. Share the native timer and respect hidden/disabled-animation states.
 
 Extension (2026-10-11): Show Floating Chart independently controls both trend regions and persists as FloatingRateChartVisible (DWORD, default on). It uses the existing reversible 220ms hide/180ms show animation and shared timer; hiding shifts speed text left. Hiding both charts and text leaves a circular 48 DIP body with the original ring diameter, 54 DIP canvas including shadow. Sampling history continues while charts are hidden.
+
+User-requested extension (2026-10-11): Custom main Operator Menu with an embedded Floating Opacity slider, preserving existing actions and native submenus. Range 10-100%, default 100, whole floating body and shadow preview live. Menu remains open while dragging. Dismissal saves the latest value; failed save rolls back.

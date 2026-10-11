@@ -40,6 +40,15 @@ int main()
     try
     {
         IsolatedRegistry registry;
+        Require(settings::GetFloatingRateOpacity() == 100, "opacity defaults fully opaque");
+        Require(settings::SetFloatingRateOpacity(45) && settings::GetFloatingRateOpacity() == 45, "opacity persisted");
+        Require(!settings::SetFloatingRateOpacity(0) && !settings::SetFloatingRateOpacity(101), "opacity write range validated");
+        for (DWORD invalidOpacity : {0u,9u,101u,0xffffffffu})
+        {
+            Require(RegSetKeyValueW(HKEY_CURRENT_USER,L"Software\\Win Mon",L"FloatingRateOpacity",REG_DWORD,
+                &invalidOpacity,sizeof(invalidOpacity)) == ERROR_SUCCESS, "invalid opacity fixture");
+            Require(settings::GetFloatingRateOpacity() == 100, "invalid opacity defaults opaque");
+        }
         Require(settings::IsFloatingRateChartVisible(), "chart defaults on");
         Require(settings::SetFloatingRateChartVisible(false) && !settings::IsFloatingRateChartVisible(), "chart off persists");
         Require(settings::SetFloatingRateChartVisible(true) && settings::IsFloatingRateChartVisible(), "chart on persists");

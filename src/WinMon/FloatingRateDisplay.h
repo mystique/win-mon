@@ -13,6 +13,8 @@ public:
     [[nodiscard]] bool IsTextVisible() const noexcept { return textVisible_; }
     [[nodiscard]] bool SetChartVisible(bool visible) noexcept;
     [[nodiscard]] bool IsChartVisible() const noexcept { return chartVisible_; }
+    [[nodiscard]] bool SetOpacity(int percent) noexcept;
+    int GetOpacity() const noexcept { return opacity_; }
     void ResetHistory() noexcept { floatingRenderer_.ResetHistory(); waterLevel_ = 0; pulsePhase_ = 0; UpdatePulseTimer(); }
     void SetRates(const std::wstring& uploadText, const std::wstring& downloadText,
         double uploadBytesPerSecond, double downloadBytesPerSecond) noexcept;
@@ -54,6 +56,7 @@ private:
     LedReadoutTransition readoutTransition_;
     ULONGLONG readoutTick_ = 0;
     bool textVisible_ = true;
+    int opacity_ = 100;
     float textProgress_ = 1;
     float textStart_ = 1;
     ULONGLONG textTick_ = 0;

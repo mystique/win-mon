@@ -41,7 +41,7 @@ file(GLOB_RECURSE WINMON_SOURCES CONFIGURE_DEPENDS
     src/WinMon/res/*.rc
 )
 add_executable(WinMon WIN32 ${WINMON_SOURCES})
-target_link_libraries(WinMon PRIVATE WinMonCore Shell32 Iphlpapi d2d1 dwrite windowscodecs ole32)
+target_link_libraries(WinMon PRIVATE WinMonCore Shell32 Iphlpapi d2d1 dwrite windowscodecs ole32 comctl32)
 set_target_properties(WinMon PROPERTIES
     VS_DPI_AWARE "PerMonitor"
     INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
@@ -89,9 +89,10 @@ if(BUILD_TESTING)
 
     add_executable(FloatingWindowTests
         tests/FloatingRateRendererTests/FloatingWindowTests.cpp
+        src/WinMon/OperatorPopup.cpp
         src/WinMon/FloatingRateDisplay.cpp src/WinMon/FloatingRateRenderer.cpp)
     target_include_directories(FloatingWindowTests PRIVATE src/WinMon)
-    target_link_libraries(FloatingWindowTests PRIVATE d2d1 dwrite windowscodecs ole32 dwmapi)
+    target_link_libraries(FloatingWindowTests PRIVATE WinMonCore d2d1 dwrite windowscodecs ole32 dwmapi comctl32)
     add_test(NAME FloatingWindowTests COMMAND FloatingWindowTests "${CMAKE_BINARY_DIR}/floating-evidence")
 endif()
 

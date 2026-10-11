@@ -9,3 +9,5 @@ Extension (2026-10-11; [spec](../../.scratch/taskbar-rate-position/spec.md)): pe
 Extension (2026-10-11; [spec](../../.scratch/floating-led-display/spec.md)): `FloatingRateTextVisible` is a user DWORD, 0 hides both floating LED readouts and 1 shows them. Missing, unreadable, wrong-type and unknown values default to shown. The live-apply, save and rollback transaction also covers this setting, including when the floating display is closed. Persist only the preference and effective desktop position, never intermediate animation progress.
 
 Extension (2026-10-11): FloatingRateChartVisible independently persists chart visibility, default on, using the same live-apply/save/rollback transaction as floating text visibility.
+
+Extension (2026-10-11): FloatingRateOpacity stores an integer 10–100 percentage as a DWORD, default 100 for missing, unreadable, wrong-type or out-of-range values. Preview while dragging, save once when the custom menu closes, restore the original value on save failure.

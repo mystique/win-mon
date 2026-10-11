@@ -1,5 +1,6 @@
 #include <afxwin.h>
 #include "FloatingRateDisplay.h"
+#include "OperatorPopup.h"
 #include <iostream>
 #include <stdexcept>
 #include <dwmapi.h>
@@ -8,6 +9,8 @@
 
 CWinApp testApp;
 int positionNotifications = 0;
+std::function<void()> menuTick;
+void CALLBACK MenuTestTick(HWND,UINT,UINT_PTR,DWORD) { if (menuTick) menuTick(); }
 LRESULT CALLBACK OwnerProcedure(HWND window,UINT message,WPARAM wParam,LPARAM lParam)
 {
     if(message == WM_APP+11) ++positionNotifications;
@@ -267,7 +270,56 @@ int main(int argc, char** argv)
         display.SetRates(L"invalid",L"invalid",0,0);
         Require(!display.SetChartVisible(true) && !display.IsChartVisible(), "failed chart expansion restores preference");
         display.SetRates(L"0.0 K/s",L"0.0 K/s",0,0);
+        Require(display.SetOpacity(35) && display.GetOpacity() == 35, "opacity applies live");
+        Require(!display.SetOpacity(0) && display.GetOpacity() == 35, "opacity rejects invisible endpoint");
         display.Shutdown();
+        Require(display.GetOpacity() == 35, "opacity survives display shutdown");
+        winmon::WinMonCore menuCore;
+        const auto model = menuCore.BeginOperatorMenu({},L"Segoe UI");
+        int preview = 100;
+        bool remainedOpen = false;
+        HWND popupWindow = nullptr;
+        int menuStage = 0;
+        menuTick = [&] {
+            popupWindow = FindWindowW(nullptr,L"Win Mon Menu");
+            if (!popupWindow) return;
+            if (menuStage++ == 0)
+            {
+                const HWND slider = ::GetDlgItem(popupWindow,5000);
+                ::SendMessageW(slider,TBM_SETPOS,TRUE,45);
+                ::SendMessageW(popupWindow,WM_HSCROLL,TB_THUMBTRACK,reinterpret_cast<LPARAM>(slider));
+                remainedOpen = ::IsWindowVisible(popupWindow) != FALSE;
+            }
+            else
+            {
+                if (argc > 1) CaptureWindow(popupWindow,std::filesystem::path(argv[1])/"opacity-menu.bmp");
+                ::PostMessageW(popupWindow,WM_COMMAND,MAKEWPARAM(100+model->size()-1,BN_CLICKED),0);
+            }
+        };
+        const UINT_PTR menuTimer = ::SetTimer(nullptr,0,100,MenuTestTick);
+        Require(menuTimer != 0, "menu test driver");
+        OperatorPopup popup;
+        const auto selected = popup.Track(menuOwner,{100,100},*model,100,[&](int value) { preview=value; return true; });
+        ::KillTimer(nullptr,menuTimer); menuTick = {};
+        Require(preview == 45 && remainedOpen, "embedded slider previews without closing menu");
+        Require(menuCore.CompleteOperatorMenu(selected).kind == winmon::OperatorActionKind::Exit, "custom menu dispatches existing action token");
+        const auto cancelModel = menuCore.BeginOperatorMenu();
+        bool rejectedPreviewRestored = false;
+        menuTick = [&] {
+            HWND window = FindWindowW(nullptr,L"Win Mon Menu");
+            if (!window) return;
+            const HWND slider = ::GetDlgItem(window,5000);
+            ::SendMessageW(slider,TBM_SETPOS,TRUE,10);
+            ::SendMessageW(window,WM_HSCROLL,TB_THUMBTRACK,reinterpret_cast<LPARAM>(slider));
+            rejectedPreviewRestored = ::SendMessageW(slider,TBM_GETPOS,0,0) == 100;
+            ::PostMessageW(slider,WM_KEYDOWN,VK_ESCAPE,0);
+        };
+        const UINT_PTR cancelTimer = ::SetTimer(nullptr,0,100,MenuTestTick);
+        OperatorPopup cancelPopup;
+        Require(cancelPopup.Track(menuOwner,{100,100},*cancelModel,100,[](int) { return false; }) == 0, "Escape cancels menu action");
+        ::KillTimer(nullptr,cancelTimer); menuTick = {};
+        Require(rejectedPreviewRestored, "failed opacity preview restores slider position");
+        menuCore.CancelOperatorMenu();
         menuOwner.DestroyWindow();
         std::cout << "Native floating window checks passed\n";
     }

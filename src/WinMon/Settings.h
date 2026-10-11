@@ -6,6 +6,8 @@ struct RateFontSelection;
 
 namespace settings
 {
+int GetFloatingRateOpacity() noexcept;
+bool SetFloatingRateOpacity(int percent) noexcept;
 [[nodiscard]] bool IsFloatingRateChartVisible() noexcept;
 bool SetFloatingRateChartVisible(bool visible) noexcept;
 [[nodiscard]] bool IsFloatingRateTextVisible() noexcept;

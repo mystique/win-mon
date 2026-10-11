@@ -138,6 +138,17 @@ bool FloatingRateDisplay::SetChartVisible(bool visible) noexcept
     return false;
 }
 
+bool FloatingRateDisplay::SetOpacity(int percent) noexcept
+{
+    if (percent < 10 || percent > 100) return false;
+    const int previous = opacity_;
+    opacity_ = percent;
+    if (!GetSafeHwnd() || Render()) return true;
+    opacity_ = previous;
+    static_cast<void>(Render());
+    return false;
+}
+
 void FloatingRateDisplay::SetRates(
     const std::wstring& uploadText,
     const std::wstring& downloadText,
@@ -296,7 +307,7 @@ bool FloatingRateDisplay::Render() noexcept
     }
     const bool rendered = floatingRenderer_.Render(uploadText_, downloadText_, GetDpiForWindow(GetSafeHwnd()),
             pulseTimerActive_ ? pulsePhase_ : 0.5, waterLevel_, textProgress_, &readoutTransition_, chartProgress_) &&
-        floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd());
+        floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd(), static_cast<BYTE>(MulDiv(opacity_,255,100)));
     if (rendered && positionDirty_ && textDuration_ <= 0 && chartDuration_ <= 0)
     {
         if (positionChangedOwner_ && positionChangedMessage_)

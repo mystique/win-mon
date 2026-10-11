@@ -61,6 +61,20 @@ bool WriteFlag(const wchar_t* valueName, bool enabled) noexcept
 
 namespace settings
 {
+int GetFloatingRateOpacity() noexcept
+{
+    DWORD value = 100, size = sizeof(value);
+    if (RegGetValueW(HKEY_CURRENT_USER,kProductKey,L"FloatingRateOpacity",RRF_RT_REG_DWORD,
+            nullptr,&value,&size) != ERROR_SUCCESS || size != sizeof(value) || value < 10 || value > 100) return 100;
+    return static_cast<int>(value);
+}
+
+bool SetFloatingRateOpacity(int percent) noexcept
+{
+    if (percent < 10 || percent > 100) return false;
+    const DWORD value = static_cast<DWORD>(percent);
+    return RegSetKeyValueW(HKEY_CURRENT_USER,kProductKey,L"FloatingRateOpacity",REG_DWORD,&value,sizeof(value)) == ERROR_SUCCESS;
+}
 bool IsFloatingRateChartVisible() noexcept
 {
     DWORD value = 1, size = sizeof(value);

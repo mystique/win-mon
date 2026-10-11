@@ -422,7 +422,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
     }
 }
 
-bool FloatingRateRenderer::Present(HWND window, HWND shadow) noexcept
+bool FloatingRateRenderer::Present(HWND window, HWND shadow, BYTE opacity) noexcept
 {
     if (bodyPixels_.empty()) return false;
     if (!surfaceDc_)
@@ -446,8 +446,8 @@ bool FloatingRateRenderer::Present(HWND window, HWND shadow) noexcept
         }
     }
     POINT source{};
-    BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
-    if (shadow && shadow != presentedShadow_)
+    BLENDFUNCTION blend{AC_SRC_OVER, 0, opacity, AC_SRC_ALPHA};
+    if (shadow && (shadow != presentedShadow_ || opacity != presentedOpacity_))
     {
         RECT rect{};
         if (!GetWindowRect(window, &rect)) return false;
@@ -456,6 +456,7 @@ bool FloatingRateRenderer::Present(HWND window, HWND shadow) noexcept
         if (!UpdateLayeredWindow(shadow, nullptr, &position, &size_, surfaceDc_, &source, 0, &blend, ULW_ALPHA))
             return false;
         presentedShadow_ = shadow;
+        presentedOpacity_ = opacity;
     }
     memcpy(surfaceBits_, bodyPixels_.data(), bodyPixels_.size() * sizeof(DWORD));
     return UpdateLayeredWindow(window, nullptr, nullptr, &size_, surfaceDc_, &source, 0, &blend, ULW_ALPHA) != FALSE;

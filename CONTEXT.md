@@ -84,3 +84,5 @@ The operator's persisted choice of the primary bottom taskbar's left-side or not
 _Avoid_: alignment toggle, taskbar orientation
 
 Extension (2026-10-11): Show Floating Chart independently controls both trend regions and persists as FloatingRateChartVisible (DWORD, default on). It uses the existing reversible 220ms hide/180ms show animation and shared timer; hiding shifts speed text left. Hiding both charts and text leaves a circular 48 DIP body with the original ring diameter, 54 DIP canvas including shadow. Sampling history continues while charts are hidden.
+
+**Floating Opacity**: The custom Operator Menu embeds a native horizontal trackbar, 10–100% opacity (100% fully opaque), with a live percentage. Dragging previews both floating body and shadow without closing the menu. Tab reaches the slider, its arrow keys adjust the value, and Escape or clicking elsewhere closes the menu. The latest value persists on menu dismissal under FloatingRateOpacity (DWORD, default 100 on absent/invalid data); persistence failure restores the prior live value. The Rate Strip is unaffected. Existing command tokens and native Network/Position submenus are retained.

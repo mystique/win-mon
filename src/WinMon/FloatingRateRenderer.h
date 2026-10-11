@@ -27,7 +27,7 @@ public:
     bool Render(const std::wstring& upload, const std::wstring& download,
         UINT dpi, double pulsePhase = 0.5, float waterLevel = -1, float textProgress = 1, const LedReadoutTransition* transition = nullptr, float chartProgress = 1) noexcept;
     double Activity() const noexcept;
-    bool Present(HWND window, HWND shadow = nullptr) noexcept;
+    bool Present(HWND window, HWND shadow = nullptr, BYTE opacity = 255) noexcept;
     void ReleaseTarget() noexcept;
     const std::vector<DWORD>& Pixels() const;
     SIZE PixelSize() const noexcept { return size_; }
@@ -44,6 +44,7 @@ private:
     HGDIOBJ surfacePrevious_ = nullptr;
     void* surfaceBits_ = nullptr;
     HWND presentedShadow_ = nullptr;
+    BYTE presentedOpacity_ = 255;
     bool comInitialized_ = false;
     ComPtr<ID2D1Factory> factory_;
     ComPtr<IWICImagingFactory> imagingFactory_;

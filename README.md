@@ -123,3 +123,5 @@ TrafficMonitor 仅作为实现思路的参考；Win Mon 对相关功能进行了
 本项目采用 [MIT License](LICENSE) 授权。
 
 浮动窗口菜单新增 Show Floating Chart，可独立隐藏折线区域并平滑收缩；与 Show Floating Speed Text 同时关闭后只显示圆环，圆环尺寸保持不变。
+
+菜单内新增 Floating Opacity 滑块，可直接拖动调节浮动窗口的不透明度（10%-100%，100% 为完全不透明），关闭菜单时保存。
