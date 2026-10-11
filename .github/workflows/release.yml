@@ -64,12 +64,12 @@ jobs:
 
           $stdoutFile = New-TemporaryFile
           $stderrFile = New-TemporaryFile
-          gh api --silent "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" 1> $stdoutFile.FullName 2> $stderrFile.FullName
+          gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" 1> $stdoutFile.FullName 2> $stderrFile.FullName
           if ($LASTEXITCODE -eq 0) {
             $ref = Get-Content -Raw $stdoutFile.FullName | ConvertFrom-Json
             $sha = $ref.object.sha
             if ($ref.object.type -eq 'tag') {
-              $tagObject = gh api --silent $ref.object.url | ConvertFrom-Json
+              $tagObject = gh api $ref.object.url | ConvertFrom-Json
               $sha = $tagObject.object.sha
             }
             if ($sha -ne $env:GITHUB_SHA) {
