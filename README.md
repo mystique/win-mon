@@ -10,7 +10,7 @@ Win Mon 是一款面向 Windows 11 的轻量级网速监控工具。它可在主
 
 | 深色背景 | 浅色背景 |
 | --- | --- |
-| ![深色背景下的悬浮窗：左侧水位圆环，右侧渐变波形](docs/images/floating-dark.png) | ![浅色背景下的悬浮窗：左侧水位圆环，右侧渐变波形](docs/images/floating-light.png) |
+| ![深色背景下的悬浮窗：左侧水位圆环，中间渐变波形，右侧 LED 读数](docs/images/floating-dark.png) | ![浅色背景下的悬浮窗：左侧水位圆环，中间渐变波形，右侧 LED 读数](docs/images/floating-light.png) |
 
 绿色表示上传，蓝色表示下载。右侧波形下方带有渐变填充；左侧内圆的水位随相对流量平滑升降，水面动画限制在外层速率圆环以内。
 
