@@ -158,8 +158,36 @@ int main(int argc, char** argv)
             std::wstring value{digit,digit,digit,L'.',digit,L' ',unit,L'/',L's'};
             Require(renderer.Render(value,value,96), "all digit and unit glyphs render");
         }
+    renderer.ResetHistory();
+    LedReadoutTransition change{L"128.0 K/s", L"128.0 K/s", 0};
+    Require(renderer.Render(change.upload,change.download,384,0.3,0), "old readout");
+    const auto oldReading = renderer.Pixels();
+    Require(renderer.Render(L"129.0 K/s",L"129.0 K/s",384,0.3,0,1,&change), "start LED transition");
+    Require(renderer.Pixels() == oldReading, "LED transition starts at the old glyph without a switch");
+    change.progress = 0.5f;
+    Require(renderer.Render(L"129.0 K/s",L"129.0 K/s",384,0.3,0,1,&change), "LED transition midpoint");
+    Require(((renderer.Pixels()[brightY * renderer.PixelSize().cx + brightX] >> 8) & 255) < 100,
+        "changing character extinguishes to dark lamps at midpoint");
+    for(int y=0;y<renderer.PixelSize().cy;++y)
+        for(int x=0;x<static_cast<int>((27+(94.3f-20)*(37.0f*12/11/24))*4);++x)
+            Require(renderer.Pixels()[y*renderer.PixelSize().cx+x] == oldReading[y*renderer.PixelSize().cx+x],
+                "unchanged characters, chart and ring stay stable during LED switching");
+    change.progress = 1;
+    Require(renderer.Render(L"129.0 K/s",L"129.0 K/s",384,0.3,0,1,&change), "LED transition end");
+    const auto settled = renderer.Pixels();
+    Require(renderer.Render(L"129.0 K/s",L"129.0 K/s",384,0.3,0), "latest value");
+    Require(renderer.Pixels() == settled, "LED transition ends at the exact latest reading");
     const auto evidence = argc > 1 ? std::filesystem::path(argv[1]) : std::filesystem::path{};
-    if (!evidence.empty()) std::filesystem::create_directories(evidence);
+    if (!evidence.empty())
+    {
+        std::filesystem::create_directories(evidence);
+        for(int frame=0;frame<=20;++frame)
+        {
+            change.progress = frame / 20.0f;
+            Require(renderer.Render(L"129.0 K/s",L"129.0 K/s",144,0.3,0,1,&change), "LED animation evidence");
+            SaveBitmap(renderer,evidence/("led-"+std::to_string(frame)+".bmp"),0x101419);
+        }
+    }
     renderer.ResetHistory();
     for(int i=0;i<32;++i) renderer.AddSample(300000+(i%5)*70000, 700000+(i%7)*140000);
     for (UINT dpi : {96u,120u,144u,192u})

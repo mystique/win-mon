@@ -109,7 +109,7 @@ void FloatingRateRenderer::ReleaseTarget() noexcept
 }
 
 bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring& download,
-    UINT dpi, double pulsePhase, float waterLevel, float textProgress) noexcept
+    UINT dpi, double pulsePhase, float waterLevel, float textProgress, const LedReadoutTransition* transition) noexcept
 {
     try
     {
@@ -130,6 +130,13 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         };
         std::array<wchar_t, 9> upCells{}, downCells{};
         if (!cells(upload, L'\u2191', upCells) || !cells(download, L'\u2193', downCells)) return false;
+        auto oldUpCells = upCells, oldDownCells = downCells;
+        const float lampProgress = transition ? std::clamp(transition->progress, 0.0f, 1.0f) : 1;
+        if (transition)
+        {
+            if (!cells(transition->upload, L'\u2191', oldUpCells)) oldUpCells = upCells;
+            if (!cells(transition->download, L'\u2193', oldDownCells)) oldDownCells = downCells;
+        }
         if (!factory_)
         {
             if (!comInitialized_)
@@ -361,12 +368,14 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
             trend(5, downloadHistory_, 0x32bdeb);
         }
         target_->PushAxisAlignedClip(D2D1::RectF(std::min(77 - 0.4f, 20 + (right - 15 - 27) / kContentScale), 15, 20 + (right - 15 - 27) / kContentScale, 39), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-        const auto readout = [&](const auto& characters, float baseline, UINT32 rgb) {
+        const auto readout = [&](const auto& characters, const auto& previous, float baseline, UINT32 rgb) {
             float x = 77;
             for (size_t cell = 0; cell < characters.size(); ++cell)
             {
                 const float pitch = cell < 6 ? 1.05f : 0.8f;
-                const auto* glyph = punctum::Find(characters[cell]);
+                const bool changing = characters[cell] != previous[cell];
+                const auto* glyph = punctum::Find(changing && lampProgress < 0.5f ? previous[cell] : characters[cell]);
+                const float lamp = changing ? std::abs(2 * lampProgress - 1) : 1;
                 const bool decimal = characters[cell] == L'.';
                 const int columns = decimal ? 3 : 5;
                 for (int row = 0; row < 7; ++row)
@@ -374,15 +383,21 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                     {
                         const bool lit = glyph && (glyph->rows[row] & (1 << (column + (decimal ? 1 : 0))));
                         const UINT32 digitColor = rgb == 0x61e5b7 ? 0x9affd4 : 0x80e4ff;
-                        color(lit ? (cell == 0 ? rgb : cell < 6 ? digitColor : 0x849da9) : 0x34424a, textProgress);
+                        const auto dark = D2D1::ColorF(0x34424a, textProgress);
+                        auto light = D2D1::ColorF(cell == 0 ? rgb : cell < 6 ? digitColor : 0x849da9, textProgress);
+                        const float intensity = lit ? lamp : 0;
+                        light.r = dark.r + (light.r - dark.r) * intensity;
+                        light.g = dark.g + (light.g - dark.g) * intensity;
+                        light.b = dark.b + (light.b - dark.b) * intensity;
+                        brush_->SetColor(light);
                         target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x + column * pitch, baseline - (6 - row) * pitch),
                             pitch * 0.36f, pitch * 0.36f), brush_.Get());
                     }
                 x += (columns - 1) * pitch + ((cell == 0 || cell == 5) ? 2 * 1.05f : 1.5f * pitch);
             }
         };
-        if (textProgress > 0) readout(upCells, 23.8f, 0x61e5b7);
-        if (textProgress > 0) readout(downCells, 36.55f, 0x32bdeb);
+        if (textProgress > 0) readout(upCells, oldUpCells, 23.8f, 0x61e5b7);
+        if (textProgress > 0) readout(downCells, oldDownCells, 36.55f, 0x32bdeb);
         target_->PopAxisAlignedClip();
         Check(target_->EndDraw());
         copyPixels(bodyPixels_);

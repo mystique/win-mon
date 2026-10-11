@@ -28,3 +28,5 @@ Decimal refinement: cropped the decimal to its middle three columns (21 lamps), 
 Waterline polish: a narrow pale cyan highlight and two low-opacity wider strokes add restrained glow along the moving surface only. All strokes share the existing inner-circle clip, including the wave ends. Release build and all eight CTest targets passed; refreshed actual-size evidence.
 
 Compact spacing polish: add 8 DIP to the hidden-text endpoint, tapering the extra padding out through expansion. Ring and chart geometry and expanded width are unchanged. All eight Release CTest targets pass.
+
+LED readout transition: changing cells extinguish their old lit pattern and illuminate the new pattern over 180ms. Unchanged characters and all dim lamps stay stable. Uses the shared native timer; hidden readouts, hidden windows and disabled system animations settle immediately. Renderer tests cover old/midpoint/new frames and unchanged areas, with a preview GIF. Full Release suite passes (8/8), followed by the expanded renderer test passing.

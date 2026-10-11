@@ -7,6 +7,13 @@
 #include <string>
 #include <vector>
 
+struct LedReadoutTransition
+{
+    std::wstring upload;
+    std::wstring download;
+    float progress = 1;
+};
+
 // One concrete offscreen renderer, also used by the layered desktop window.
 class FloatingRateRenderer final
 {
@@ -18,7 +25,7 @@ public:
     void AddSample(double upload, double download) noexcept;
     void ResetHistory() noexcept;
     bool Render(const std::wstring& upload, const std::wstring& download,
-        UINT dpi, double pulsePhase = 0.5, float waterLevel = -1, float textProgress = 1) noexcept;
+        UINT dpi, double pulsePhase = 0.5, float waterLevel = -1, float textProgress = 1, const LedReadoutTransition* transition = nullptr) noexcept;
     double Activity() const noexcept;
     bool Present(HWND window, HWND shadow = nullptr) noexcept;
     void ReleaseTarget() noexcept;

@@ -101,6 +101,11 @@ void FloatingRateDisplay::SetRates(
     double uploadBytesPerSecond,
     double downloadBytesPerSecond) noexcept
 {
+    if (uploadText_ != uploadText || downloadText_ != downloadText)
+    {
+        readoutTransition_ = {uploadText_, downloadText_, 0};
+        readoutTick_ = GetTickCount64();
+    }
     uploadText_ = uploadText;
     downloadText_ = downloadText;
     floatingRenderer_.AddSample(uploadBytesPerSecond, downloadBytesPerSecond);
@@ -221,6 +226,7 @@ void FloatingRateDisplay::Shutdown() noexcept
     pulseTimerActive_ = false;
     pulsePhase_ = 0;
     waterLevel_ = 0;
+    readoutTransition_.progress = 1;
     textDuration_ = 0;
     textProgress_ = textVisible_ ? 1.0f : 0.0f;
     if (GetSafeHwnd()) DestroyWindow();
@@ -244,7 +250,7 @@ bool FloatingRateDisplay::Render() noexcept
         if (!::SetWindowPos(GetSafeHwnd(), nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)) return false;
     }
     const bool rendered = floatingRenderer_.Render(uploadText_, downloadText_, GetDpiForWindow(GetSafeHwnd()),
-            pulseTimerActive_ ? pulsePhase_ : 0.5, waterLevel_, textProgress_) &&
+            pulseTimerActive_ ? pulsePhase_ : 0.5, waterLevel_, textProgress_, &readoutTransition_) &&
         floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd());
     if (rendered && positionDirty_ && textDuration_ <= 0)
     {
@@ -367,20 +373,23 @@ void FloatingRateDisplay::UpdatePulseTimer() noexcept
     SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
     const double activity = floatingRenderer_.Activity();
     const float targetLevel = activity > 0 ? 0.15f + 0.65f * static_cast<float>(activity) : 0;
+    if (!IsWindowVisible() || !textVisible_) readoutTransition_.progress = 1;
     if (!animations)
     {
+        readoutTransition_.progress = 1;
         waterLevel_ = targetLevel;
         textProgress_ = textVisible_ ? 1.0f : 0.0f;
         textDuration_ = 0;
     }
     const bool animate = IsWindowVisible() && animations &&
-        (targetLevel > 0 || waterLevel_ != targetLevel || textDuration_ > 0);
+        (targetLevel > 0 || waterLevel_ != targetLevel || textDuration_ > 0 || readoutTransition_.progress < 1);
     if (animate && !pulseTimerActive_)
     {
         pulseTick_ = GetTickCount64();
         pulseTimerActive_ = SetTimer(1, 33, nullptr) != 0;
         if (!pulseTimerActive_)
         {
+            readoutTransition_.progress = 1;
             waterLevel_ = targetLevel;
             textProgress_ = textVisible_ ? 1.0f : 0.0f;
             textDuration_ = 0;
@@ -405,6 +414,7 @@ void FloatingRateDisplay::OnTimer(UINT_PTR timer)
         }
         const ULONGLONG now = GetTickCount64();
         AdvanceTextTransition(now);
+        readoutTransition_.progress = std::min(1.0f, static_cast<float>(now - readoutTick_) / 180.0f);
         const double activity = floatingRenderer_.Activity();
         const float targetLevel = activity > 0 ? 0.15f + 0.65f * static_cast<float>(activity) : 0;
         const float step = static_cast<float>(now - pulseTick_) / 450.0f;
@@ -433,6 +443,7 @@ void FloatingRateDisplay::OnShowWindow(BOOL show, UINT status)
     {
         if (pulseTimerActive_) KillTimer(1);
         pulseTimerActive_ = false;
+        readoutTransition_.progress = 1;
         textDuration_ = 0;
         textProgress_ = textVisible_ ? 1.0f : 0.0f;
         if (floatingShadow_.GetSafeHwnd()) floatingShadow_.ShowWindow(SW_HIDE);

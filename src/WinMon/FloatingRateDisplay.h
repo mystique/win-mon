@@ -48,6 +48,8 @@ private:
     UINT contextMenuMessage_ = 0;
     HWND positionChangedOwner_ = nullptr;
     UINT positionChangedMessage_ = 0;
+    LedReadoutTransition readoutTransition_;
+    ULONGLONG readoutTick_ = 0;
     bool textVisible_ = true;
     float textProgress_ = 1;
     float textStart_ = 1;

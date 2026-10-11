@@ -180,3 +180,7 @@ User requires retaining the original ring diameter rather than shrinking it to f
 ## 2026-10-11 decimal and brightness refinement
 
 User overrides the uniform 35-lamp rule for the decimal only: use its middle three Punctum columns as a 3×7 cell (21 lamps), with the bottom middle lamp lit. Keep nine fixed slots and all other glyphs 5×7. Reduce the readout/window width by the removed two columns, preserving ring/chart geometry. Increase numeric and decimal bright-lamp luminance while retaining upload green/download blue, existing arrow colors and dim backgrounds.
+
+## LED readout update refinement
+
+User requests an extinguish/illuminate transition instead of abrupt rate changes. Animate only changing character cells over 180ms (old pattern dims during the first half, new pattern lights during the second half), preserving dim lamps and unchanged cells. Share the native timer and respect hidden/disabled-animation states.
