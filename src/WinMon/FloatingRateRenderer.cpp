@@ -16,7 +16,7 @@ float BodyRight(float progress) noexcept
 {
     const float chartRight = 27 + (kChartLeft + kChartWidth - 20) * kContentScale;
     const float textRight = 27 + (126 - 2 * 1.05f - 20) * kContentScale;
-    return chartRight + 15 + (textRight - chartRight) * progress;
+    return chartRight + 15 + 8 * (1 - progress) + (textRight - chartRight) * progress;
 }
 
 void Check(HRESULT result) { if (FAILED(result)) throw result; }
