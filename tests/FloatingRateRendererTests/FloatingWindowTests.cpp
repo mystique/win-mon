@@ -131,7 +131,8 @@ int main(int argc, char** argv)
         if (animations) Require(middleWidth < expandedWidth && middleWidth > FloatingRateRenderer::SizeForDpi(GetDpiForWindow(window),0).cx, "idle transition has intermediate geometry");
         Require(Width(shadow) == middleWidth, "shadow follows intermediate width");
         Require(display.SetTextVisible(true), "reverse transition");
-        Require(std::abs(Width(window)-middleWidth) <= 3, "reversal does not jump");
+        if (animations) Require(std::abs(Width(window)-middleWidth) <= 3, "reversal does not jump");
+        else Require(Width(window) == expandedWidth, "disabled animations reverse directly to expanded endpoint");
         Pump(250);
         Require(Width(window)==expandedWidth, "reverse completes expansion");
         Require(display.SetTextVisible(false), "collapse again");
