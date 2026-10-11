@@ -6,7 +6,6 @@
 #include "FloatingRateChartSettingChange.h"
 #include "SpeedTextPositionSettingChange.h"
 #include "Theme.h"
-#include "OperatorPopup.h"
 
 #include "res/resource.h"
 
@@ -26,6 +25,36 @@ constexpr UINT_PTR kRateSampleTimer = 1;
 constexpr UINT_PTR kShellRecoveryTimer = 2;
 constexpr UINT kShellRecoveryCadenceMs = 2000;
 const UINT kTaskbarCreatedMessage = RegisterWindowMessageW(L"TaskbarCreated");
+bool AppendMenuItems(CMenu& menu, const std::vector<winmon::OperatorMenuItem>& items)
+{
+    for (const auto& item : items)
+    {
+        if (item.separator)
+        {
+            if (!menu.AppendMenu(MF_SEPARATOR)) return false;
+            continue;
+        }
+        if (!item.children.empty())
+        {
+            CMenu submenu;
+            if (!submenu.CreatePopupMenu() || !AppendMenuItems(submenu, item.children) ||
+                !menu.AppendMenu(MF_POPUP, reinterpret_cast<UINT_PTR>(submenu.GetSafeHmenu()), item.label.c_str()))
+            {
+                return false;
+            }
+            submenu.Detach();
+            continue;
+        }
+
+        UINT flags = MF_STRING;
+        if (item.checked) flags |= MF_CHECKED;
+        if (item.radio) flags |= MFT_RADIOCHECK;
+        if (!item.enabled) flags |= MF_DISABLED | MF_GRAYED;
+        if (!menu.AppendMenu(flags, static_cast<UINT>(item.choiceToken), item.label.c_str())) return false;
+    }
+    return true;
+}
+
 struct OperatorMenuScope final
 {
     explicit OperatorMenuScope(winmon::WinMonCore& core) noexcept : core(core) {}
@@ -399,18 +428,22 @@ winmon::OperatorAction TrayMessageWindow::ShowOperatorMenu()
     if (!GetCursorPos(&cursorPosition)) return {};
     core_.ObserveNetwork(networkReader_.Read());
     const auto model = core_.BeginOperatorMenu(
-        {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled(), settings::IsFloatingRateDisplayEnabled(), rateStrip_.IsSpeedTextOnLeft(), floatingRateDisplay_.IsTextVisible(), floatingRateDisplay_.IsChartVisible()},
+        {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled(), settings::IsFloatingRateDisplayEnabled(), rateStrip_.IsSpeedTextOnLeft(), floatingRateDisplay_.IsTextVisible(), floatingRateDisplay_.IsChartVisible(), floatingRateDisplay_.GetOpacity()},
         rateStrip_.GetRateFontName());
     if (!model.has_value()) return {};
     OperatorMenuScope transaction{core_};
 
-    OperatorPopup menu;
-    const int previousOpacity = floatingRateDisplay_.GetOpacity();
-    const auto choiceToken = menu.Track(*this,cursorPosition,*model,previousOpacity,
-        [&](int percent) { return floatingRateDisplay_.SetOpacity(percent); });
-    if (floatingRateDisplay_.GetOpacity() != previousOpacity &&
-        !settings::SetFloatingRateOpacity(floatingRateDisplay_.GetOpacity()))
-        static_cast<void>(floatingRateDisplay_.SetOpacity(previousOpacity));
+    CMenu menu;
+    if (!menu.CreatePopupMenu() || !AppendMenuItems(menu, *model)) return {};
+    SetForegroundWindow();
+    const auto choiceToken = static_cast<std::uint32_t>(::TrackPopupMenu(
+        menu.GetSafeHmenu(),
+        TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
+        cursorPosition.x,
+        cursorPosition.y,
+        0,
+        GetSafeHwnd(),
+        nullptr));
     PostMessage(WM_NULL);
     transaction.completed = true;
     return core_.CompleteOperatorMenu(choiceToken);
@@ -503,6 +536,13 @@ void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
             action.kind == winmon::OperatorActionKind::ShowFloatingChart, settings::SetFloatingRateChartVisible};
         if (winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RecoveryRequired)
             static_cast<void>(floatingRateDisplay_.SetChartVisible(settings::IsFloatingRateChartVisible()));
+        break;
+    }
+    case winmon::OperatorActionKind::SetFloatingOpacity:
+    {
+        const int previous = floatingRateDisplay_.GetOpacity();
+        if (floatingRateDisplay_.SetOpacity(action.opacity) && !settings::SetFloatingRateOpacity(action.opacity))
+            static_cast<void>(floatingRateDisplay_.SetOpacity(previous));
         break;
     }
     case winmon::OperatorActionKind::SetRateFont:

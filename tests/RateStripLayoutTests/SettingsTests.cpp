@@ -41,8 +41,12 @@ int main()
     {
         IsolatedRegistry registry;
         Require(settings::GetFloatingRateOpacity() == 100, "opacity defaults fully opaque");
-        Require(settings::SetFloatingRateOpacity(45) && settings::GetFloatingRateOpacity() == 45, "opacity persisted");
-        Require(!settings::SetFloatingRateOpacity(0) && !settings::SetFloatingRateOpacity(101), "opacity write range validated");
+        Require(settings::SetFloatingRateOpacity(40) && settings::GetFloatingRateOpacity() == 40, "opacity persisted");
+        Require(!settings::SetFloatingRateOpacity(0) && !settings::SetFloatingRateOpacity(101) && !settings::SetFloatingRateOpacity(45), "opacity write range validated");
+        DWORD legacyOpacity = 45;
+        Require(RegSetKeyValueW(HKEY_CURRENT_USER,L"Software\\Win Mon",L"FloatingRateOpacity",REG_DWORD,
+            &legacyOpacity,sizeof(legacyOpacity)) == ERROR_SUCCESS, "legacy slider fixture");
+        Require(settings::GetFloatingRateOpacity() == 50, "legacy slider values round to nearest menu step");
         for (DWORD invalidOpacity : {0u,9u,101u,0xffffffffu})
         {
             Require(RegSetKeyValueW(HKEY_CURRENT_USER,L"Software\\Win Mon",L"FloatingRateOpacity",REG_DWORD,

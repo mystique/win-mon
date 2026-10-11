@@ -188,3 +188,5 @@ User requests an extinguish/illuminate transition instead of abrupt rate changes
 Extension (2026-10-11): Show Floating Chart independently controls both trend regions and persists as FloatingRateChartVisible (DWORD, default on). It uses the existing reversible 220ms hide/180ms show animation and shared timer; hiding shifts speed text left. Hiding both charts and text leaves a circular 48 DIP body with the original ring diameter, 54 DIP canvas including shadow. Sampling history continues while charts are hidden.
 
 User-requested extension (2026-10-11): Custom main Operator Menu with an embedded Floating Opacity slider, preserving existing actions and native submenus. Range 10-100%, default 100, whole floating body and shadow preview live. Menu remains open while dragging. Dismissal saves the latest value; failed save rolls back.
+
+Superseding user request (2026-10-11): Remove the custom popup and embedded slider. Restore the native Operator Menu and offer Floating Opacity as a native radio submenu with 10%, 20%, ... 100%. Apply/save immediately on selection, rolling back on save failure. Retain body/shadow opacity rendering.

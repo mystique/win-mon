@@ -10,4 +10,4 @@ Extension (2026-10-11; [spec](../../.scratch/floating-led-display/spec.md)): `Fl
 
 Extension (2026-10-11): FloatingRateChartVisible independently persists chart visibility, default on, using the same live-apply/save/rollback transaction as floating text visibility.
 
-Extension (2026-10-11): FloatingRateOpacity stores an integer 10–100 percentage as a DWORD, default 100 for missing, unreadable, wrong-type or out-of-range values. Preview while dragging, save once when the custom menu closes, restore the original value on save failure.
+Extension (2026-10-11): FloatingRateOpacity stores an integer 10–100 percentage as a DWORD, default 100 for missing, unreadable, wrong-type or out-of-range values. The native Floating Opacity submenu offers ten 10% steps. Apply and save on selection; restore the original value on save failure. Legacy slider values round to the nearest 10% on reading.

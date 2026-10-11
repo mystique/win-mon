@@ -235,6 +235,20 @@ void OperatorMenuTransactionCorrelatesEveryAction()
     Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Chart").choiceToken).kind == OperatorActionKind::HideFloatingChart, "checked chart hides");
     menu = core.BeginOperatorMenu({false,true,false,false,true,false}, L"Cascadia Mono");
     Require(!FindItem(*menu,L"Show Floating Chart").checked, "hidden chart unchecked independently");
+    const auto& opacity = FindItem(*menu,L"Floating Opacity");
+    Require(opacity.children.size() == 10, "opacity has ten native submenu choices");
+    for (size_t i = 0; i < opacity.children.size(); ++i)
+    {
+        const auto& level = opacity.children[i];
+        Require(level.label == std::to_wstring((i+1)*10)+L"%" && level.radio, "opacity labels and radio style");
+        Require(level.checked == (i == 9), "opacity defaults to 100 percent");
+    }
+    Require(core.CompleteOperatorMenu(opacity.children[3].choiceToken).opacity == 40, "opacity action carries selected percentage");
+    menu = core.BeginOperatorMenu({false,true,false,false,true,false,40},L"Cascadia Mono");
+    const auto& selectedOpacity = FindItem(*menu,L"Floating Opacity");
+    Require(selectedOpacity.children[3].checked && !selectedOpacity.children[9].checked, "opacity menu reflects current value");
+    Require(core.CompleteOperatorMenu(selectedOpacity.children[0].choiceToken).kind == OperatorActionKind::SetFloatingOpacity, "opacity choice action");
+    menu = core.BeginOperatorMenu({false,true,false,false,true,false,40},L"Cascadia Mono");
     const auto displayItem = std::find_if(menu->begin(),menu->end(),[](const auto& item){ return item.label == L"Show Floating Display"; });
     Require((displayItem+1)->label == L"Show Floating Speed Text", "text toggle follows display toggle");
     FindItem(*menu, L"Font: Cascadia Mono");

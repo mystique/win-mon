@@ -66,12 +66,12 @@ int GetFloatingRateOpacity() noexcept
     DWORD value = 100, size = sizeof(value);
     if (RegGetValueW(HKEY_CURRENT_USER,kProductKey,L"FloatingRateOpacity",RRF_RT_REG_DWORD,
             nullptr,&value,&size) != ERROR_SUCCESS || size != sizeof(value) || value < 10 || value > 100) return 100;
-    return static_cast<int>(value);
+    return static_cast<int>((value+5)/10*10);
 }
 
 bool SetFloatingRateOpacity(int percent) noexcept
 {
-    if (percent < 10 || percent > 100) return false;
+    if (percent < 10 || percent > 100 || percent % 10 != 0) return false;
     const DWORD value = static_cast<DWORD>(percent);
     return RegSetKeyValueW(HKEY_CURRENT_USER,kProductKey,L"FloatingRateOpacity",REG_DWORD,&value,sizeof(value)) == ERROR_SUCCESS;
 }

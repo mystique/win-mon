@@ -61,6 +61,7 @@ enum class OperatorActionKind
     HideFloatingChart,
     ShowFloatingSpeedText,
     HideFloatingSpeedText,
+    SetFloatingOpacity,
     SetRateFont,
     SetSpeedTextLeft,
     SetSpeedTextRight,
@@ -70,6 +71,7 @@ enum class OperatorActionKind
 struct OperatorAction final
 {
     OperatorActionKind kind = OperatorActionKind::None;
+    int opacity = 100;
 };
 enum class OperatorSettingOutcome
 {
@@ -104,6 +106,7 @@ struct OperatorMenuToggles final
     bool speedTextOnLeft = false;
     bool floatingRateTextVisible = true;
     bool floatingRateChartVisible = true;
+    int floatingRateOpacity = 100;
 };
 
 struct NicSnapshot final

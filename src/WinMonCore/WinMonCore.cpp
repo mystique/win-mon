@@ -276,6 +276,18 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
     AddChoice(floatingChart, {{toggles.floatingRateChartVisible
         ? OperatorActionKind::HideFloatingChart : OperatorActionKind::ShowFloatingChart}});
     menu.push_back(std::move(floatingChart));
+    OperatorMenuItem opacity;
+    opacity.label = L"Floating Opacity";
+    for (int percent = 10; percent <= 100; percent += 10)
+    {
+        OperatorMenuItem level;
+        level.label = std::to_wstring(percent)+L"%";
+        level.checked = percent == toggles.floatingRateOpacity;
+        level.radio = true;
+        AddChoice(level, {{OperatorActionKind::SetFloatingOpacity,percent}});
+        opacity.children.push_back(std::move(level));
+    }
+    menu.push_back(std::move(opacity));
     menu.push_back({.separator = true});
 
     menu.push_back({L"Font: " + rateFontName, 0, false, false, false});
