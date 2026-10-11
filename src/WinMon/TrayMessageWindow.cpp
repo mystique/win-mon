@@ -168,6 +168,12 @@ bool TrayMessageWindow::Initialize()
     static_cast<void>(floatingRateDisplay_.SetChartVisible(settings::IsFloatingRateChartVisible()));
     static_cast<void>(floatingRateDisplay_.SetOpacity(settings::GetFloatingRateOpacity()));
     floatingRateDisplay_.SetContextMenuOwner(GetSafeHwnd(), kRightClickSpeedTextMessage);
+    floatingRateDisplay_.SetVisibilityChangeHandler([this](bool text, bool visible) {
+        HandleOperatorMenuAction({text
+            ? (visible ? winmon::OperatorActionKind::ShowFloatingSpeedText : winmon::OperatorActionKind::HideFloatingSpeedText)
+            : (visible ? winmon::OperatorActionKind::ShowFloatingChart : winmon::OperatorActionKind::HideFloatingChart)});
+        return (text ? floatingRateDisplay_.IsTextVisible() : floatingRateDisplay_.IsChartVisible()) == visible;
+    });
     floatingRateDisplay_.SetPositionChangedOwner(GetSafeHwnd(), kFloatingRateDisplayMovedMessage);
     if (!shellLifecycle_.Start())
     {

@@ -267,6 +267,37 @@ int main(int argc, char** argv)
         display.SetRates(L"invalid",L"invalid",0,0);
         Require(!display.SetChartVisible(true) && !display.IsChartVisible(), "failed chart expansion restores preference");
         display.SetRates(L"0.0 K/s",L"0.0 K/s",0,0);
+        Require((GetClassLongPtrW(display.GetSafeHwnd(), GCL_STYLE) & CS_DBLCLKS) != 0,
+            "floating class receives native double clicks");
+        const int center = MulDiv(27, GetDpiForWindow(display.GetSafeHwnd()), 96);
+        const auto doubleClick = [&] {
+            display.SendMessageW(WM_LBUTTONDBLCLK, MK_LBUTTON, MAKELPARAM(center, center));
+        };
+        const auto expectVisibility = [&](bool chart, bool text) {
+            Require(display.IsChartVisible() == chart && display.IsTextVisible() == text,
+                "double click follows visibility cycle");
+        };
+        for (int cycle = 0; cycle < 2; ++cycle)
+        {
+            doubleClick(); expectVisibility(true, false);
+            doubleClick(); expectVisibility(true, true);
+            doubleClick(); expectVisibility(true, false);
+            doubleClick(); expectVisibility(false, false);
+        }
+        Require(display.SetChartVisible(true), "external chart visibility");
+        doubleClick(); expectVisibility(false, false);
+        Require(display.SetTextVisible(true), "external text-only visibility");
+        doubleClick(); expectVisibility(false, false);
+        Require(display.SetChartVisible(true) && display.SetTextVisible(true), "external full visibility");
+        doubleClick(); expectVisibility(true, false);
+        doubleClick(); expectVisibility(false, false);
+        display.SendMessageW(WM_LBUTTONDBLCLK, MK_LBUTTON, MAKELPARAM(center * 3, center));
+        expectVisibility(false, false);
+        display.SetVisibilityChangeHandler([](bool, bool) { return false; });
+        doubleClick(); expectVisibility(false, false);
+        display.SetVisibilityChangeHandler({});
+        doubleClick(); expectVisibility(true, false);
+        doubleClick(); expectVisibility(true, true);
         Require(display.SetOpacity(35) && display.GetOpacity() == 35, "opacity applies live");
         Require(!display.SetOpacity(0) && display.GetOpacity() == 35, "opacity rejects invisible endpoint");
         display.Shutdown();

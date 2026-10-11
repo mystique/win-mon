@@ -64,6 +64,7 @@ void FloatingRateDisplay::AdvanceTextTransition(ULONGLONG now) noexcept
 
 bool FloatingRateDisplay::SetTextVisible(bool visible) noexcept
 {
+    expandingVisibility_ = false;
     if (visible == textVisible_) return GetSafeHwnd() == nullptr || Render();
     const bool previous = textVisible_;
     const float previousProgress = textProgress_;
@@ -107,6 +108,7 @@ void FloatingRateDisplay::AdvanceChartTransition(ULONGLONG now) noexcept
 
 bool FloatingRateDisplay::SetChartVisible(bool visible) noexcept
 {
+    expandingVisibility_ = false;
     if (visible == chartVisible_) return GetSafeHwnd() == nullptr || Render();
     const bool previous = chartVisible_;
     const float previousProgress = chartProgress_;
@@ -192,6 +194,7 @@ BEGIN_MESSAGE_MAP(FloatingRateDisplay, CWnd)
     ON_WM_NCHITTEST()
     ON_WM_RBUTTONUP()
     ON_WM_LBUTTONDOWN()
+    ON_WM_LBUTTONDBLCLK()
     ON_WM_MOVING()
     ON_WM_EXITSIZEMOVE()
     ON_WM_WINDOWPOSCHANGED()
@@ -212,7 +215,7 @@ bool FloatingRateDisplay::ShowFloating(POINT position, bool restorePosition)
     size_ = FloatingRateRenderer::SizeForDpi(GetDpiForSystem(), textProgress_, chartProgress_);
     if (!restorePosition) position = DefaultFloatingPosition(size_);
 
-    const CString windowClass = AfxRegisterWndClass(0, LoadCursorW(nullptr, IDC_ARROW), nullptr, nullptr);
+    const CString windowClass = AfxRegisterWndClass(CS_DBLCLKS, LoadCursorW(nullptr, IDC_ARROW), nullptr, nullptr);
     // A separate WS_EX_TRANSPARENT layered window makes shadow pixels pass
     // clicks to other processes; HTTRANSPARENT alone only reaches this thread.
     if (!floatingShadow_.CreateEx(
@@ -356,6 +359,18 @@ void FloatingRateDisplay::OnLButtonDown(UINT, CPoint point)
     ClientToScreen(&point);
     ReleaseCapture();
     SendMessageW(WM_NCLBUTTONDOWN, HTCAPTION, MAKELPARAM(point.x, point.y));
+}
+
+void FloatingRateDisplay::OnLButtonDblClk(UINT, CPoint point)
+{
+    if (!FloatingRateRenderer::HitTest(point, GetDpiForWindow(GetSafeHwnd()), 0, 0)) return;
+    const bool changeText = textVisible_ || (chartVisible_ && expandingVisibility_);
+    const bool visible = changeText ? !textVisible_ : !chartVisible_;
+    const bool previousDirection = expandingVisibility_;
+    const bool applied = visibilityChangeHandler_
+        ? visibilityChangeHandler_(changeText, visible)
+        : (changeText ? SetTextVisible(visible) : SetChartVisible(visible));
+    expandingVisibility_ = applied ? visible : previousDirection;
 }
 
 void FloatingRateDisplay::OnMoving(UINT side, LPRECT rect)

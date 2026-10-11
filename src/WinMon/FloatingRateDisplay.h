@@ -2,6 +2,7 @@
 #include <afxwin.h>
 #include "FloatingRateRenderer.h"
 #include <string>
+#include <functional>
 
 class FloatingRateDisplay final : public CWnd
 {
@@ -13,6 +14,7 @@ public:
     [[nodiscard]] bool IsTextVisible() const noexcept { return textVisible_; }
     [[nodiscard]] bool SetChartVisible(bool visible) noexcept;
     [[nodiscard]] bool IsChartVisible() const noexcept { return chartVisible_; }
+    void SetVisibilityChangeHandler(std::function<bool(bool, bool)> handler) { visibilityChangeHandler_ = std::move(handler); }
     [[nodiscard]] bool SetOpacity(int percent) noexcept;
     int GetOpacity() const noexcept { return opacity_; }
     void ResetHistory() noexcept { floatingRenderer_.ResetHistory(); waterLevel_ = 0; pulsePhase_ = 0; UpdatePulseTimer(); }
@@ -37,6 +39,7 @@ private:
     afx_msg LRESULT OnNcHitTest(CPoint point);
     afx_msg void OnRButtonUp(UINT flags, CPoint point);
     afx_msg void OnLButtonDown(UINT flags, CPoint point);
+    afx_msg void OnLButtonDblClk(UINT flags, CPoint point);
     afx_msg void OnMoving(UINT side, LPRECT rect);
     afx_msg void OnExitSizeMove();
     afx_msg void OnWindowPosChanged(WINDOWPOS* position);
@@ -62,6 +65,8 @@ private:
     ULONGLONG textTick_ = 0;
     float textDuration_ = 0;
     bool chartVisible_ = true;
+    bool expandingVisibility_ = false;
+    std::function<bool(bool, bool)> visibilityChangeHandler_;
     float chartProgress_ = 1;
     float chartStart_ = 1;
     ULONGLONG chartTick_ = 0;
