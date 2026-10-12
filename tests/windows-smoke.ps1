@@ -1,5 +1,6 @@
 param(
-    [string]$Configuration = "Release"
+    [string]$Configuration = "Release",
+    [switch]$RequireLeft
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,6 +36,39 @@ public static class WinMonNative {
     public static extern IntPtr FindWindow(string className, string windowName);
     [StructLayout(LayoutKind.Sequential)]
     public struct Rect { public int left, top, right, bottom; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Point { public int x, y; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MouseInput { public int dx, dy; public uint mouseData, flags, time; public IntPtr extraInfo; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Input { public uint type; public MouseInput mouse; }
+    [DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out Point point);
+    [DllImport("user32.dll")]
+    public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")]
+    public static extern IntPtr WindowFromPoint(Point point);
+    [DllImport("user32.dll")]
+    public static extern uint SendInput(uint count, Input[] inputs, int size);
+    private static Point savedCursor;
+    private static bool cursorSaved;
+    public static void RightClick(IntPtr window) {
+        Rect bounds;
+        if (!GetWindowRect(window, out bounds)) throw new Exception("Rate Strip bounds unavailable");
+        var center = new Point { x = (bounds.left + bounds.right) / 2, y = (bounds.top + bounds.bottom) / 2 };
+        if (WindowFromPoint(center) != window) throw new Exception("Rate Strip does not receive real mouse hit tests");
+        cursorSaved = GetCursorPos(out savedCursor);
+        if (!cursorSaved || !SetCursorPos(center.x, center.y)) throw new Exception("Test pointer placement failed");
+        var clicks = new[] {
+            new Input { mouse = new MouseInput { flags = 0x0008 } },
+            new Input { mouse = new MouseInput { flags = 0x0010 } }
+        };
+        if (SendInput(2, clicks, Marshal.SizeOf(typeof(Input))) != 2) throw new Exception("Test mouse input failed");
+    }
+    public static void RestoreCursor() {
+        if (cursorSaved) SetCursorPos(savedCursor.x, savedCursor.y);
+        cursorSaved = false;
+    }
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")]
@@ -115,6 +149,25 @@ function Wait-Until([scriptblock]$condition, [string]$failure, [int]$millisecond
     throw $failure
 }
 
+function Open-StripMenu([IntPtr]$strip, [uint32]$processId) {
+    try {
+        [WinMonNative]::RightClick($strip)
+        return Wait-Until {
+            [WinMonNative]::FindTopLevel($processId, $null, '#32768')
+        } 'Real Rate Strip right-click did not open the Operator Menu'
+    } finally { [WinMonNative]::RestoreCursor() }
+}
+
+function Assert-Centered([IntPtr]$strip) {
+    $actual = [WinMonNative+Rect]::new()
+    $taskbarRect = [WinMonNative+Rect]::new()
+    $taskbar = [WinMonNative]::FindWindow('Shell_TrayWnd', $null)
+    if (-not [WinMonNative]::GetWindowRect($strip, [ref]$actual) -or
+        -not [WinMonNative]::GetWindowRect($taskbar, [ref]$taskbarRect)) { throw 'Position bounds unavailable' }
+    $expectedTop = $taskbarRect.top + [Math]::Floor((($taskbarRect.bottom - $taskbarRect.top) - ($actual.bottom - $actual.top)) / 2)
+    if ($actual.top -ne $expectedTop) { throw 'Rate Strip moved away from the vertical center' }
+}
+
 $rightClickBefore = Save-RegistryValue $rightClickName
 $fontBefore = Save-RegistryValue $fontName
 $positionBefore = Save-RegistryValue $positionName
@@ -139,32 +192,44 @@ try {
         return $null
     } "A supported primary bottom taskbar did not produce exactly one Rate Strip"
 
-    [WinMonNative]::PostMessage($strips[0], 0x0205, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
-    $popup = Wait-Until {
-        [WinMonNative]::FindTopLevel([uint32]$process.Id, $null, "#32768")
-    } "Persisted Right-Click Speed Text did not open the Operator Menu"
+    $popup = Open-StripMenu $strips[0] ([uint32]$process.Id)
     # Exercise the native menu loop: Network, Position, expand, select Left.
     foreach ($key in @(0x28, 0x28, 0x27, 0x0D)) {
         [WinMonNative]::PostMessage($popup, 0x0100, [IntPtr]$key, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 50
     }
     Wait-Until { (Get-ItemPropertyValue -Path $productKey -Name $positionName -ErrorAction SilentlyContinue) -eq 1 } 'Native Left selection did not persist' | Out-Null
+    Wait-Until { [WinMonNative]::FindTopLevel([uint32]$process.Id, $null, '#32768') -eq [IntPtr]::Zero } 'Position menu did not close' | Out-Null
+    if ($RequireLeft) {
+        Wait-Until { [WinMonNative]::IsWindowVisible($strips[0]) } 'Unoccupied Left disappeared after menu selection' | Out-Null
+    }
+    if ([WinMonNative]::IsWindowVisible($strips[0])) {
+        Assert-Centered $strips[0]
+        $popup = Open-StripMenu $strips[0] ([uint32]$process.Id)
+        [WinMonNative]::PostMessage($popup, 0x0100, [IntPtr]0x1B, [IntPtr]::Zero) | Out-Null
+    }
     [WinMonNative]::PostMessage($sink, 0x001F, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
     Stop-Process -Id $process.Id -Force
     $process.WaitForExit(5000) | Out-Null
-
-    New-ItemProperty -Path $productKey -Name $positionName -Value 0 -PropertyType DWord -Force | Out-Null
 
     $process = Start-Process -FilePath $executable -PassThru -WindowStyle Hidden
     if (-not $process.WaitForInputIdle(5000)) { throw 'Win Mon did not finish GUI initialization' }
     $sink = Wait-Until {
         [WinMonNative]::FindTopLevel([uint32]$process.Id, "Win Mon Message Sink", $null)
     } "Win Mon did not restart with persisted settings"
-    Wait-Until {
+    $restartedStrips = Wait-Until {
         $children = [WinMonNative]::FindTaskbarChildren([uint32]$process.Id)
         if ($children.Count -eq 1) { return ,$children }
         return $null
-    } "Corrupt Rate Font did not fall back to a usable Rate Strip" | Out-Null
+    } "Corrupt Rate Font did not fall back to a usable Rate Strip"
+    if ($RequireLeft) {
+        Wait-Until { [WinMonNative]::IsWindowVisible($restartedStrips[0]) } 'Persisted Left disappeared after restart' | Out-Null
+    }
+    if ([WinMonNative]::IsWindowVisible($restartedStrips[0])) {
+        Assert-Centered $restartedStrips[0]
+        $popup = Open-StripMenu $restartedStrips[0] ([uint32]$process.Id)
+        [WinMonNative]::PostMessage($popup, 0x0100, [IntPtr]0x1B, [IntPtr]::Zero) | Out-Null
+    }
 
     $taskbarCreated = [WinMonNative]::RegisterWindowMessage("TaskbarCreated")
     [WinMonNative]::PostMessage($sink, $taskbarCreated, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
@@ -224,6 +289,7 @@ try {
     Write-Output "Win Mon Windows smoke passed"
 }
 finally {
+    [WinMonNative]::RestoreCursor()
     if ($process -and -not $process.HasExited) {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
         $process.WaitForExit(5000) | Out-Null

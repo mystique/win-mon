@@ -21,6 +21,54 @@ void Require(bool condition, const char* message)
     if (!condition) throw std::runtime_error(message);
 }
 
+constexpr UINT kMenuMessage = WM_APP + 20;
+class MenuReceiver final : public CWnd
+{
+public:
+    int requests = 0;
+    LRESULT WindowProc(UINT message, WPARAM wparam, LPARAM lparam) override
+    {
+        if (message == kMenuMessage) { ++requests; return 0; }
+        return CWnd::WindowProc(message, wparam, lparam);
+    }
+};
+
+void CheckPlacementAndInput(RateStrip& strip, HWND taskbar, MenuReceiver& receiver)
+{
+    RECT bounds{}, client{};
+    Require(::GetWindowRect(strip.GetSafeHwnd(), &bounds) && ::GetClientRect(taskbar, &client), "placement geometry");
+    const POINT center{(bounds.left + bounds.right) / 2, (bounds.top + bounds.bottom) / 2};
+    MapWindowPoints(nullptr, taskbar, reinterpret_cast<POINT*>(&bounds), 2);
+    Require(bounds.top == (client.bottom - (bounds.bottom - bounds.top)) / 2, "strip stays vertically centered");
+    const LONG style = GetWindowLongW(strip.GetSafeHwnd(), GWL_STYLE);
+    Require((style & WS_CHILD) != 0 && (style & WS_POPUP) == 0, "embedded strip uses child window coordinates and input routing");
+    Require(WindowFromPoint(center) == strip.GetSafeHwnd(), "visible interactive strip receives real mouse hit tests");
+    POINT previousCursor{};
+    Require(GetCursorPos(&previousCursor) && SetCursorPos(center.x, center.y), "position test pointer");
+    const int previousRequests = receiver.requests;
+    INPUT clicks[2]{};
+    clicks[0].type = clicks[1].type = INPUT_MOUSE;
+    clicks[0].mi.dwFlags = MOUSEEVENTF_RIGHTDOWN;
+    clicks[1].mi.dwFlags = MOUSEEVENTF_RIGHTUP;
+    const UINT sent = SendInput(2, clicks, sizeof(INPUT));
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+    while (receiver.requests == previousRequests && std::chrono::steady_clock::now() < deadline)
+    {
+        MSG message{};
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
+        {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+        Sleep(1);
+    }
+    SetCursorPos(previousCursor.x, previousCursor.y);
+    Require(sent == 2 && receiver.requests == previousRequests + 1, "real right click requests the Operator Menu");
+    strip.SetContextMenuEnabled(false);
+    Require(WindowFromPoint(center) != strip.GetSafeHwnd(), "disabled strip passes mouse input through");
+    strip.SetContextMenuEnabled(true);
+}
+
 void Capture(HWND window, const std::filesystem::path& path)
 {
     DwmFlush();
@@ -57,14 +105,23 @@ int main(int argc, char** argv)
     try
     {
         RateStrip strip;
-        Require(strip.SetSpeedTextOnLeft(true) && strip.Embed(true), "Left creates a native strip");
+        MenuReceiver receiver;
+        Require(receiver.CreateEx(0, AfxRegisterWndClass(0), L"Test menu receiver", WS_POPUP,
+            CRect(0, 0, 0, 0), nullptr, 0), "menu receiver");
+        strip.SetContextMenuOwner(receiver.GetSafeHwnd(), kMenuMessage);
+        strip.SetContextMenuEnabled(true);
+        Require(strip.Embed(true), "Right creates a native strip");
+        Require(strip.SetSpeedTextOnLeft(true), "switch from Right to Left");
         const HWND taskbar = ::FindWindowW(L"Shell_TrayWnd", nullptr);
         const bool initiallyVisible = strip.IsDisplayVisible();
+        if (argc > 2 && std::string(argv[2]) == "--require-left")
+            Require(initiallyVisible, "unoccupied Left must remain visible after switching from Right");
         std::filesystem::path evidence;
         if (argc > 1) { evidence = argv[1]; std::filesystem::create_directories(evidence); }
         Require(strip.Refresh(), "Left refreshes even when unavailable");
         if (initiallyVisible)
         {
+            CheckPlacementAndInput(strip, taskbar, receiver);
             CComPtr<IUIAutomation> automation;
             CComPtr<IUIAutomationElement> root, start;
             CComPtr<IUIAutomationCondition> condition;
@@ -121,6 +178,7 @@ int main(int argc, char** argv)
         Require(strip.SetSpeedTextOnLeft(true), "return to Left");
         strip.Shutdown();
         Require(strip.Embed(true) && strip.IsSpeedTextOnLeft(), "Left survives surface recreation");
+        if (initiallyVisible) CheckPlacementAndInput(strip, taskbar, receiver);
         RateFontSelection font;
         Require(strip.GetRateFont(font), "active font");
         wcscpy_s(font.logFont.lfFaceName, L"Arial");
