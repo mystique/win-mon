@@ -60,7 +60,7 @@ public:
         if (FAILED(root->FindAllBuildCache(TreeScope_Descendants, condition, cache, &controls))) return false;
         int count = 0;
         if (FAILED(controls->get_Length(&count))) return false;
-        bool foundFrame = false, foundStart = false;
+        bool foundStart = false;
         for (int index = 0; index < count; ++index)
         {
             CComPtr<IUIAutomationElement> control;
@@ -74,7 +74,6 @@ public:
             if (FAILED(control->get_CachedClassName(&className)) ||
                 FAILED(control->get_CachedAutomationId(&id))) return false;
             const bool structuralFrame = className && wcscmp(className, L"Taskbar.TaskbarFrameAutomationPeer") == 0;
-            foundFrame |= structuralFrame;
             foundStart |= id && wcscmp(id, L"StartButton") == 0;
             // Only the verified layout frame is empty space; buttons occupy their full bounds, including padding.
             if (structuralFrame) continue;
@@ -82,8 +81,8 @@ public:
             if (FAILED(control->get_CachedBoundingRectangle(&occupied)) || IsRectEmpty(&occupied)) return false;
             if (IntersectRect(&overlap, &candidate, &occupied)) return false;
         }
-        // shortcut: recognize the Win11 XAML frame and StartButton, expand only after validating another shell tree.
-        return foundFrame && foundStart;
+        // Win11 22000 exposes Start directly under the verified XAML host, without a frame peer.
+        return foundStart;
     }
 
 private:
@@ -98,6 +97,10 @@ private:
         auto& space = *reinterpret_cast<NativeSpace*>(parameter);
         if (child == space.strip || child == space.xamlHost || IsChild(space.xamlHost, child) || IsChild(child, space.xamlHost) ||
             !IsWindowVisible(child)) return TRUE;
+        wchar_t className[64]{};
+        if (GetClassNameW(child, className, 64) > 0 && wcscmp(className, L"ReBarWindow32") == 0 &&
+            FindWindowExW(child, nullptr, L"MSTaskSwWClass", nullptr) != nullptr)
+            return TRUE; // The old Win11 container spans empty space; its children are still checked.
         RECT occupied{}, overlap{};
         if (!GetWindowRect(child, &occupied) || IntersectRect(&overlap, &space.candidate, &occupied))
         {

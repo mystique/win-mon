@@ -175,7 +175,9 @@ bool RateStrip::Embed(bool shouldShow)
         return false;
     }
 
-    if (::SetParent(GetSafeHwnd(), taskbar) == nullptr)
+    // SetParent leaves popup styles intact; embedding needs child coordinates and hit testing.
+    if (!ModifyStyle(WS_POPUP | WS_SYSMENU, WS_CHILD) ||
+        ::SetParent(GetSafeHwnd(), taskbar) == nullptr)
     {
         Shutdown();
         return false;
