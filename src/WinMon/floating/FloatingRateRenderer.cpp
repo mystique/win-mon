@@ -89,9 +89,17 @@ double FloatingRateRenderer::Activity() const noexcept
 {
     if (upload_ == 0 && download_ == 0) return 0;
     double peak = 1000;
-    for (size_t i = 32 - count_; i < 32; ++i)
+    for (size_t i = 17 - std::min<size_t>(count_, 16); i < 17; ++i)
         peak = std::max({peak, uploadHistory_[i], downloadHistory_[i]});
     return std::clamp(std::max(uploadHistory_.back(), downloadHistory_.back()) / peak, 0.0, 1.0);
+}
+
+bool FloatingRateRenderer::HasScrollingTrend() const noexcept
+{
+    for (size_t i = 17 - count_ + 1; i < 17; ++i)
+        if (std::abs(uploadHistory_[i] - uploadHistory_[i - 1]) > 0.5 ||
+            std::abs(downloadHistory_[i] - downloadHistory_[i - 1]) > 0.5) return true;
+    return false;
 }
 
 void FloatingRateRenderer::ReleaseTarget() noexcept
@@ -116,10 +124,11 @@ void FloatingRateRenderer::ReleaseTarget() noexcept
 }
 
 bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring& download,
-    UINT dpi, double pulsePhase, float waterLevel, float textProgress, const LedReadoutTransition* transition, float chartProgress) noexcept
+    UINT dpi, double pulsePhase, float waterLevel, float textProgress, const LedReadoutTransition* transition, float chartProgress, float scrollProgress) noexcept
 {
     try
     {
+        if (!std::isfinite(scrollProgress) || scrollProgress < 0 || scrollProgress > 1) return false;
         if (!std::isfinite(chartProgress) || chartProgress < 0 || chartProgress > 1) return false;
         if (dpi < 48 || dpi > 768 || !std::isfinite(textProgress) || textProgress < 0 || textProgress > 1) return false;
         std::array<wchar_t, 9> upCells{}, downCells{};
@@ -208,7 +217,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         target_->SetTransform(D2D1::Matrix3x2F::Scale(kContentScale, kContentScale, D2D1::Point2F(20, 27)) *
             D2D1::Matrix3x2F::Translation(7, 0));
         double maximum = 1000;
-        for (size_t i = 32 - count_; i < 32; ++i)
+        for (size_t i = 17 - std::min<size_t>(count_, 16); i < 17; ++i)
             maximum = std::max({maximum, uploadHistory_[i], downloadHistory_[i]});
         const auto arc = [&](size_t slot, double ratio, bool up, UINT32 rgb)
         {
@@ -315,14 +324,14 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                 {
                     const auto point = [&](size_t i)
                     {
-                        return D2D1::Point2F(kChartLeft + kChartWidth * static_cast<float>(i) / 31,
+                        return D2D1::Point2F(kChartLeft + kChartWidth * static_cast<float>(static_cast<int>(i) - 1) / 15,
                             bottom - (bottom - top) * static_cast<float>(history[i] / maximum));
                     };
-                    const size_t first = 32 - count_;
+                    const size_t first = 17 - count_;
                     const auto tangent = [&](size_t i)
                     {
                         if (i == first) return point(i + 1).y - point(i).y;
-                        if (i == 31) return point(i).y - point(i - 1).y;
+                        if (i == 16) return point(i).y - point(i - 1).y;
                         const float before = point(i).y - point(i - 1).y;
                         const float after = point(i + 1).y - point(i).y;
                         // Monotone Hermite slopes retain every sampled peak and valley,
@@ -337,7 +346,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                     Check(paths_[slot + 2]->Open(&fillSink));
                     fillSink->BeginFigure(point(first), D2D1_FIGURE_BEGIN_FILLED);
                     sink->BeginFigure(point(first), D2D1_FIGURE_BEGIN_HOLLOW);
-                    for (size_t i = first + 1; i < 32; ++i)
+                    for (size_t i = first + 1; i < 17; ++i)
                     {
                         const auto from = point(i - 1), to = point(i);
                         const float third = (to.x - from.x) / 3;
@@ -356,9 +365,13 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
                 }
                 gradients_[slot - 4]->SetStartPoint(D2D1::Point2F(0, top));
                 gradients_[slot - 4]->SetEndPoint(D2D1::Point2F(0, bottom));
+                D2D1_MATRIX_3X2_F transform;
+                target_->GetTransform(&transform);
+                target_->SetTransform(D2D1::Matrix3x2F::Translation(kChartWidth * (1 - scrollProgress) / 15, 0) * transform);
                 target_->FillGeometry(paths_[slot + 2].Get(), gradients_[slot - 4].Get());
                 color(rgb);
                 target_->DrawGeometry(path.Get(), brush_.Get(), 1.0f, stroke_.Get());
+                target_->SetTransform(transform);
                 target_->PopAxisAlignedClip();
             };
             trend(4, uploadHistory_, 0x61e5b7);

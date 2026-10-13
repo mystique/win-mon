@@ -32,6 +32,42 @@ void SaveBitmap(const FloatingRateRenderer& renderer, const std::filesystem::pat
 }
 int main(int argc, char** argv)
 {
+    FloatingRateRenderer scrolling;
+    Require(!scrolling.HasScrollingTrend(), "empty history has no scrolling work");
+    for (int i = 0; i < 40; ++i) scrolling.AddSample(i % 4 * 10000, (i + 2) % 5 * 10000);
+    Require(scrolling.HasScrollingTrend(), "changing history keeps chart animation active");
+    const auto scrollFrame = [&](float progress) {
+        Require(scrolling.Render(L"12.3 K/s", L"45.6 K/s", 384, 0.3, 0, 1, nullptr, 1, progress), "scroll frame");
+        return scrolling.Pixels();
+    };
+    const auto startScroll = scrollFrame(0);
+    const auto middleScroll = scrollFrame(0.5f);
+    const auto endScroll = scrollFrame(1);
+    Require(startScroll != middleScroll && middleScroll != endScroll, "curve moves between rate samples");
+    Require(scrollFrame(1) == endScroll, "animation does not add samples or change final history");
+    for (int y = 0; y < scrolling.PixelSize().cy; ++y)
+        for (int x = 0; x < scrolling.PixelSize().cx; ++x)
+            if (startScroll[y * scrolling.PixelSize().cx + x] != endScroll[y * scrolling.PixelSize().cx + x])
+                Require(x >= 208 && x <= 472 && y >= 24 && y <= 192, "scroll remains clipped to chart regions");
+    Require(!scrolling.Render(L"12.3 K/s", L"45.6 K/s", 384, 0.3, 0, 1, nullptr, 1, -1), "invalid scroll progress rejected");
+    if (argc > 1)
+    {
+        const std::filesystem::path dir(argv[1]);
+        std::filesystem::create_directories(dir);
+        for (int sample = 0; sample < 4; ++sample)
+        {
+            scrolling.AddSample((sample + 1) % 4 * 10000, (sample + 3) % 5 * 10000);
+            for (int frame = 0; frame < 30; ++frame)
+            {
+                Require(scrolling.Render(L"12.3 K/s", L"45.6 K/s", 144, 0.3, 0, 1, nullptr, 1, frame / 30.0f), "scroll animation evidence");
+                SaveBitmap(scrolling, dir / ("scroll-" + std::to_string(sample * 30 + frame) + ".bmp"), 0x202020);
+            }
+        }
+    }
+    scrolling.ResetHistory();
+    scrolling.AddSample(0, 0);
+    scrolling.AddSample(0, 0);
+    Require(!scrolling.HasScrollingTrend(), "settled idle history stops chart animation");
     Require(FloatingRateRenderer::SizeForDpi(96).cx == 220 && FloatingRateRenderer::SizeForDpi(96).cy == 54,
         "original ring and readable LED cells widen the window without changing height");
     FloatingRateRenderer renderer;
@@ -118,9 +154,9 @@ int main(int argc, char** argv)
         Require(saturated == renderer.Pixels(), "overflow saturates full numeric field");
     }
     renderer.ResetHistory(); renderer.AddSample(1000,0);
-    for(int i=0;i<31;++i) renderer.AddSample(0,0);
+    for(int i=0;i<15;++i) renderer.AddSample(0,0);
     render();
-    Require(colored(35,15,true), "oldest real sample reaches left edge at 32 samples");
+    Require(colored(35,15,true), "oldest real sample reaches left edge at 16 samples");
     renderer.AddSample(0,0); render();
     Require(!colored(35,15,true), "oldest sample exits on next measurement");
     renderer.ResetHistory();

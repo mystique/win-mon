@@ -137,6 +137,8 @@ void FloatingRateDisplay::SetRates(
     uploadText_ = uploadText;
     downloadText_ = downloadText;
     floatingRenderer_.AddSample(uploadBytesPerSecond, downloadBytesPerSecond);
+    chartSampleTick_ = GetTickCount64();
+    chartScrollProgress_ = 0;
     UpdatePulseTimer();
     if (GetSafeHwnd() != nullptr)
     {
@@ -279,7 +281,7 @@ bool FloatingRateDisplay::Render() noexcept
         if (!::SetWindowPos(GetSafeHwnd(), nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)) return false;
     }
     const bool rendered = floatingRenderer_.Render(uploadText_, downloadText_, GetDpiForWindow(GetSafeHwnd()),
-            pulseTimerActive_ ? pulsePhase_ : 0.5, waterLevel_, textTransition_.progress, &readoutTransition_, chartTransition_.progress) &&
+            pulseTimerActive_ ? pulsePhase_ : 0.5, waterLevel_, textTransition_.progress, &readoutTransition_, chartTransition_.progress, chartScrollProgress_) &&
         floatingRenderer_.Present(GetSafeHwnd(), floatingShadow_.GetSafeHwnd(), static_cast<BYTE>(MulDiv(opacity_,255,100)));
     if (rendered && positionDirty_ && textTransition_.duration <= 0 && chartTransition_.duration <= 0)
     {
@@ -415,16 +417,18 @@ void FloatingRateDisplay::UpdatePulseTimer() noexcept
     const double activity = floatingRenderer_.Activity();
     const float targetLevel = activity > 0 ? 0.15f + 0.65f * static_cast<float>(activity) : 0;
     if (!IsWindowVisible() || !textTransition_.visible) readoutTransition_.progress = 1;
+    if (!IsWindowVisible() || !chartTransition_.visible || !floatingRenderer_.HasScrollingTrend()) chartScrollProgress_ = 1;
     if (!animations)
     {
         readoutTransition_.progress = 1;
+        chartScrollProgress_ = 1;
         waterLevel_ = targetLevel;
         textTransition_.Finish();
         chartTransition_.Finish();
     }
     // Sampling continues elsewhere; this timer runs only while visible animation has work.
     const bool animate = IsWindowVisible() && animations &&
-        (targetLevel > 0 || waterLevel_ != targetLevel || textTransition_.duration > 0 || chartTransition_.duration > 0 || readoutTransition_.progress < 1);
+        (targetLevel > 0 || waterLevel_ != targetLevel || textTransition_.duration > 0 || chartTransition_.duration > 0 || readoutTransition_.progress < 1 || chartScrollProgress_ < 1);
     if (animate && !pulseTimerActive_)
     {
         pulseTick_ = GetTickCount64();
@@ -432,6 +436,7 @@ void FloatingRateDisplay::UpdatePulseTimer() noexcept
         if (!pulseTimerActive_)
         {
             readoutTransition_.progress = 1;
+            chartScrollProgress_ = 1;
             waterLevel_ = targetLevel;
             textTransition_.Finish();
             chartTransition_.Finish();
@@ -455,6 +460,7 @@ void FloatingRateDisplay::OnTimer(UINT_PTR timer)
             return;
         }
         const ULONGLONG now = GetTickCount64();
+        chartScrollProgress_ = std::min(1.0f, static_cast<float>(now - chartSampleTick_) / 1000.0f);
         textTransition_.Advance(now);
         chartTransition_.Advance(now);
         readoutTransition_.progress = std::min(1.0f, static_cast<float>(now - readoutTick_) / 180.0f);
@@ -487,6 +493,7 @@ void FloatingRateDisplay::OnShowWindow(BOOL show, UINT status)
         if (pulseTimerActive_) KillTimer(1);
         pulseTimerActive_ = false;
         readoutTransition_.progress = 1;
+        chartScrollProgress_ = 1;
         textTransition_.Finish();
         chartTransition_.Finish();
         if (floatingShadow_.GetSafeHwnd()) floatingShadow_.ShowWindow(SW_HIDE);

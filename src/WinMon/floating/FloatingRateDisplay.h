@@ -20,7 +20,7 @@ public:
     void SetVisibilityChangeHandler(std::function<bool(bool, bool)> handler) { visibilityChangeHandler_ = std::move(handler); }
     [[nodiscard]] bool SetOpacity(int percent) noexcept;
     int GetOpacity() const noexcept { return opacity_; }
-    void ResetHistory() noexcept { floatingRenderer_.ResetHistory(); waterLevel_ = 0; pulsePhase_ = 0; UpdatePulseTimer(); }
+    void ResetHistory() noexcept { floatingRenderer_.ResetHistory(); waterLevel_ = 0; pulsePhase_ = 0; chartScrollProgress_ = 1; UpdatePulseTimer(); }
     void SetRates(const std::wstring& uploadText, const std::wstring& downloadText,
         double uploadBytesPerSecond, double downloadBytesPerSecond) noexcept;
     void SetContextMenuOwner(HWND owner, UINT notificationMessage) noexcept;
@@ -72,6 +72,8 @@ private:
     UINT positionChangedMessage_ = 0;
     LedReadoutTransition readoutTransition_;
     ULONGLONG readoutTick_ = 0;
+    ULONGLONG chartSampleTick_ = 0;
+    float chartScrollProgress_ = 1;
     VisibilityTransition textTransition_;
     int opacity_ = 100;
     VisibilityTransition chartTransition_;
