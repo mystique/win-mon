@@ -2,6 +2,7 @@
 // Copyright (c) 2026 mk2.app
 
 #pragma once
+#include <initializer_list>
 #include <windows.h>
 #include <UIAutomation.h>
 #include <atlbase.h>

@@ -3,6 +3,7 @@
 
 #include "taskbar/RateStrip.h"
 #include "platform/Theme.h"
+#include "taskbar/LedRateStrip.h"
 
 #include <algorithm>
 #include <array>
@@ -61,27 +62,6 @@ bool RateStrip::SetSpeedTextOnLeft(bool left) noexcept
     }
     ShowWindow(SW_HIDE);
     return Relayout(taskbar, FindNotificationArea(taskbar)) && Render();
-}
-
-std::wstring RateStrip::GetRateFontName() const
-{
-    RateFontSelection selection;
-    return GetRateFont(selection) ? selection.logFont.lfFaceName : L"";
-}
-
-bool RateStrip::GetRateFont(RateFontSelection& selection) const noexcept
-{
-    return rateFont_.Get(taskbar_ != nullptr && IsWindow(taskbar_) ? taskbar_ : nullptr, selection);
-}
-
-bool RateStrip::UpdateRateFont(std::optional<RateFontSelection> selection) noexcept
-{
-    return rateFont_.Apply(selection, [this] {
-        if (GetSafeHwnd() == nullptr) return true;
-        const HWND taskbar = FindPrimaryBottomTaskbar();
-        const HWND area = taskbar == nullptr ? nullptr : FindNotificationArea(taskbar);
-        return taskbar != nullptr && taskbar_ == taskbar && Relayout(taskbar, area) && Render();
-    });
 }
 
 void RateStrip::SetContextMenuOwner(HWND owner, UINT notificationMessage) noexcept
@@ -150,16 +130,11 @@ bool RateStrip::Embed(bool shouldShow)
         }
     }
 
-    if (!CreateRateFont(taskbar))
-    {
-        return false;
-    }
 
     naturalSize_ = MeasureSize(taskbar);
     size_ = naturalSize_;
     if (size_.cx <= 0 || size_.cy <= 0)
     {
-        font_.DeleteObject();
         return false;
     }
 
@@ -174,7 +149,6 @@ bool RateStrip::Embed(bool shouldShow)
             nullptr,
             0))
     {
-        font_.DeleteObject();
         return false;
     }
 
@@ -226,7 +200,6 @@ bool RateStrip::Refresh()
         return true;
     }
 
-    ShowWindow(SW_HIDE);
     if (!PlaceOnTaskbar(taskbar, notificationArea))
     {
         Shutdown();
@@ -245,14 +218,6 @@ bool RateStrip::Refresh()
 
 bool RateStrip::Relayout(HWND taskbar, HWND notificationArea) noexcept
 {
-    if (font_.GetSafeHandle() != nullptr)
-    {
-        font_.DeleteObject();
-    }
-    if (!CreateRateFont(taskbar))
-    {
-        return false;
-    }
     naturalSize_ = MeasureSize(taskbar);
     size_ = naturalSize_;
     if (size_.cx <= 0 || size_.cy <= 0)
@@ -269,10 +234,6 @@ void RateStrip::Shutdown() noexcept
         DestroyWindow();
     }
 
-    if (font_.GetSafeHandle() != nullptr)
-    {
-        font_.DeleteObject();
-    }
 
     taskbar_ = nullptr;
     size_ = {};
@@ -314,54 +275,11 @@ HWND RateStrip::FindNotificationArea(HWND taskbar) noexcept
     return search.notificationArea;
 }
 
-bool RateStrip::CreateRateFont(HWND taskbar) noexcept
-{
-    RateFontSelection selection;
-    if (!rateFont_.Get(taskbar, selection))
-    {
-        return false;
-    }
-
-    const UINT dpi = taskbar == nullptr ? GetDpiForSystem() : GetDpiForWindow(taskbar);
-    const int pointSizeTenths = taskbar == nullptr
-        ? std::clamp(selection.pointSizeTenths, 80, 90)
-        : selection.pointSizeTenths;
-    selection.logFont.lfHeight = -MulDiv(pointSizeTenths, static_cast<int>(dpi), 720);
-    return font_.CreateFontIndirectW(&selection.logFont) != FALSE;
-}
-
 CSize RateStrip::MeasureSize(HWND taskbar)
 {
-    const HDC deviceContext = ::GetDC(taskbar);
-    if (deviceContext == nullptr)
-    {
-        return {};
-    }
-
-    if (font_.GetSafeHandle() == nullptr)
-    {
-        ::ReleaseDC(taskbar, deviceContext);
-        return {};
-    }
-
-    const HGDIOBJ previousFont = SelectObject(deviceContext, font_.GetSafeHandle());
-    if (previousFont == nullptr)
-    {
-        ::ReleaseDC(taskbar, deviceContext);
-        return {};
-    }
-
-    const bool measured = layout_.Measure(deviceContext, GetDpiForWindow(taskbar));
-
-    SelectObject(deviceContext, previousFont);
-    ::ReleaseDC(taskbar, deviceContext);
-
-    if (!measured)
-    {
-        return {};
-    }
-
-    return {layout_.width, layout_.height};
+    const UINT dpi = GetDpiForWindow(taskbar);
+    const SIZE size = ledStrip::Size(dpi);
+    return {size.cx, size.cy};
 }
 
 bool RateStrip::PlaceOnTaskbar(HWND taskbar, HWND notificationArea) noexcept
@@ -398,9 +316,6 @@ bool RateStrip::PlaceOnTaskbar(HWND taskbar, HWND notificationArea) noexcept
         return true;
     }
 
-    textColor_ = theme::ReadMode() == theme::Mode::Light
-        ? RGB(24, 24, 24)
-        : RGB(255, 255, 255);
     visible_ = ::SetWindowPos(
                GetSafeHwnd(),
                HWND_TOP,
@@ -415,7 +330,7 @@ bool RateStrip::PlaceOnTaskbar(HWND taskbar, HWND notificationArea) noexcept
 
 bool RateStrip::Render() noexcept
 {
-    if (GetSafeHwnd() == nullptr || size_.cx <= 0 || size_.cy <= 0 || font_.GetSafeHandle() == nullptr)
+    if (GetSafeHwnd() == nullptr || size_.cx <= 0 || size_.cy <= 0)
     {
         return false;
     }
@@ -451,52 +366,19 @@ bool RateStrip::Render() noexcept
     }
 
     const HGDIOBJ previousBitmap = ::SelectObject(memoryDc, bitmap);
-    const HGDIOBJ previousFont = ::SelectObject(memoryDc, font_.GetSafeHandle());
     auto* const pixels = static_cast<DWORD*>(bitmapBits);
     const size_t pixelCount = static_cast<size_t>(size_.cx) * static_cast<size_t>(size_.cy);
     std::fill_n(pixels, pixelCount, 0u);
-    ::PatBlt(memoryDc, 0, 0, size_.cx, size_.cy, BLACKNESS);
-    {
-        ::SetBkMode(memoryDc, TRANSPARENT);
-        ::SetTextColor(memoryDc, RGB(255, 255, 255));
-        const int midpoint = size_.cy / 2;
-        const bool drawn = layout_.Draw(memoryDc, uploadText_, L"\u2191", layout_.Columns(speedTextOnLeft_, 0, midpoint)) &&
-            layout_.Draw(memoryDc, downloadText_, L"\u2193", layout_.Columns(speedTextOnLeft_, midpoint, size_.cy));
-        if (!drawn)
-        {
-            ::SelectObject(memoryDc, previousFont);
-            ::SelectObject(memoryDc, previousBitmap);
-            ::DeleteObject(bitmap);
-            ::DeleteDC(memoryDc);
-            ::ReleaseDC(nullptr, screenDc);
-            return false;
-        }
-    }
-
-    const DWORD red = GetRValue(textColor_);
-    const DWORD green = GetGValue(textColor_);
-    const DWORD blue = GetBValue(textColor_);
-    {
-        // A layered window passes mouse input through fully transparent pixels, so
-        // an interactive strip needs a floor that is hit-testable yet unnoticeable.
-        const DWORD minimumAlpha = contextMenuEnabled_ ? 1u : 0u;
+    bool rendered = ledStrip::Render(memoryDc, {size_.cx, size_.cy}, uploadText_, downloadText_,
+        speedTextOnLeft_, theme::ReadMode() == theme::Mode::Light);
+    if (rendered && contextMenuEnabled_)
         for (size_t index = 0; index < pixelCount; ++index)
-        {
-            const DWORD mask = pixels[index];
-            const DWORD alpha = std::max<DWORD>(
-                minimumAlpha, std::max(GetRValue(mask), std::max(GetGValue(mask), GetBValue(mask))));
-            pixels[index] =
-                (alpha << 24) |
-                ((red * alpha / 255) << 16) |
-                ((green * alpha / 255) << 8) |
-                (blue * alpha / 255);
-        }
-    }
+            if (!(pixels[index] >> 24)) pixels[index] = 0x01000000;
 
     POINT source{};
     SIZE windowSize{ size_.cx, size_.cy };
     BLENDFUNCTION blend{ AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
-    const bool rendered = ::UpdateLayeredWindow(
+    rendered = rendered && ::UpdateLayeredWindow(
                               GetSafeHwnd(),
                               screenDc,
                               nullptr,
@@ -507,7 +389,6 @@ bool RateStrip::Render() noexcept
                               &blend,
                               ULW_ALPHA) != FALSE;
 
-    ::SelectObject(memoryDc, previousFont);
     ::SelectObject(memoryDc, previousBitmap);
     ::DeleteObject(bitmap);
     ::DeleteDC(memoryDc);

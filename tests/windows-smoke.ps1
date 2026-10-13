@@ -119,7 +119,6 @@ public static class WinMonNative {
 
 $productKey = "HKCU:\Software\Win Mon"
 $rightClickName = "RightClickSpeedText"
-$fontName = "RateFont"
 $positionName = "SpeedTextPosition"
 $missing = [guid]::NewGuid().ToString()
 function Save-RegistryValue([string]$name) {
@@ -169,16 +168,13 @@ function Assert-Centered([IntPtr]$strip) {
 }
 
 $rightClickBefore = Save-RegistryValue $rightClickName
-$fontBefore = Save-RegistryValue $fontName
 $positionBefore = Save-RegistryValue $positionName
 $rightClickKind = Registry-Kind $rightClickName
-$fontKind = Registry-Kind $fontName
 $positionKind = Registry-Kind $positionName
 $process = $null
 try {
     New-Item -Path $productKey -Force | Out-Null
     New-ItemProperty -Path $productKey -Name $rightClickName -Value 1 -PropertyType DWord -Force | Out-Null
-    New-ItemProperty -Path $productKey -Name $fontName -Value ([byte[]](0xFF)) -PropertyType Binary -Force | Out-Null
     Remove-ItemProperty -Path $productKey -Name $positionName -ErrorAction SilentlyContinue
 
     $process = Start-Process -FilePath $executable -PassThru -WindowStyle Hidden
@@ -221,7 +217,7 @@ try {
         $children = [WinMonNative]::FindTaskbarChildren([uint32]$process.Id)
         if ($children.Count -eq 1) { return ,$children }
         return $null
-    } "Corrupt Rate Font did not fall back to a usable Rate Strip"
+    } "Persisted settings did not restore a usable Rate Strip"
     if ($RequireLeft) {
         Wait-Until { [WinMonNative]::IsWindowVisible($restartedStrips[0]) } 'Persisted Left disappeared after restart' | Out-Null
     }
@@ -295,6 +291,5 @@ finally {
         $process.WaitForExit(5000) | Out-Null
     }
     Restore-RegistryValue $rightClickName $rightClickBefore $rightClickKind
-    Restore-RegistryValue $fontName $fontBefore $fontKind
     Restore-RegistryValue $positionName $positionBefore $positionKind
 }

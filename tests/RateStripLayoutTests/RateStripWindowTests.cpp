@@ -160,7 +160,14 @@ int main(int argc, char** argv)
             CRect(0, 0, 200, 60), nullptr, 0), "unknown surface");
         Require(!TaskbarSpaceProbe{}.IsFree(unknown.GetSafeHwnd(), {0, 0, 100, 40}), "unknown shell cannot prove free space");
         Require(strip.SetSpeedTextOnLeft(false) && strip.IsDisplayVisible(), "switch back to Right");
-        if (!evidence.empty()) Capture(strip.GetSafeHwnd(), evidence / "right.bmp");
+        strip.SetRates(L"123.4 K/s", L"56.7 M/s");
+        if (!evidence.empty())
+        {
+            Capture(strip.GetSafeHwnd(), evidence / "right.bmp");
+            Capture(taskbar, evidence / "taskbar.bmp");
+            strip.SetRates(L"1.8 K/s", L"1.8 K/s");
+            Capture(strip.GetSafeHwnd(), evidence / "quiet.bmp");
+        }
         Require(!strip.IsSpeedTextOnLeft(), "Right selection retained");
         SpeedTextPositionSettingChange change{strip, true, PersistPosition};
         Require(winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RolledBack &&
@@ -179,12 +186,6 @@ int main(int argc, char** argv)
         strip.Shutdown();
         Require(strip.Embed(true) && strip.IsSpeedTextOnLeft(), "Left survives surface recreation");
         if (initiallyVisible) CheckPlacementAndInput(strip, taskbar, receiver);
-        RateFontSelection font;
-        Require(strip.GetRateFont(font), "active font");
-        wcscpy_s(font.logFont.lfFaceName, L"Arial");
-        font.pointSizeTenths = 120;
-        font.logFont.lfItalic = TRUE;
-        Require(strip.SetRateFont(font) && strip.Refresh(), "font changes rebuild selected layout");
         strip.Shutdown();
         std::cout << "RateStripWindowTests passed; visible Left verified=" << initiallyVisible << '\n';
         return 0;

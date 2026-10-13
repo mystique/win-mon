@@ -50,13 +50,14 @@ set_target_properties(WinMon PROPERTIES
 
 include(CTest)
 if(BUILD_TESTING)
-    add_executable(RateStripLayoutTests tests/RateStripLayoutTests/RateStripLayoutTests.cpp)
-    target_include_directories(RateStripLayoutTests PRIVATE src/WinMon)
-    add_test(NAME RateStripLayoutTests COMMAND RateStripLayoutTests)
+    add_executable(LedRateStripTests tests/RateStripLayoutTests/LedRateStripTests.cpp)
+    target_include_directories(LedRateStripTests PRIVATE src/WinMon)
+    target_link_libraries(LedRateStripTests PRIVATE d2d1)
+    add_test(NAME LedRateStripTests COMMAND LedRateStripTests "${CMAKE_BINARY_DIR}/led-strip-evidence")
     add_executable(RateStripWindowTests tests/RateStripLayoutTests/RateStripWindowTests.cpp
         src/WinMon/taskbar/RateStrip.cpp src/WinMon/platform/Theme.cpp)
     target_include_directories(RateStripWindowTests PRIVATE src/WinMon)
-    target_link_libraries(RateStripWindowTests PRIVATE WinMonCore ole32 oleaut32 dwmapi)
+    target_link_libraries(RateStripWindowTests PRIVATE WinMonCore ole32 oleaut32 dwmapi d2d1)
     add_test(NAME RateStripWindowTests COMMAND RateStripWindowTests "${CMAKE_BINARY_DIR}/rate-strip-evidence")
     add_executable(SettingsTests tests/RateStripLayoutTests/SettingsTests.cpp src/WinMon/settings/OperatorSettings.cpp)
     target_include_directories(SettingsTests PRIVATE src/WinMon)
@@ -76,10 +77,6 @@ if(BUILD_TESTING)
     target_link_libraries(FloatingRateRendererTests PRIVATE d2d1 dwrite windowscodecs ole32)
     add_test(NAME FloatingRateRendererTests COMMAND FloatingRateRendererTests "${CMAKE_BINARY_DIR}/floating-evidence")
 
-    add_executable(RateFontTests tests/RateFontTests/RateFontTests.cpp)
-    target_include_directories(RateFontTests PRIVATE src/WinMon)
-    target_link_libraries(RateFontTests PRIVATE WinMonCore)
-    add_test(NAME RateFontTests COMMAND RateFontTests)
 
     add_executable(NetworkObservationTests
         tests/NetworkObservationTests/NetworkObservationTests.cpp

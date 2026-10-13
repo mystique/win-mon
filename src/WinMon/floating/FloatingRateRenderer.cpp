@@ -2,7 +2,7 @@
 // Copyright (c) 2026 mk2.app
 
 #include "floating/FloatingRateRenderer.h"
-#include "floating/PunctumGlyphs.h"
+#include "floating/LedReadout.h"
 #include <algorithm>
 #include <cmath>
 
@@ -122,28 +122,14 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
     {
         if (!std::isfinite(chartProgress) || chartProgress < 0 || chartProgress > 1) return false;
         if (dpi < 48 || dpi > 768 || !std::isfinite(textProgress) || textProgress < 0 || textProgress > 1) return false;
-        const auto cells = [](const std::wstring& text, wchar_t arrow, std::array<wchar_t, 9>& out) {
-            const auto dot = text.find(L'.');
-            if (dot == std::wstring::npos || dot == 0 || text.size() != dot + 6 ||
-                text[dot + 1] < L'0' || text[dot + 1] > L'9' || text[dot + 2] != L' ' ||
-                (text[dot + 3] != L'K' && text[dot + 3] != L'M' && text[dot + 3] != L'G') ||
-                text.substr(dot + 4) != L"/s") return false;
-            for (size_t i = 0; i < dot; ++i) if (text[i] < L'0' || text[i] > L'9') return false;
-            out = {arrow, L' ', L' ', L' ', L'.', text[dot + 1], text[dot + 3], L'/', L's'};
-            const auto first = text.find_first_not_of(L'0');
-            const size_t digits = first < dot ? dot - first : 1;
-            if (digits > 3) { out[1] = out[2] = out[3] = out[5] = L'9'; }
-            else for (size_t i = 0; i < digits; ++i) out[4 - digits + i] = text[dot - digits + i];
-            return true;
-        };
         std::array<wchar_t, 9> upCells{}, downCells{};
-        if (!cells(upload, L'\u2191', upCells) || !cells(download, L'\u2193', downCells)) return false;
+        if (!led::Cells(upload, L'\u2191', upCells) || !led::Cells(download, L'\u2193', downCells)) return false;
         auto oldUpCells = upCells, oldDownCells = downCells;
         const float lampProgress = transition ? std::clamp(transition->progress, 0.0f, 1.0f) : 1;
         if (transition)
         {
-            if (!cells(transition->upload, L'\u2191', oldUpCells)) oldUpCells = upCells;
-            if (!cells(transition->download, L'\u2193', oldDownCells)) oldDownCells = downCells;
+            if (!led::Cells(transition->upload, L'\u2191', oldUpCells)) oldUpCells = upCells;
+            if (!led::Cells(transition->download, L'\u2193', oldDownCells)) oldDownCells = downCells;
         }
         if (!factory_)
         {
@@ -381,36 +367,8 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         }
         const float textOffset = (77 - kChartLeft) * (1 - chartProgress);
         target_->PushAxisAlignedClip(D2D1::RectF(std::min(77 - textOffset - 0.4f, 20 + (right - 15 - 27) / kContentScale), 15, 20 + (right - 15 - 27) / kContentScale, 39), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-        const auto readout = [&](const auto& characters, const auto& previous, float baseline, UINT32 rgb) {
-            float x = 77 - textOffset;
-            for (size_t cell = 0; cell < characters.size(); ++cell)
-            {
-                const float pitch = cell < 6 ? 1.05f : 0.8f;
-                const bool changing = characters[cell] != previous[cell];
-                const auto* glyph = punctum::Find(changing && lampProgress < 0.5f ? previous[cell] : characters[cell]);
-                const float lamp = changing ? std::abs(2 * lampProgress - 1) : 1;
-                const bool decimal = characters[cell] == L'.';
-                const int columns = decimal ? 3 : 5;
-                for (int row = 0; row < 7; ++row)
-                    for (int column = 0; column < columns; ++column)
-                    {
-                        const bool lit = glyph && (glyph->rows[row] & (1 << (column + (decimal ? 1 : 0))));
-                        const UINT32 digitColor = rgb == 0x61e5b7 ? 0x9affd4 : 0x80e4ff;
-                        const auto dark = D2D1::ColorF(0x34424a, textProgress);
-                        auto light = D2D1::ColorF(cell == 0 ? rgb : cell < 6 ? digitColor : 0x849da9, textProgress);
-                        const float intensity = lit ? lamp : 0;
-                        light.r = dark.r + (light.r - dark.r) * intensity;
-                        light.g = dark.g + (light.g - dark.g) * intensity;
-                        light.b = dark.b + (light.b - dark.b) * intensity;
-                        brush_->SetColor(light);
-                        target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x + column * pitch, baseline - (6 - row) * pitch),
-                            pitch * 0.36f, pitch * 0.36f), brush_.Get());
-                    }
-                x += (columns - 1) * pitch + ((cell == 0 || cell == 5) ? 2 * 1.05f : 1.5f * pitch);
-            }
-        };
-        if (textProgress > 0) readout(upCells, oldUpCells, 23.8f, 0x61e5b7);
-        if (textProgress > 0) readout(downCells, oldDownCells, 36.55f, 0x32bdeb);
+        if (textProgress > 0) led::Draw(target_.Get(), brush_.Get(), upCells, oldUpCells, 77 - textOffset, 23.8f, 0x61e5b7, textProgress, lampProgress);
+        if (textProgress > 0) led::Draw(target_.Get(), brush_.Get(), downCells, oldDownCells, 77 - textOffset, 36.55f, 0x32bdeb, textProgress, lampProgress);
         target_->PopAxisAlignedClip();
         Check(target_->EndDraw());
         copyPixels(bodyPixels_);

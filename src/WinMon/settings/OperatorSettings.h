@@ -5,8 +5,6 @@
 
 #include <windows.h>
 
-struct RateFontSelection;
-
 namespace settings
 {
 int GetFloatingRateOpacity() noexcept;
@@ -35,9 +33,4 @@ bool SetFloatingRateDisplayEnabled(bool enabled) noexcept;
 
 bool SetFloatingRateDisplayPosition(POINT position) noexcept;
 
-// Reads the persisted Rate Font. Returns false when absent or invalid.
-[[nodiscard]] bool GetRateFont(RateFontSelection& selection) noexcept;
-
-// Persists the selected Rate Font face, style, and point size atomically.
-bool SetRateFont(const RateFontSelection& selection) noexcept;
 }

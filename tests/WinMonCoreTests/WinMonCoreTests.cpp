@@ -168,12 +168,12 @@ void NetworkSessionPresentsOneCanonicalObservation()
     core.Sample();
 
     Require(core.Sample().networkGeneration == 0, "initial network generation");
-    const auto opened = core.BeginOperatorMenu({true, false}, L"Cascadia Mono");
+    const auto opened = core.BeginOperatorMenu({true, false});
     Require(opened.has_value(), "first Operator Menu transaction opens");
     const auto& down = FindItem(*opened, L"Disconnected");
     Require(FindItem(*opened, L"All").checked, "all is selected on launch");
     Require(FindItemPointer(*opened, L"Internal") == nullptr, "classic classification filters menu choices");
-    Require(!core.BeginOperatorMenu({}, L"").has_value(), "nested Operator Menu is rejected");
+    Require(!core.BeginOperatorMenu({}).has_value(), "nested Operator Menu is rejected");
     Require(core.CompleteOperatorMenu(down.choiceToken).kind == OperatorActionKind::None, "network choice is completed inside transaction");
 
     Require(core.Sample().networkGeneration == 1, "NIC selection resets display history");
@@ -185,7 +185,7 @@ void NetworkSessionPresentsOneCanonicalObservation()
     observedDown.outOctets = 3000;
     core.ObserveNetwork({{observedUp, observedDown}, true, RateSampleAt(2.0)});
     RequireRate(core.Sample(), 0.0, 0.0);
-    const auto downMenu = core.BeginOperatorMenu({}, L"Consolas");
+    const auto downMenu = core.BeginOperatorMenu({});
     Require(FindItem(*downMenu, L"Disconnected").checked, "available down NIC remains selected");
     core.CancelOperatorMenu();
 
@@ -194,7 +194,7 @@ void NetworkSessionPresentsOneCanonicalObservation()
     core.ObserveNetwork({{observedUp}, true, RateSampleAt(3.0)});
     RequireRate(core.Sample(), 3000.0, 1000.0);
     Require(core.Sample().networkGeneration == 2, "automatic fallback resets display history");
-    const auto fallbackMenu = core.BeginOperatorMenu({}, L"Consolas");
+    const auto fallbackMenu = core.BeginOperatorMenu({});
     Require(FindItem(*fallbackMenu, L"All").checked, "disappearance reconciles to all before rates and menu");
     core.CancelOperatorMenu();
 }
@@ -212,7 +212,7 @@ void ClassificationFallbackPreservesAllAndSelectedNicRates()
     core.ObserveNetwork({{otherwiseHidden}, false, RateSampleAt(2.0)});
     RequireRate(core.Sample(), 2000.0, 1000.0);
 
-    const auto menu = core.BeginOperatorMenu({}, L"Segoe UI");
+    const auto menu = core.BeginOperatorMenu({});
     const auto& internal = FindItem(*menu, L"Internal");
     Require(core.CompleteOperatorMenu(internal.choiceToken).kind == OperatorActionKind::None, "network choice is applied");
 
@@ -226,14 +226,14 @@ void OperatorMenuTransactionCorrelatesEveryAction()
 {
     WinMonCore core;
     core.ObserveNetwork({{NamedNic("a", L"Alpha", L"A desc")}, true});
-    auto menu = core.BeginOperatorMenu({false, true, false}, L"Cascadia Mono");
+    auto menu = core.BeginOperatorMenu({false, true, false});
     Require(!FindItem(*menu, L"Launch at Login").checked, "Launch at Login reflects live state");
     Require(FindItem(*menu, L"Right-Click Speed Text").checked, "Right-Click Speed Text reflects live state");
     Require(!FindItem(*menu, L"Show Floating Display").checked, "Floating Rate Display reflects live state");
     Require(FindItem(*menu, L"Show Floating Speed Text").checked, "floating text defaults checked");
     Require(FindItem(*menu, L"Show Floating Chart").checked, "chart defaults checked");
     Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Chart").choiceToken).kind == OperatorActionKind::HideFloatingChart, "checked chart hides");
-    menu = core.BeginOperatorMenu({false,true,false,false,true,false}, L"Cascadia Mono");
+    menu = core.BeginOperatorMenu({false,true,false,false,true,false});
     Require(!FindItem(*menu,L"Show Floating Chart").checked, "hidden chart unchecked independently");
     const auto& opacity = FindItem(*menu,L"Floating Opacity");
     Require(opacity.children.size() == 10, "opacity has ten native submenu choices");
@@ -244,38 +244,37 @@ void OperatorMenuTransactionCorrelatesEveryAction()
         Require(level.checked == (i == 9), "opacity defaults to 100 percent");
     }
     Require(core.CompleteOperatorMenu(opacity.children[3].choiceToken).opacity == 40, "opacity action carries selected percentage");
-    menu = core.BeginOperatorMenu({false,true,false,false,true,false,40},L"Cascadia Mono");
+    menu = core.BeginOperatorMenu({false,true,false,false,true,false,40});
     const auto& selectedOpacity = FindItem(*menu,L"Floating Opacity");
     Require(selectedOpacity.children[3].checked && !selectedOpacity.children[9].checked, "opacity menu reflects current value");
     Require(core.CompleteOperatorMenu(selectedOpacity.children[0].choiceToken).kind == OperatorActionKind::SetFloatingOpacity, "opacity choice action");
-    menu = core.BeginOperatorMenu({false,true,false,false,true,false,40},L"Cascadia Mono");
+    menu = core.BeginOperatorMenu({false,true,false,false,true,false,40});
     const auto displayItem = std::find_if(menu->begin(),menu->end(),[](const auto& item){ return item.label == L"Show Floating Display"; });
     Require((displayItem+1)->label == L"Show Floating Speed Text", "text toggle follows display toggle");
-    FindItem(*menu, L"Font: Cascadia Mono");
     Require(std::count_if(menu->begin(), menu->end(), [](const OperatorMenuItem& item) {
         return item.separator;
-    }) == 3, "Operator Menu preserves network toggle font and Exit groups");
+    }) == 2, "Operator Menu preserves network toggle and Exit groups");
     const auto& autostart = FindItem(*menu, L"Launch at Login");
     Require(core.CompleteOperatorMenu(autostart.choiceToken).kind == OperatorActionKind::EnableLaunchAtLogin, "autostart choice meaning");
 
-    menu = core.BeginOperatorMenu({true, true, true}, L"Cascadia Mono");
+    menu = core.BeginOperatorMenu({true, true, true});
     const auto& rightClick = FindItem(*menu, L"Right-Click Speed Text");
     Require(core.CompleteOperatorMenu(rightClick.choiceToken).kind == OperatorActionKind::DisableRightClickSpeedText, "right-click choice meaning");
 
-    menu = core.BeginOperatorMenu({false, false, true}, L"Cascadia Mono");
+    menu = core.BeginOperatorMenu({false, false, true});
     const auto& floatingDisplay = FindItem(*menu, L"Show Floating Display");
     Require(core.CompleteOperatorMenu(floatingDisplay.choiceToken).kind == OperatorActionKind::DisableFloatingRateDisplay, "floating display choice meaning");
 
-    menu = core.BeginOperatorMenu({}, L"Cascadia Mono");
+    menu = core.BeginOperatorMenu({});
     Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Speed Text").choiceToken).kind == OperatorActionKind::HideFloatingSpeedText, "checked text action hides");
-    menu = core.BeginOperatorMenu({false,false,false,false,false}, L"Cascadia Mono");
+    menu = core.BeginOperatorMenu({false,false,false,false,false});
     Require(!FindItem(*menu,L"Show Floating Speed Text").checked, "hidden text unchecked even when whole display closed");
     Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Speed Text").choiceToken).kind == OperatorActionKind::ShowFloatingSpeedText, "unchecked text action shows");
-    menu = core.BeginOperatorMenu({},L"Cascadia Mono");
-    const auto& setFont = FindItem(*menu, L"Set Font...");
-    Require(core.CompleteOperatorMenu(setFont.choiceToken).kind == OperatorActionKind::SetRateFont, "font choice meaning");
+    menu = core.BeginOperatorMenu({});
+    Require(std::none_of(menu->begin(), menu->end(), [](const auto& item) { return item.label == L"Set Font..." || item.label.starts_with(L"Font:"); }), "fixed LED font has no chooser");
+    core.CompleteOperatorMenu(0);
 
-    menu = core.BeginOperatorMenu({}, L"Cascadia Mono");
+    menu = core.BeginOperatorMenu({});
     const auto& exit = FindItem(*menu, L"Exit");
     Require(core.CompleteOperatorMenu(exit.choiceToken).kind == OperatorActionKind::Exit, "exit choice meaning");
 }
@@ -299,20 +298,20 @@ public:
     bool ApplyLive() override
     {
         ++applyCalls;
-        firstDisplayFont = 2;
-        if (applyResult) secondDisplayFont = 2;
+        firstDisplaySetting = 2;
+        if (applyResult) secondDisplaySetting = 2;
         return applyResult;
     }
     bool Persist() override
     {
         ++persistCalls;
-        if (persistResult) savedFont = 2;
+        if (persistResult) savedSetting = 2;
         return persistResult;
     }
     bool RollbackLive() override
     {
         ++rollbackCalls;
-        if (rollbackResult) firstDisplayFont = secondDisplayFont = 1;
+        if (rollbackResult) firstDisplaySetting = secondDisplaySetting = 1;
         return rollbackResult;
     }
 
@@ -322,7 +321,7 @@ public:
     int applyCalls = 0;
     int persistCalls = 0;
     int rollbackCalls = 0;
-    int firstDisplayFont = 1, secondDisplayFont = 1, savedFont = 1;
+    int firstDisplaySetting = 1, secondDisplaySetting = 1, savedSetting = 1;
 };
 
 void OperatorSettingTransactionPreservesPreviousChoice()
@@ -332,7 +331,7 @@ void OperatorSettingTransactionPreservesPreviousChoice()
     Require(
         OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::LiveApplicationFailed,
         "live failure rejects setting before persistence");
-    Require(change.firstDisplayFont == 1 && change.secondDisplayFont == 1 && change.savedFont == 1,
+    Require(change.firstDisplaySetting == 1 && change.secondDisplaySetting == 1 && change.savedSetting == 1,
         "partial live failure restores both displays and leaves storage untouched");
 
     change = {};
@@ -347,7 +346,7 @@ void OperatorSettingTransactionPreservesPreviousChoice()
         OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::RolledBack,
         "storage failure restores previous live setting");
     Require(change.applyCalls == 1 && change.persistCalls == 1 && change.rollbackCalls == 1, "rollback transaction order");
-    Require(change.firstDisplayFont == 1 && change.secondDisplayFont == 1 && change.savedFont == 1,
+    Require(change.firstDisplaySetting == 1 && change.secondDisplaySetting == 1 && change.savedSetting == 1,
         "storage failure restores both displays");
 
     change = {};
@@ -362,7 +361,7 @@ void OperatorSettingTransactionPreservesPreviousChoice()
         OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::Applied,
         "successful change applies and persists exactly once");
     Require(change.rollbackCalls == 0, "successful change needs no rollback");
-    Require(change.firstDisplayFont == 2 && change.secondDisplayFont == 2 && change.savedFont == 2,
+    Require(change.firstDisplaySetting == 2 && change.secondDisplaySetting == 2 && change.savedSetting == 2,
         "successful change updates both displays and storage");
 }
 

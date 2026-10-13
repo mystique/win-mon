@@ -137,10 +137,7 @@
     <ClInclude Include="platform\Theme.h" />
     <ClInclude Include="settings\FloatingRateChartSettingChange.h" />
     <ClInclude Include="settings\FloatingRateTextSettingChange.h" />
-    <ClInclude Include="settings\RateFontSettingChange.h" />
     <ClInclude Include="settings\SpeedTextPositionSettingChange.h" />
-    <ClInclude Include="taskbar\RateFont.h" />
-    <ClInclude Include="taskbar\RateStripLayout.h" />
     <ClInclude Include="taskbar\TaskbarSpaceProbe.h" />
   </ItemGroup>
   <ItemGroup>

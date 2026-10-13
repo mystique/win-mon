@@ -31,13 +31,11 @@ private:
     void CancelRecovery() noexcept override;
     [[nodiscard]] HICON LoadTrayIcon() const noexcept;
     void UpdateTrayIconTheme() noexcept;
-    void LoadSavedRateFont();
     void SaveFloatingRateDisplayPosition();
 
     [[nodiscard]] winmon::OperatorAction ShowOperatorMenu();
     void HandleOperatorMenuAction(winmon::OperatorAction action);
     void RequestExit();
-    void ChooseRateFont();
     void SampleRates();
     afx_msg LRESULT OnTrayNotification(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnRightClickSpeedText(WPARAM wParam, LPARAM lParam);
@@ -60,5 +58,4 @@ private:
     bool trayIconAdded_ = false;
     bool shellRecoveryTimerActive_ = false;
     bool shuttingDown_ = false;
-    bool rateFontRecoveryPending_ = false;
 };

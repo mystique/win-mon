@@ -107,8 +107,7 @@ RateDisplay WinMonCore::Sample()
 }
 
 std::optional<std::vector<OperatorMenuItem>> WinMonCore::BeginOperatorMenu(
-    const OperatorMenuToggles& toggles,
-    const std::wstring& rateFontName)
+    const OperatorMenuToggles& toggles)
 {
     if (menuOpen_) return std::nullopt;
     menuOpen_ = true;
@@ -119,7 +118,7 @@ std::optional<std::vector<OperatorMenuItem>> WinMonCore::BeginOperatorMenu(
     {
         for (auto& snapshot : menuSnapshots) snapshot.visibleInClassicConnections = true;
     }
-    return BuildOperatorMenu(menuSnapshots, toggles, rateFontName);
+    return BuildOperatorMenu(menuSnapshots, toggles);
 }
 
 OperatorAction WinMonCore::CompleteOperatorMenu(std::uint32_t choiceToken) noexcept
@@ -206,8 +205,7 @@ std::wstring WinMonCore::DisplayName(const NicSnapshot& snapshot)
 
 std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
     const std::vector<NicSnapshot>& snapshots,
-    const OperatorMenuToggles& toggles,
-    const std::wstring& rateFontName)
+    const OperatorMenuToggles& toggles)
 {
     ReconcileSelection(snapshots);
     std::vector<OperatorMenuItem> menu;
@@ -294,12 +292,6 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
     menu.push_back(std::move(opacity));
     menu.push_back({.separator = true});
 
-    menu.push_back({L"Font: " + rateFontName, 0, false, false, false});
-    OperatorMenuItem setFont;
-    setFont.label = L"Set Font...";
-    AddChoice(setFont, {{OperatorActionKind::SetRateFont}});
-    menu.push_back(std::move(setFont));
-    menu.push_back({.separator = true});
 
     OperatorMenuItem exit;
     exit.label = L"Exit";

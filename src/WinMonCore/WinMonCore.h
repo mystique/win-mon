@@ -65,7 +65,6 @@ enum class OperatorActionKind
     ShowFloatingSpeedText,
     HideFloatingSpeedText,
     SetFloatingOpacity,
-    SetRateFont,
     SetSpeedTextLeft,
     SetSpeedTextRight,
     Exit,
@@ -158,8 +157,7 @@ public:
     void ObserveNetwork(NetworkObservation observation);
     RateDisplay Sample();
     std::optional<std::vector<OperatorMenuItem>> BeginOperatorMenu(
-        const OperatorMenuToggles& toggles = {},
-        const std::wstring& rateFontName = L"");
+        const OperatorMenuToggles& toggles = {});
     OperatorAction CompleteOperatorMenu(std::uint32_t choiceToken) noexcept;
     void CancelOperatorMenu() noexcept;
     static std::wstring FormatRate(double bytesPerSecond);
@@ -176,8 +174,7 @@ private:
         std::chrono::steady_clock::time_point sampledAt);
     std::vector<OperatorMenuItem> BuildOperatorMenu(
         const std::vector<NicSnapshot>& snapshots,
-        const OperatorMenuToggles& toggles,
-        const std::wstring& rateFontName);
+        const OperatorMenuToggles& toggles);
     void SelectAll() noexcept;
     void SelectNic(const std::string& stableId) noexcept;
     static std::wstring DisplayName(const NicSnapshot& snapshot);

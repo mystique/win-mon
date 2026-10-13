@@ -4,7 +4,6 @@
 #include "app/TrayMessageWindow.h"
 #include "platform/LaunchAtLogin.h"
 #include "settings/OperatorSettings.h"
-#include "settings/RateFontSettingChange.h"
 #include "settings/FloatingRateTextSettingChange.h"
 #include "settings/FloatingRateChartSettingChange.h"
 #include "settings/SpeedTextPositionSettingChange.h"
@@ -12,7 +11,6 @@
 
 #include "res/resource.h"
 
-#include <afxdlgs.h>
 #include <shellapi.h>
 #include <vector>
 #include <string>
@@ -232,16 +230,19 @@ void TrayMessageWindow::OnDisplayChange(UINT, int, int)
     shellLifecycle_.OnEnvironmentChanged();
 }
 
-void TrayMessageWindow::OnSettingChange(UINT, LPCTSTR)
+void TrayMessageWindow::OnSettingChange(UINT, LPCTSTR section)
 {
     UpdateTrayIconTheme();
-    shellLifecycle_.OnEnvironmentChanged();
+    if (section && wcscmp(section, L"ImmersiveColorSet") == 0)
+        shellLifecycle_.OnRateSample();
+    else
+        shellLifecycle_.OnEnvironmentChanged();
 }
 
 LRESULT TrayMessageWindow::OnThemeChanged()
 {
     UpdateTrayIconTheme();
-    shellLifecycle_.OnEnvironmentChanged();
+    shellLifecycle_.OnRateSample();
     return 0;
 }
 
@@ -268,7 +269,6 @@ void TrayMessageWindow::OnTimer(UINT_PTR timerId)
 {
     if (timerId == kRateSampleTimer)
     {
-        if (rateFontRecoveryPending_) LoadSavedRateFont();
         SampleRates();
         shellLifecycle_.OnRateSample();
     }
@@ -315,7 +315,6 @@ void TrayMessageWindow::UpdateTrayIconTheme() noexcept
 winmon::RateStripState TrayMessageWindow::RecreateRateStrip()
 {
     rateStrip_.Shutdown();
-    LoadSavedRateFont();
     if (!RateStrip::IsPrimaryBottomTaskbarAvailable())
     {
         return winmon::RateStripState::Hidden;
@@ -359,21 +358,6 @@ void TrayMessageWindow::CancelRecovery() noexcept
     if (!shellRecoveryTimerActive_) return;
     KillTimer(kShellRecoveryTimer);
     shellRecoveryTimerActive_ = false;
-}
-
-void TrayMessageWindow::LoadSavedRateFont()
-{
-    RateFontSelection savedFont;
-    bool stripApplied;
-    if (settings::GetRateFont(savedFont))
-    {
-        stripApplied = rateStrip_.SetRateFont(savedFont);
-    }
-    else
-    {
-        stripApplied = rateStrip_.ResetRateFont();
-    }
-    rateFontRecoveryPending_ = !stripApplied;
 }
 
 void TrayMessageWindow::SaveFloatingRateDisplayPosition()
@@ -438,8 +422,7 @@ winmon::OperatorAction TrayMessageWindow::ShowOperatorMenu()
     if (!GetCursorPos(&cursorPosition)) return {};
     core_.ObserveNetwork(networkReader_.Read());
     const auto model = core_.BeginOperatorMenu(
-        {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled(), settings::IsFloatingRateDisplayEnabled(), rateStrip_.IsSpeedTextOnLeft(), floatingRateDisplay_.IsTextVisible(), floatingRateDisplay_.IsChartVisible(), floatingRateDisplay_.GetOpacity()},
-        rateStrip_.GetRateFontName());
+        {autostart::IsEnabled(), rateStrip_.IsContextMenuEnabled(), settings::IsFloatingRateDisplayEnabled(), rateStrip_.IsSpeedTextOnLeft(), floatingRateDisplay_.IsTextVisible(), floatingRateDisplay_.IsChartVisible(), floatingRateDisplay_.GetOpacity()});
     if (!model.has_value()) return {};
     OperatorMenuScope transaction{core_};
 
@@ -463,41 +446,6 @@ void TrayMessageWindow::RequestExit()
 {
     Shutdown();
     PostQuitMessage(0);
-}
-
-void TrayMessageWindow::ChooseRateFont()
-{
-    RateFontSelection selection;
-    if (!rateStrip_.GetRateFont(selection))
-    {
-        return;
-    }
-    const RateFontSelection previousSelection = selection;
-
-    CFontDialog dialog(
-        &selection.logFont,
-        CF_SCREENFONTS | CF_INITTOLOGFONTSTRUCT | CF_FORCEFONTEXIST |
-            CF_NOVERTFONTS | CF_NOSCRIPTSEL | CF_LIMITSIZE,
-        nullptr,
-        this);
-    dialog.m_cf.nSizeMin = 6;
-    dialog.m_cf.nSizeMax = 12;
-    dialog.m_cf.iPointSize = selection.pointSizeTenths;
-    if (dialog.DoModal() != IDOK)
-    {
-        return;
-    }
-
-    dialog.GetCurrentFont(&selection.logFont);
-    selection.pointSizeTenths = dialog.GetSize();
-    RateFontSettingChange change{rateStrip_, previousSelection, selection, settings::SetRateFont};
-    if (winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RecoveryRequired)
-    {
-        // Retry the Rate Strip from persisted truth, including when the taskbar
-        // is unavailable. The sample timer continues any failed restoration.
-        rateFontRecoveryPending_ = true;
-        shellLifecycle_.OnEnvironmentChanged();
-    }
 }
 
 void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
@@ -555,9 +503,6 @@ void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
             static_cast<void>(floatingRateDisplay_.SetOpacity(previous));
         break;
     }
-    case winmon::OperatorActionKind::SetRateFont:
-        ChooseRateFont();
-        break;
     case winmon::OperatorActionKind::SetSpeedTextLeft:
     case winmon::OperatorActionKind::SetSpeedTextRight:
     {

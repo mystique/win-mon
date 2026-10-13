@@ -2,11 +2,9 @@
 // Copyright (c) 2026 mk2.app
 
 #include "settings/OperatorSettings.h"
-#include "taskbar/RateFont.h"
 
 #include <windows.h>
 
-#include <cwchar>
 
 namespace
 {
@@ -14,20 +12,7 @@ constexpr wchar_t kProductKey[] = L"Software\\Win Mon";
 constexpr wchar_t kRightClickSpeedTextValue[] = L"RightClickSpeedText";
 constexpr wchar_t kFloatingRateDisplayValue[] = L"FloatingRateDisplay";
 constexpr wchar_t kFloatingRateDisplayPositionValue[] = L"FloatingRateDisplayPosition";
-constexpr wchar_t kRateFontValue[] = L"RateFont";
 constexpr wchar_t kSpeedTextPositionValue[] = L"SpeedTextPosition";
-constexpr DWORD kRateFontVersion = 1;
-constexpr int kMinimumPointSizeTenths = 60;
-constexpr int kMaximumPointSizeTenths = 120;
-
-struct PersistedRateFont final
-{
-    // Version and fixed layout let future formats reject incompatible registry data.
-    DWORD version = kRateFontVersion;
-    LOGFONTW logFont{};
-    DWORD pointSizeTenths = 90;
-};
-
 bool ReadFlag(const wchar_t* valueName, bool& enabled) noexcept
 {
     DWORD value = 0;
@@ -158,60 +143,6 @@ bool SetFloatingRateDisplayPosition(POINT position) noexcept
                REG_BINARY,
                &position,
                sizeof(position)) == ERROR_SUCCESS;
-}
-
-bool GetRateFont(RateFontSelection& selection) noexcept
-{
-    PersistedRateFont persisted;
-    DWORD size = sizeof(persisted);
-    const LSTATUS status = RegGetValueW(
-        HKEY_CURRENT_USER,
-        kProductKey,
-        kRateFontValue,
-        RRF_RT_REG_BINARY,
-        nullptr,
-        &persisted,
-        &size);
-    // Validate the full binary record before copying any user-controlled font fields.
-    if (status != ERROR_SUCCESS || size != sizeof(persisted) ||
-        persisted.version != kRateFontVersion ||
-        persisted.pointSizeTenths < kMinimumPointSizeTenths ||
-        persisted.pointSizeTenths > kMaximumPointSizeTenths)
-    {
-        return false;
-    }
-
-    if (persisted.logFont.lfFaceName[0] == L'\0' ||
-        wmemchr(persisted.logFont.lfFaceName, L'\0', LF_FACESIZE) == nullptr)
-    {
-        return false;
-    }
-
-    selection.logFont = persisted.logFont;
-    selection.pointSizeTenths = static_cast<int>(persisted.pointSizeTenths);
-    return true;
-}
-
-bool SetRateFont(const RateFontSelection& selection) noexcept
-{
-    if (selection.logFont.lfFaceName[0] == L'\0' ||
-        selection.pointSizeTenths < kMinimumPointSizeTenths ||
-        selection.pointSizeTenths > kMaximumPointSizeTenths)
-    {
-        return false;
-    }
-
-    PersistedRateFont persisted;
-    persisted.logFont = selection.logFont;
-    persisted.logFont.lfFaceName[LF_FACESIZE - 1] = L'\0';
-    persisted.pointSizeTenths = static_cast<DWORD>(selection.pointSizeTenths);
-    return RegSetKeyValueW(
-        HKEY_CURRENT_USER,
-        kProductKey,
-        kRateFontValue,
-        REG_BINARY,
-        &persisted,
-        sizeof(persisted)) == ERROR_SUCCESS;
 }
 
 }
