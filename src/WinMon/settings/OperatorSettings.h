@@ -7,30 +7,30 @@
 
 namespace settings
 {
-int GetFloatingRateOpacity() noexcept;
-bool SetFloatingRateOpacity(int percent) noexcept;
-[[nodiscard]] bool IsFloatingRateChartVisible() noexcept;
-bool SetFloatingRateChartVisible(bool visible) noexcept;
-[[nodiscard]] bool IsFloatingRateTextVisible() noexcept;
-bool SetFloatingRateTextVisible(bool visible) noexcept;
-[[nodiscard]] bool IsSpeedTextOnLeft() noexcept;
-bool SetSpeedTextOnLeft(bool left) noexcept;
+int GetFloatingDisplayOpacity() noexcept;
+bool SetFloatingDisplayOpacity(int percent) noexcept;
+[[nodiscard]] bool AreFloatingChartsVisible() noexcept;
+bool SetFloatingChartsVisible(bool visible) noexcept;
+[[nodiscard]] bool IsFloatingTextVisible() noexcept;
+bool SetFloatingTextVisible(bool visible) noexcept;
+[[nodiscard]] bool IsTaskbarDisplayOnLeft() noexcept;
+bool SetTaskbarDisplayOnLeft(bool left) noexcept;
 // Returns true if the Rate Strip is allowed to answer right-click with the
 // Operator Menu. Defaults to false when the value is absent or unreadable.
-[[nodiscard]] bool IsRightClickSpeedTextEnabled() noexcept;
+[[nodiscard]] bool IsTaskbarContextMenuEnabled() noexcept;
 
-// Persists the Right-Click Speed Text setting under the product key.
+// Persists the Enable Taskbar Context Menu setting under the product key.
 // Returns true on success.
-bool SetRightClickSpeedTextEnabled(bool enabled) noexcept;
+bool SetTaskbarContextMenuEnabled(bool enabled) noexcept;
 
 // Returns true when the Floating Rate Display should be shown at launch.
-[[nodiscard]] bool IsFloatingRateDisplayEnabled() noexcept;
+[[nodiscard]] bool IsFloatingDisplayEnabled() noexcept;
 
-bool SetFloatingRateDisplayEnabled(bool enabled) noexcept;
+bool SetFloatingDisplayEnabled(bool enabled) noexcept;
 
 // Returns false when the saved desktop position is absent or unreadable.
-[[nodiscard]] bool GetFloatingRateDisplayPosition(POINT& position) noexcept;
+[[nodiscard]] bool GetFloatingDisplayPosition(POINT& position) noexcept;
 
-bool SetFloatingRateDisplayPosition(POINT position) noexcept;
+bool SetFloatingDisplayPosition(POINT position) noexcept;
 
 }

@@ -1,7 +1,7 @@
 #include <afxwin.h>
 #include "taskbar/RateStrip.h"
 #include "taskbar/TaskbarSpaceProbe.h"
-#include "settings/SpeedTextPositionSettingChange.h"
+#include "settings/TaskbarDisplayPositionSettingChange.h"
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -111,7 +111,7 @@ int main(int argc, char** argv)
         strip.SetContextMenuOwner(receiver.GetSafeHwnd(), kMenuMessage);
         strip.SetContextMenuEnabled(true);
         Require(strip.Embed(true), "Right creates a native strip");
-        Require(strip.SetSpeedTextOnLeft(true), "switch from Right to Left");
+        Require(strip.SetTaskbarDisplayOnLeft(true), "switch from Right to Left");
         const HWND taskbar = ::FindWindowW(L"Shell_TrayWnd", nullptr);
         const bool initiallyVisible = strip.IsDisplayVisible();
         if (argc > 2 && std::string(argv[2]) == "--require-left")
@@ -159,7 +159,7 @@ int main(int argc, char** argv)
         Require(unknown.CreateEx(0, AfxRegisterWndClass(0), L"Unknown taskbar", WS_POPUP,
             CRect(0, 0, 200, 60), nullptr, 0), "unknown surface");
         Require(!TaskbarSpaceProbe{}.IsFree(unknown.GetSafeHwnd(), {0, 0, 100, 40}), "unknown shell cannot prove free space");
-        Require(strip.SetSpeedTextOnLeft(false) && strip.IsDisplayVisible(), "switch back to Right");
+        Require(strip.SetTaskbarDisplayOnLeft(false) && strip.IsDisplayVisible(), "switch back to Right");
         strip.SetRates(L"123.4 K/s", L"56.7 M/s");
         if (!evidence.empty())
         {
@@ -168,23 +168,23 @@ int main(int argc, char** argv)
             strip.SetRates(L"1.8 K/s", L"1.8 K/s");
             Capture(strip.GetSafeHwnd(), evidence / "quiet.bmp");
         }
-        Require(!strip.IsSpeedTextOnLeft(), "Right selection retained");
-        SpeedTextPositionSettingChange change{strip, true, PersistPosition};
+        Require(!strip.IsTaskbarDisplayOnLeft(), "Right selection retained");
+        TaskbarDisplayPositionSettingChange change{strip, true, PersistPosition};
         Require(winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RolledBack &&
-            !strip.IsSpeedTextOnLeft() && !savedLeft, "failed persistence restores native Right layout");
+            !strip.IsTaskbarDisplayOnLeft() && !savedLeft, "failed persistence restores native Right layout");
         canPersist = true;
         Require(winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::Applied &&
-            strip.IsSpeedTextOnLeft() && savedLeft, "position transaction applies and saves Left");
+            strip.IsTaskbarDisplayOnLeft() && savedLeft, "position transaction applies and saves Left");
         const auto started = std::chrono::steady_clock::now();
         for (int sample = 0; sample < 3; ++sample) Require(strip.Refresh(), "steady Left refresh");
         std::cout << "Three Left refreshes took " << std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started).count() << " ms\n";
-        Require(strip.SetSpeedTextOnLeft(false), "restore Right before recreation");
+        Require(strip.SetTaskbarDisplayOnLeft(false), "restore Right before recreation");
         strip.Shutdown();
-        Require(strip.Embed(true) && !strip.IsSpeedTextOnLeft(), "Right survives surface recreation");
-        Require(strip.SetSpeedTextOnLeft(true), "return to Left");
+        Require(strip.Embed(true) && !strip.IsTaskbarDisplayOnLeft(), "Right survives surface recreation");
+        Require(strip.SetTaskbarDisplayOnLeft(true), "return to Left");
         strip.Shutdown();
-        Require(strip.Embed(true) && strip.IsSpeedTextOnLeft(), "Left survives surface recreation");
+        Require(strip.Embed(true) && strip.IsTaskbarDisplayOnLeft(), "Left survives surface recreation");
         if (initiallyVisible) CheckPlacementAndInput(strip, taskbar, receiver);
         strip.Shutdown();
         std::cout << "RateStripWindowTests passed; visible Left verified=" << initiallyVisible << '\n';

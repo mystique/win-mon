@@ -14,8 +14,8 @@ public:
     void Shutdown() noexcept;
     [[nodiscard]] static bool IsPrimaryBottomTaskbarAvailable() noexcept;
     void SetRates(const std::wstring& uploadText, const std::wstring& downloadText) noexcept;
-    [[nodiscard]] bool SetSpeedTextOnLeft(bool left) noexcept;
-    [[nodiscard]] bool IsSpeedTextOnLeft() const noexcept { return speedTextOnLeft_; }
+    [[nodiscard]] bool SetTaskbarDisplayOnLeft(bool left) noexcept;
+    [[nodiscard]] bool IsTaskbarDisplayOnLeft() const noexcept { return taskbarDisplayOnLeft_; }
     [[nodiscard]] bool IsDisplayVisible() const noexcept { return visible_; }
     void SetContextMenuOwner(HWND owner, UINT notificationMessage) noexcept;
     void SetContextMenuEnabled(bool enabled) noexcept;
@@ -44,6 +44,6 @@ private:
     HWND contextMenuOwner_ = nullptr;
     UINT contextMenuMessage_ = 0;
     bool contextMenuEnabled_ = false;
-    bool speedTextOnLeft_ = false;
+    bool taskbarDisplayOnLeft_ = false;
     bool visible_ = false;
 };

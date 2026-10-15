@@ -210,14 +210,14 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
     ReconcileSelection(snapshots);
     std::vector<OperatorMenuItem> menu;
 
-    OperatorMenuItem network;
-    network.label = L"Network to Monitor";
+    OperatorMenuItem monitoredNetwork;
+    monitoredNetwork.label = L"Monitored Network";
     OperatorMenuItem all;
     all.label = L"All";
     all.checked = selectedNicId_.empty();
     all.radio = true;
     AddChoice(all, {{}, {}, true});
-    network.children.push_back(std::move(all));
+    monitoredNetwork.children.push_back(std::move(all));
     for (const auto& snapshot : snapshots)
     {
         if (snapshot.loopback || !snapshot.visibleInClassicConnections) continue;
@@ -226,72 +226,74 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
         nic.checked = snapshot.stableId == selectedNicId_;
         nic.radio = true;
         AddChoice(nic, {{}, snapshot.stableId, false});
-        network.children.push_back(std::move(nic));
+        monitoredNetwork.children.push_back(std::move(nic));
     }
-    menu.push_back(std::move(network));
-    OperatorMenuItem position;
-    position.label = L"Speed Text Position";
+    menu.push_back(std::move(monitoredNetwork));
+    menu.push_back({.separator = true});
+    OperatorMenuItem taskbarDisplayPosition;
+    taskbarDisplayPosition.label = L"Taskbar Display Position";
     for (bool left : {true, false})
     {
         OperatorMenuItem side;
         side.label = left ? L"Left" : L"Right";
-        side.checked = toggles.speedTextOnLeft == left;
+        side.checked = toggles.taskbarDisplayOnLeft == left;
         side.radio = true;
-        AddChoice(side, {{left ? OperatorActionKind::SetSpeedTextLeft : OperatorActionKind::SetSpeedTextRight}});
-        position.children.push_back(std::move(side));
+        AddChoice(side, {{left ? OperatorActionKind::SetTaskbarDisplayLeft : OperatorActionKind::SetTaskbarDisplayRight}});
+        taskbarDisplayPosition.children.push_back(std::move(side));
     }
-    menu.push_back(std::move(position));
+    menu.push_back(std::move(taskbarDisplayPosition));
+
+    OperatorMenuItem taskbarContextMenu;
+    taskbarContextMenu.label = L"Enable Taskbar Context Menu";
+    taskbarContextMenu.checked = toggles.taskbarContextMenuEnabled;
+    AddChoice(taskbarContextMenu, {{toggles.taskbarContextMenuEnabled
+        ? OperatorActionKind::DisableTaskbarContextMenu
+        : OperatorActionKind::EnableTaskbarContextMenu}});
+    menu.push_back(std::move(taskbarContextMenu));
     menu.push_back({.separator = true});
-
-    OperatorMenuItem autostart;
-    autostart.label = L"Launch at Login";
-    autostart.checked = toggles.autostartEnabled;
-    AddChoice(autostart, {{toggles.autostartEnabled
-        ? OperatorActionKind::DisableLaunchAtLogin
-        : OperatorActionKind::EnableLaunchAtLogin}});
-    menu.push_back(std::move(autostart));
-
-    OperatorMenuItem rightClick;
-    rightClick.label = L"Right-Click Speed Text";
-    rightClick.checked = toggles.rightClickSpeedTextEnabled;
-    AddChoice(rightClick, {{toggles.rightClickSpeedTextEnabled
-        ? OperatorActionKind::DisableRightClickSpeedText
-        : OperatorActionKind::EnableRightClickSpeedText}});
-    menu.push_back(std::move(rightClick));
 
     OperatorMenuItem floatingDisplay;
     floatingDisplay.label = L"Show Floating Display";
-    floatingDisplay.checked = toggles.floatingRateDisplayEnabled;
-    AddChoice(floatingDisplay, {{toggles.floatingRateDisplayEnabled
-        ? OperatorActionKind::DisableFloatingRateDisplay
-        : OperatorActionKind::EnableFloatingRateDisplay}});
+    floatingDisplay.checked = toggles.floatingDisplayEnabled;
+    AddChoice(floatingDisplay, {{toggles.floatingDisplayEnabled
+        ? OperatorActionKind::HideFloatingDisplay
+        : OperatorActionKind::ShowFloatingDisplay}});
     menu.push_back(std::move(floatingDisplay));
     OperatorMenuItem floatingText;
-    floatingText.label = L"Show Floating Speed Text";
-    floatingText.checked = toggles.floatingRateTextVisible;
-    AddChoice(floatingText, {{toggles.floatingRateTextVisible
-        ? OperatorActionKind::HideFloatingSpeedText : OperatorActionKind::ShowFloatingSpeedText}});
+    floatingText.label = L"Show Floating Text";
+    floatingText.checked = toggles.floatingTextVisible;
+    AddChoice(floatingText, {{toggles.floatingTextVisible
+        ? OperatorActionKind::HideFloatingText : OperatorActionKind::ShowFloatingText}});
     menu.push_back(std::move(floatingText));
-    OperatorMenuItem floatingChart;
-    floatingChart.label = L"Show Floating Chart";
-    floatingChart.checked = toggles.floatingRateChartVisible;
-    AddChoice(floatingChart, {{toggles.floatingRateChartVisible
-        ? OperatorActionKind::HideFloatingChart : OperatorActionKind::ShowFloatingChart}});
-    menu.push_back(std::move(floatingChart));
-    OperatorMenuItem opacity;
-    opacity.label = L"Floating Opacity";
+    OperatorMenuItem floatingCharts;
+    floatingCharts.label = L"Show Floating Charts";
+    floatingCharts.checked = toggles.floatingChartsVisible;
+    AddChoice(floatingCharts, {{toggles.floatingChartsVisible
+        ? OperatorActionKind::HideFloatingCharts : OperatorActionKind::ShowFloatingCharts}});
+    menu.push_back(std::move(floatingCharts));
+    OperatorMenuItem floatingDisplayOpacity;
+    floatingDisplayOpacity.label = L"Floating Display Opacity";
     for (int percent = 10; percent <= 100; percent += 10)
     {
         OperatorMenuItem level;
         level.label = std::to_wstring(percent)+L"%";
-        level.checked = percent == toggles.floatingRateOpacity;
+        level.checked = percent == toggles.floatingDisplayOpacity;
         level.radio = true;
-        AddChoice(level, {{OperatorActionKind::SetFloatingOpacity,percent}});
-        opacity.children.push_back(std::move(level));
+        AddChoice(level, {{OperatorActionKind::SetFloatingDisplayOpacity,percent}});
+        floatingDisplayOpacity.children.push_back(std::move(level));
     }
-    menu.push_back(std::move(opacity));
+    menu.push_back(std::move(floatingDisplayOpacity));
     menu.push_back({.separator = true});
 
+    OperatorMenuItem startAtSignIn;
+    startAtSignIn.label = L"Start at Sign-in";
+    startAtSignIn.checked = toggles.startAtSignInEnabled;
+    AddChoice(startAtSignIn, {{toggles.startAtSignInEnabled
+        ? OperatorActionKind::DisableStartAtSignIn
+        : OperatorActionKind::EnableStartAtSignIn}});
+    menu.push_back(std::move(startAtSignIn));
+
+    menu.push_back({.separator = true});
 
     OperatorMenuItem exit;
     exit.label = L"Exit";

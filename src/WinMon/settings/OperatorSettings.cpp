@@ -9,10 +9,10 @@
 namespace
 {
 constexpr wchar_t kProductKey[] = L"Software\\Win Mon";
-constexpr wchar_t kRightClickSpeedTextValue[] = L"RightClickSpeedText";
-constexpr wchar_t kFloatingRateDisplayValue[] = L"FloatingRateDisplay";
-constexpr wchar_t kFloatingRateDisplayPositionValue[] = L"FloatingRateDisplayPosition";
-constexpr wchar_t kSpeedTextPositionValue[] = L"SpeedTextPosition";
+constexpr wchar_t kTaskbarContextMenuValue[] = L"TaskbarContextMenuEnabled";
+constexpr wchar_t kFloatingDisplayValue[] = L"FloatingDisplayVisible";
+constexpr wchar_t kFloatingDisplayPositionValue[] = L"FloatingDisplayPosition";
+constexpr wchar_t kTaskbarDisplayPositionValue[] = L"TaskbarDisplayPosition";
 bool ReadFlag(const wchar_t* valueName, bool& enabled) noexcept
 {
     DWORD value = 0;
@@ -50,96 +50,96 @@ bool WriteFlag(const wchar_t* valueName, bool enabled) noexcept
 
 namespace settings
 {
-int GetFloatingRateOpacity() noexcept
+int GetFloatingDisplayOpacity() noexcept
 {
     DWORD value = 100, size = sizeof(value);
-    if (RegGetValueW(HKEY_CURRENT_USER,kProductKey,L"FloatingRateOpacity",RRF_RT_REG_DWORD,
+    if (RegGetValueW(HKEY_CURRENT_USER,kProductKey,L"FloatingDisplayOpacity",RRF_RT_REG_DWORD,
             nullptr,&value,&size) != ERROR_SUCCESS || size != sizeof(value) || value < 10 || value > 100) return 100;
     return static_cast<int>((value+5)/10*10);
 }
 
-bool SetFloatingRateOpacity(int percent) noexcept
+bool SetFloatingDisplayOpacity(int percent) noexcept
 {
     if (percent < 10 || percent > 100 || percent % 10 != 0) return false;
     const DWORD value = static_cast<DWORD>(percent);
-    return RegSetKeyValueW(HKEY_CURRENT_USER,kProductKey,L"FloatingRateOpacity",REG_DWORD,&value,sizeof(value)) == ERROR_SUCCESS;
+    return RegSetKeyValueW(HKEY_CURRENT_USER,kProductKey,L"FloatingDisplayOpacity",REG_DWORD,&value,sizeof(value)) == ERROR_SUCCESS;
 }
-bool IsFloatingRateChartVisible() noexcept
+bool AreFloatingChartsVisible() noexcept
 {
     DWORD value = 1, size = sizeof(value);
-    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, L"FloatingRateChartVisible",
+    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, L"FloatingChartsVisible",
         RRF_RT_REG_DWORD, nullptr, &value, &size) != ERROR_SUCCESS || size != sizeof(value) || value != 0;
 }
-bool SetFloatingRateChartVisible(bool visible) noexcept
+bool SetFloatingChartsVisible(bool visible) noexcept
 {
-    return WriteFlag(L"FloatingRateChartVisible", visible);
+    return WriteFlag(L"FloatingChartsVisible", visible);
 }
 
-bool IsFloatingRateTextVisible() noexcept
+bool IsFloatingTextVisible() noexcept
 {
     DWORD value = 1, size = sizeof(value);
-    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, L"FloatingRateTextVisible",
+    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, L"FloatingTextVisible",
         RRF_RT_REG_DWORD, nullptr, &value, &size) != ERROR_SUCCESS || size != sizeof(value) || value != 0;
 }
-bool SetFloatingRateTextVisible(bool visible) noexcept
+bool SetFloatingTextVisible(bool visible) noexcept
 {
-    return WriteFlag(L"FloatingRateTextVisible", visible);
+    return WriteFlag(L"FloatingTextVisible", visible);
 }
 
-bool IsSpeedTextOnLeft() noexcept
+bool IsTaskbarDisplayOnLeft() noexcept
 {
     DWORD value = 0, size = sizeof(value);
-    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, kSpeedTextPositionValue,
+    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, kTaskbarDisplayPositionValue,
         RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS &&
         size == sizeof(value) && value == 1;
 }
 
-bool SetSpeedTextOnLeft(bool left) noexcept
+bool SetTaskbarDisplayOnLeft(bool left) noexcept
 {
-    return WriteFlag(kSpeedTextPositionValue, left);
+    return WriteFlag(kTaskbarDisplayPositionValue, left);
 }
 
-bool IsRightClickSpeedTextEnabled() noexcept
-{
-    bool enabled = false;
-    return ReadFlag(kRightClickSpeedTextValue, enabled) && enabled;
-}
-
-bool SetRightClickSpeedTextEnabled(bool enabled) noexcept
-{
-    return WriteFlag(kRightClickSpeedTextValue, enabled);
-}
-
-bool IsFloatingRateDisplayEnabled() noexcept
+bool IsTaskbarContextMenuEnabled() noexcept
 {
     bool enabled = false;
-    return ReadFlag(kFloatingRateDisplayValue, enabled) && enabled;
+    return ReadFlag(kTaskbarContextMenuValue, enabled) && enabled;
 }
 
-bool SetFloatingRateDisplayEnabled(bool enabled) noexcept
+bool SetTaskbarContextMenuEnabled(bool enabled) noexcept
 {
-    return WriteFlag(kFloatingRateDisplayValue, enabled);
+    return WriteFlag(kTaskbarContextMenuValue, enabled);
 }
 
-bool GetFloatingRateDisplayPosition(POINT& position) noexcept
+bool IsFloatingDisplayEnabled() noexcept
+{
+    bool enabled = false;
+    return ReadFlag(kFloatingDisplayValue, enabled) && enabled;
+}
+
+bool SetFloatingDisplayEnabled(bool enabled) noexcept
+{
+    return WriteFlag(kFloatingDisplayValue, enabled);
+}
+
+bool GetFloatingDisplayPosition(POINT& position) noexcept
 {
     DWORD size = sizeof(position);
     return RegGetValueW(
                HKEY_CURRENT_USER,
                kProductKey,
-               kFloatingRateDisplayPositionValue,
+               kFloatingDisplayPositionValue,
                RRF_RT_REG_BINARY,
                nullptr,
                &position,
                &size) == ERROR_SUCCESS && size == sizeof(position);
 }
 
-bool SetFloatingRateDisplayPosition(POINT position) noexcept
+bool SetFloatingDisplayPosition(POINT position) noexcept
 {
     return RegSetKeyValueW(
                HKEY_CURRENT_USER,
                kProductKey,
-               kFloatingRateDisplayPositionValue,
+               kFloatingDisplayPositionValue,
                REG_BINARY,
                &position,
                sizeof(position)) == ERROR_SUCCESS;

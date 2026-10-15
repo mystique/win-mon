@@ -54,19 +54,19 @@ private:
 enum class OperatorActionKind
 {
     None,
-    EnableLaunchAtLogin,
-    DisableLaunchAtLogin,
-    EnableRightClickSpeedText,
-    DisableRightClickSpeedText,
-    EnableFloatingRateDisplay,
-    DisableFloatingRateDisplay,
-    ShowFloatingChart,
-    HideFloatingChart,
-    ShowFloatingSpeedText,
-    HideFloatingSpeedText,
-    SetFloatingOpacity,
-    SetSpeedTextLeft,
-    SetSpeedTextRight,
+    EnableStartAtSignIn,
+    DisableStartAtSignIn,
+    EnableTaskbarContextMenu,
+    DisableTaskbarContextMenu,
+    ShowFloatingDisplay,
+    HideFloatingDisplay,
+    ShowFloatingCharts,
+    HideFloatingCharts,
+    ShowFloatingText,
+    HideFloatingText,
+    SetFloatingDisplayOpacity,
+    SetTaskbarDisplayLeft,
+    SetTaskbarDisplayRight,
     Exit,
 };
 
@@ -102,13 +102,13 @@ public:
 // Persisted operator settings that the Operator Menu renders as check marks.
 struct OperatorMenuToggles final
 {
-    bool autostartEnabled = false;
-    bool rightClickSpeedTextEnabled = false;
-    bool floatingRateDisplayEnabled = false;
-    bool speedTextOnLeft = false;
-    bool floatingRateTextVisible = true;
-    bool floatingRateChartVisible = true;
-    int floatingRateOpacity = 100;
+    bool startAtSignInEnabled = false;
+    bool taskbarContextMenuEnabled = false;
+    bool floatingDisplayEnabled = false;
+    bool taskbarDisplayOnLeft = false;
+    bool floatingTextVisible = true;
+    bool floatingChartsVisible = true;
+    int floatingDisplayOpacity = 100;
 };
 
 struct NicSnapshot final

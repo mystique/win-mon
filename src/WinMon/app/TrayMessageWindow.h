@@ -31,14 +31,14 @@ private:
     void CancelRecovery() noexcept override;
     [[nodiscard]] HICON LoadTrayIcon() const noexcept;
     void UpdateTrayIconTheme() noexcept;
-    void SaveFloatingRateDisplayPosition();
+    void SaveFloatingDisplayPosition();
 
     [[nodiscard]] winmon::OperatorAction ShowOperatorMenu();
     void HandleOperatorMenuAction(winmon::OperatorAction action);
     void RequestExit();
     void SampleRates();
     afx_msg LRESULT OnTrayNotification(WPARAM wParam, LPARAM lParam);
-    afx_msg LRESULT OnRightClickSpeedText(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnDisplayContextMenu(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnFloatingRateDisplayMoved(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnTaskbarCreated(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnDpiChanged(WPARAM wParam, LPARAM lParam);

@@ -33,7 +33,7 @@
     <ClInclude Include="settings\FloatingRateTextSettingChange.h"><Filter>settings</Filter></ClInclude>
     <ClCompile Include="settings\OperatorSettings.cpp"><Filter>settings</Filter></ClCompile>
     <ClInclude Include="settings\OperatorSettings.h"><Filter>settings</Filter></ClInclude>
-    <ClInclude Include="settings\SpeedTextPositionSettingChange.h"><Filter>settings</Filter></ClInclude>
+    <ClInclude Include="settings\TaskbarDisplayPositionSettingChange.h"><Filter>settings</Filter></ClInclude>
     <ClCompile Include="taskbar\RateStrip.cpp"><Filter>taskbar</Filter></ClCompile>
     <ClInclude Include="taskbar\RateStrip.h"><Filter>taskbar</Filter></ClInclude>
     <ClInclude Include="taskbar\TaskbarSpaceProbe.h"><Filter>taskbar</Filter></ClInclude>

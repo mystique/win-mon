@@ -118,8 +118,8 @@ public static class WinMonNative {
 
 
 $productKey = "HKCU:\Software\Win Mon"
-$rightClickName = "RightClickSpeedText"
-$positionName = "SpeedTextPosition"
+$rightClickName = "TaskbarContextMenuEnabled"
+$positionName = "TaskbarDisplayPosition"
 $missing = [guid]::NewGuid().ToString()
 function Save-RegistryValue([string]$name) {
     try { return (Get-ItemPropertyValue -Path $productKey -Name $name -ErrorAction Stop) }

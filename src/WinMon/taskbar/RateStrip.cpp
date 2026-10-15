@@ -49,10 +49,10 @@ void RateStrip::SetRates(
     }
 }
 
-bool RateStrip::SetSpeedTextOnLeft(bool left) noexcept
+bool RateStrip::SetTaskbarDisplayOnLeft(bool left) noexcept
 {
-    if (speedTextOnLeft_ == left) return true;
-    speedTextOnLeft_ = left;
+    if (taskbarDisplayOnLeft_ == left) return true;
+    taskbarDisplayOnLeft_ = left;
     if (GetSafeHwnd() == nullptr) return true;
     const HWND taskbar = FindPrimaryBottomTaskbar();
     if (taskbar == nullptr || taskbar_ != taskbar)
@@ -107,7 +107,7 @@ bool RateStrip::Embed(bool shouldShow)
     }
 
     const HWND notificationArea = FindNotificationArea(taskbar);
-    if (notificationArea == nullptr && !speedTextOnLeft_)
+    if (notificationArea == nullptr && !taskbarDisplayOnLeft_)
     {
         Shutdown();
         return false;
@@ -192,7 +192,7 @@ bool RateStrip::Refresh()
     }
 
     const HWND notificationArea = FindNotificationArea(taskbar);
-    if (notificationArea == nullptr && !speedTextOnLeft_)
+    if (notificationArea == nullptr && !taskbarDisplayOnLeft_)
     {
         // Windows 11 may temporarily make TrayNotifyWnd unavailable in the
         // taskbar child tree while Start is open. Keep the existing strip at
@@ -287,7 +287,7 @@ bool RateStrip::PlaceOnTaskbar(HWND taskbar, HWND notificationArea) noexcept
     RECT notificationRect{};
     RECT taskbarClientRect{};
     if (!::GetClientRect(taskbar, &taskbarClientRect) ||
-        (!speedTextOnLeft_ && (notificationArea == nullptr || !::GetWindowRect(notificationArea, &notificationRect))))
+        (!taskbarDisplayOnLeft_ && (notificationArea == nullptr || !::GetWindowRect(notificationArea, &notificationRect))))
     {
         visible_ = false;
         return false;
@@ -296,7 +296,7 @@ bool RateStrip::PlaceOnTaskbar(HWND taskbar, HWND notificationArea) noexcept
     ::MapWindowPoints(nullptr, taskbar, reinterpret_cast<POINT*>(&notificationRect), 2);
     const UINT dpi = GetDpiForWindow(taskbar);
     const int margin = MulDiv(4, static_cast<int>(dpi), 96);
-    const int availableWidth = speedTextOnLeft_
+    const int availableWidth = taskbarDisplayOnLeft_
         ? taskbarClientRect.right - taskbarClientRect.left - margin * 2
         : notificationRect.left - margin - taskbarClientRect.left;
     const int availableHeight = taskbarClientRect.bottom - taskbarClientRect.top;
@@ -307,10 +307,10 @@ bool RateStrip::PlaceOnTaskbar(HWND taskbar, HWND notificationArea) noexcept
         ShowWindow(SW_HIDE);
         return true;
     }
-    const int x = speedTextOnLeft_ ? taskbarClientRect.left + margin : notificationRect.left - size_.cx - margin;
+    const int x = taskbarDisplayOnLeft_ ? taskbarClientRect.left + margin : notificationRect.left - size_.cx - margin;
     const int y = taskbarClientRect.top + (availableHeight - size_.cy) / 2;
     const RECT candidate{x, y, x + size_.cx, y + size_.cy};
-    if (speedTextOnLeft_ && !taskbarSpace_.IsFree(taskbar, candidate, GetSafeHwnd()))
+    if (taskbarDisplayOnLeft_ && !taskbarSpace_.IsFree(taskbar, candidate, GetSafeHwnd()))
     {
         ShowWindow(SW_HIDE);
         return true;
@@ -370,7 +370,7 @@ bool RateStrip::Render() noexcept
     const size_t pixelCount = static_cast<size_t>(size_.cx) * static_cast<size_t>(size_.cy);
     std::fill_n(pixels, pixelCount, 0u);
     bool rendered = ledStrip::Render(memoryDc, {size_.cx, size_.cy}, uploadText_, downloadText_,
-        speedTextOnLeft_, theme::ReadMode() == theme::Mode::Light);
+        taskbarDisplayOnLeft_, theme::ReadMode() == theme::Mode::Light);
     if (rendered && contextMenuEnabled_)
         for (size_t index = 0; index < pixelCount; ++index)
             if (!(pixels[index] >> 24)) pixels[index] = 0x01000000;

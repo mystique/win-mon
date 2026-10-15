@@ -227,15 +227,25 @@ void OperatorMenuTransactionCorrelatesEveryAction()
     WinMonCore core;
     core.ObserveNetwork({{NamedNic("a", L"Alpha", L"A desc")}, true});
     auto menu = core.BeginOperatorMenu({false, true, false});
-    Require(!FindItem(*menu, L"Launch at Login").checked, "Launch at Login reflects live state");
-    Require(FindItem(*menu, L"Right-Click Speed Text").checked, "Right-Click Speed Text reflects live state");
+    const std::vector<std::wstring> expectedLabels{
+        L"Monitored Network", L"", L"Taskbar Display Position", L"Enable Taskbar Context Menu",
+        L"", L"Show Floating Display", L"Show Floating Text", L"Show Floating Charts",
+        L"Floating Display Opacity", L"", L"Start at Sign-in", L"", L"Exit"};
+    Require(menu->size() == expectedLabels.size(), "menu contains exactly the approved items");
+    for (size_t i = 0; i < expectedLabels.size(); ++i)
+    {
+        Require((*menu)[i].label == expectedLabels[i], "menu labels and order match approved grouping");
+        Require((*menu)[i].separator == expectedLabels[i].empty(), "menu separators match approved grouping");
+    }
+    Require(!FindItem(*menu, L"Start at Sign-in").checked, "Start at Sign-in reflects live state");
+    Require(FindItem(*menu, L"Enable Taskbar Context Menu").checked, "Enable Taskbar Context Menu reflects live state");
     Require(!FindItem(*menu, L"Show Floating Display").checked, "Floating Rate Display reflects live state");
-    Require(FindItem(*menu, L"Show Floating Speed Text").checked, "floating text defaults checked");
-    Require(FindItem(*menu, L"Show Floating Chart").checked, "chart defaults checked");
-    Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Chart").choiceToken).kind == OperatorActionKind::HideFloatingChart, "checked chart hides");
+    Require(FindItem(*menu, L"Show Floating Text").checked, "floating text defaults checked");
+    Require(FindItem(*menu, L"Show Floating Charts").checked, "chart defaults checked");
+    Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Charts").choiceToken).kind == OperatorActionKind::HideFloatingCharts, "checked chart hides");
     menu = core.BeginOperatorMenu({false,true,false,false,true,false});
-    Require(!FindItem(*menu,L"Show Floating Chart").checked, "hidden chart unchecked independently");
-    const auto& opacity = FindItem(*menu,L"Floating Opacity");
+    Require(!FindItem(*menu,L"Show Floating Charts").checked, "hidden chart unchecked independently");
+    const auto& opacity = FindItem(*menu,L"Floating Display Opacity");
     Require(opacity.children.size() == 10, "opacity has ten native submenu choices");
     for (size_t i = 0; i < opacity.children.size(); ++i)
     {
@@ -245,31 +255,31 @@ void OperatorMenuTransactionCorrelatesEveryAction()
     }
     Require(core.CompleteOperatorMenu(opacity.children[3].choiceToken).opacity == 40, "opacity action carries selected percentage");
     menu = core.BeginOperatorMenu({false,true,false,false,true,false,40});
-    const auto& selectedOpacity = FindItem(*menu,L"Floating Opacity");
+    const auto& selectedOpacity = FindItem(*menu,L"Floating Display Opacity");
     Require(selectedOpacity.children[3].checked && !selectedOpacity.children[9].checked, "opacity menu reflects current value");
-    Require(core.CompleteOperatorMenu(selectedOpacity.children[0].choiceToken).kind == OperatorActionKind::SetFloatingOpacity, "opacity choice action");
+    Require(core.CompleteOperatorMenu(selectedOpacity.children[0].choiceToken).kind == OperatorActionKind::SetFloatingDisplayOpacity, "opacity choice action");
     menu = core.BeginOperatorMenu({false,true,false,false,true,false,40});
     const auto displayItem = std::find_if(menu->begin(),menu->end(),[](const auto& item){ return item.label == L"Show Floating Display"; });
-    Require((displayItem+1)->label == L"Show Floating Speed Text", "text toggle follows display toggle");
+    Require((displayItem+1)->label == L"Show Floating Text", "text toggle follows display toggle");
     Require(std::count_if(menu->begin(), menu->end(), [](const OperatorMenuItem& item) {
         return item.separator;
-    }) == 2, "Operator Menu preserves network toggle and Exit groups");
-    const auto& autostart = FindItem(*menu, L"Launch at Login");
-    Require(core.CompleteOperatorMenu(autostart.choiceToken).kind == OperatorActionKind::EnableLaunchAtLogin, "autostart choice meaning");
+    }) == 4, "Operator Menu separates network, taskbar, floating display, startup and Exit");
+    const auto& startAtSignIn = FindItem(*menu, L"Start at Sign-in");
+    Require(core.CompleteOperatorMenu(startAtSignIn.choiceToken).kind == OperatorActionKind::EnableStartAtSignIn, "startAtSignIn choice meaning");
 
     menu = core.BeginOperatorMenu({true, true, true});
-    const auto& rightClick = FindItem(*menu, L"Right-Click Speed Text");
-    Require(core.CompleteOperatorMenu(rightClick.choiceToken).kind == OperatorActionKind::DisableRightClickSpeedText, "right-click choice meaning");
+    const auto& taskbarContextMenu = FindItem(*menu, L"Enable Taskbar Context Menu");
+    Require(core.CompleteOperatorMenu(taskbarContextMenu.choiceToken).kind == OperatorActionKind::DisableTaskbarContextMenu, "right-click choice meaning");
 
     menu = core.BeginOperatorMenu({false, false, true});
     const auto& floatingDisplay = FindItem(*menu, L"Show Floating Display");
-    Require(core.CompleteOperatorMenu(floatingDisplay.choiceToken).kind == OperatorActionKind::DisableFloatingRateDisplay, "floating display choice meaning");
+    Require(core.CompleteOperatorMenu(floatingDisplay.choiceToken).kind == OperatorActionKind::HideFloatingDisplay, "floating display choice meaning");
 
     menu = core.BeginOperatorMenu({});
-    Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Speed Text").choiceToken).kind == OperatorActionKind::HideFloatingSpeedText, "checked text action hides");
+    Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Text").choiceToken).kind == OperatorActionKind::HideFloatingText, "checked text action hides");
     menu = core.BeginOperatorMenu({false,false,false,false,false});
-    Require(!FindItem(*menu,L"Show Floating Speed Text").checked, "hidden text unchecked even when whole display closed");
-    Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Speed Text").choiceToken).kind == OperatorActionKind::ShowFloatingSpeedText, "unchecked text action shows");
+    Require(!FindItem(*menu,L"Show Floating Text").checked, "hidden text unchecked even when whole display closed");
+    Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Text").choiceToken).kind == OperatorActionKind::ShowFloatingText, "unchecked text action shows");
     menu = core.BeginOperatorMenu({});
     Require(std::none_of(menu->begin(), menu->end(), [](const auto& item) { return item.label == L"Set Font..." || item.label.starts_with(L"Font:"); }), "fixed LED font has no chooser");
     core.CompleteOperatorMenu(0);
@@ -278,19 +288,19 @@ void OperatorMenuTransactionCorrelatesEveryAction()
     const auto& exit = FindItem(*menu, L"Exit");
     Require(core.CompleteOperatorMenu(exit.choiceToken).kind == OperatorActionKind::Exit, "exit choice meaning");
 }
-void SpeedTextPositionMenuReflectsAndSelectsSide()
+void TaskbarDisplayPositionMenuReflectsAndSelectsSide()
 {
     WinMonCore core;
     auto menu = core.BeginOperatorMenu();
-    const auto& position = FindItem(*menu, L"Speed Text Position");
+    const auto& position = FindItem(*menu, L"Taskbar Display Position");
     Require(position.children.size() == 2, "position offers two sides");
     const auto& left = FindItem(position.children, L"Left");
     const auto& right = FindItem(position.children, L"Right");
     Require(left.radio && !left.checked && right.radio && right.checked, "default position is Right only");
-    Require(core.CompleteOperatorMenu(left.choiceToken).kind == OperatorActionKind::SetSpeedTextLeft, "Left action");
+    Require(core.CompleteOperatorMenu(left.choiceToken).kind == OperatorActionKind::SetTaskbarDisplayLeft, "Left action");
     menu = core.BeginOperatorMenu({false, false, false, true});
-    Require(FindItem(FindItem(*menu, L"Speed Text Position").children, L"Left").checked, "selected Left is reflected");
-    Require(core.CompleteOperatorMenu(FindItem(FindItem(*menu, L"Speed Text Position").children, L"Right").choiceToken).kind == OperatorActionKind::SetSpeedTextRight, "Right action");
+    Require(FindItem(FindItem(*menu, L"Taskbar Display Position").children, L"Left").checked, "selected Left is reflected");
+    Require(core.CompleteOperatorMenu(FindItem(FindItem(*menu, L"Taskbar Display Position").children, L"Right").choiceToken).kind == OperatorActionKind::SetTaskbarDisplayRight, "Right action");
 }
 class FakeOperatorSettingChange final : public OperatorSettingChange
 {
@@ -507,7 +517,7 @@ int main()
         NetworkSessionPresentsOneCanonicalObservation();
         ClassificationFallbackPreservesAllAndSelectedNicRates();
         OperatorMenuTransactionCorrelatesEveryAction();
-        SpeedTextPositionMenuReflectsAndSelectsSide();
+        TaskbarDisplayPositionMenuReflectsAndSelectsSide();
         OperatorSettingTransactionPreservesPreviousChoice();
         FirstSampleIsZero();
         RateSampleUsesCounterCaptureTimes();
