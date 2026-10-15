@@ -152,8 +152,32 @@ void WinMonCore::CancelOperatorMenu() noexcept
 
 void WinMonCore::AddChoice(OperatorMenuItem& item, PendingMenuChoice choice)
 {
+    if (!item.enabled) return;
     pendingMenuChoices_.push_back(std::move(choice));
     item.choiceToken = static_cast<std::uint32_t>(pendingMenuChoices_.size());
+}
+
+bool CanApplyOperatorAction(OperatorActionKind action, const OperatorMenuToggles& toggles) noexcept
+{
+    bool taskbar = toggles.taskbarTextVisible && toggles.taskbarContextMenuEnabled && toggles.taskbarDisplayAvailable;
+    bool tray = toggles.trayIconVisible;
+    bool floating = toggles.floatingDisplayEnabled && toggles.floatingDisplayAvailable;
+    switch (action)
+    {
+    case OperatorActionKind::HideTaskbarText:
+    case OperatorActionKind::DisableTaskbarContextMenu:
+        taskbar = false;
+        break;
+    case OperatorActionKind::HideTrayIcon:
+        tray = false;
+        break;
+    case OperatorActionKind::HideFloatingDisplay:
+        floating = false;
+        break;
+    default:
+        return true;
+    }
+    return taskbar || tray || floating;
 }
 
 RateDisplay WinMonCore::SampleObserved(
@@ -230,59 +254,81 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
     }
     menu.push_back(std::move(monitoredNetwork));
     menu.push_back({.separator = true});
-    OperatorMenuItem taskbarDisplayPosition;
-    taskbarDisplayPosition.label = L"Taskbar Display Position";
-    for (bool left : {true, false})
+    OperatorMenuItem taskbarText;
+    taskbarText.label = L"Show Taskbar Text";
+    taskbarText.checked = toggles.taskbarTextVisible;
+    taskbarText.enabled = !taskbarText.checked || CanApplyOperatorAction(OperatorActionKind::HideTaskbarText, toggles);
+    AddChoice(taskbarText, {{taskbarText.checked ? OperatorActionKind::HideTaskbarText : OperatorActionKind::ShowTaskbarText}});
+    menu.push_back(std::move(taskbarText));
+    if (toggles.taskbarTextVisible)
     {
-        OperatorMenuItem side;
-        side.label = left ? L"Left" : L"Right";
-        side.checked = toggles.taskbarDisplayOnLeft == left;
-        side.radio = true;
-        AddChoice(side, {{left ? OperatorActionKind::SetTaskbarDisplayLeft : OperatorActionKind::SetTaskbarDisplayRight}});
-        taskbarDisplayPosition.children.push_back(std::move(side));
-    }
-    menu.push_back(std::move(taskbarDisplayPosition));
+        OperatorMenuItem taskbarDisplayPosition;
+        taskbarDisplayPosition.label = L"Taskbar Display Position";
+        for (bool left : {true, false})
+        {
+            OperatorMenuItem side;
+            side.label = left ? L"Left" : L"Right";
+            side.checked = toggles.taskbarDisplayOnLeft == left;
+            side.radio = true;
+            AddChoice(side, {{left ? OperatorActionKind::SetTaskbarDisplayLeft : OperatorActionKind::SetTaskbarDisplayRight}});
+            taskbarDisplayPosition.children.push_back(std::move(side));
+        }
+        menu.push_back(std::move(taskbarDisplayPosition));
 
-    OperatorMenuItem taskbarContextMenu;
-    taskbarContextMenu.label = L"Enable Taskbar Context Menu";
-    taskbarContextMenu.checked = toggles.taskbarContextMenuEnabled;
-    AddChoice(taskbarContextMenu, {{toggles.taskbarContextMenuEnabled
-        ? OperatorActionKind::DisableTaskbarContextMenu
-        : OperatorActionKind::EnableTaskbarContextMenu}});
-    menu.push_back(std::move(taskbarContextMenu));
+        OperatorMenuItem taskbarContextMenu;
+        taskbarContextMenu.label = L"Enable Taskbar Context Menu";
+        taskbarContextMenu.checked = toggles.taskbarContextMenuEnabled;
+        taskbarContextMenu.enabled = !taskbarContextMenu.checked || CanApplyOperatorAction(OperatorActionKind::DisableTaskbarContextMenu, toggles);
+        AddChoice(taskbarContextMenu, {{toggles.taskbarContextMenuEnabled
+            ? OperatorActionKind::DisableTaskbarContextMenu
+            : OperatorActionKind::EnableTaskbarContextMenu}});
+        menu.push_back(std::move(taskbarContextMenu));
+    }
+    menu.push_back({.separator = true});
+
+    OperatorMenuItem trayIcon;
+    trayIcon.label = L"Show Tray Icon";
+    trayIcon.checked = toggles.trayIconVisible;
+    trayIcon.enabled = !trayIcon.checked || CanApplyOperatorAction(OperatorActionKind::HideTrayIcon, toggles);
+    AddChoice(trayIcon, {{trayIcon.checked ? OperatorActionKind::HideTrayIcon : OperatorActionKind::ShowTrayIcon}});
+    menu.push_back(std::move(trayIcon));
     menu.push_back({.separator = true});
 
     OperatorMenuItem floatingDisplay;
     floatingDisplay.label = L"Show Floating Display";
     floatingDisplay.checked = toggles.floatingDisplayEnabled;
+    floatingDisplay.enabled = !floatingDisplay.checked || CanApplyOperatorAction(OperatorActionKind::HideFloatingDisplay, toggles);
     AddChoice(floatingDisplay, {{toggles.floatingDisplayEnabled
         ? OperatorActionKind::HideFloatingDisplay
         : OperatorActionKind::ShowFloatingDisplay}});
     menu.push_back(std::move(floatingDisplay));
-    OperatorMenuItem floatingText;
-    floatingText.label = L"Show Floating Text";
-    floatingText.checked = toggles.floatingTextVisible;
-    AddChoice(floatingText, {{toggles.floatingTextVisible
-        ? OperatorActionKind::HideFloatingText : OperatorActionKind::ShowFloatingText}});
-    menu.push_back(std::move(floatingText));
-    OperatorMenuItem floatingCharts;
-    floatingCharts.label = L"Show Floating Charts";
-    floatingCharts.checked = toggles.floatingChartsVisible;
-    AddChoice(floatingCharts, {{toggles.floatingChartsVisible
-        ? OperatorActionKind::HideFloatingCharts : OperatorActionKind::ShowFloatingCharts}});
-    menu.push_back(std::move(floatingCharts));
-    OperatorMenuItem floatingDisplayOpacity;
-    floatingDisplayOpacity.label = L"Floating Display Opacity";
-    for (int percent = 10; percent <= 100; percent += 10)
+    if (toggles.floatingDisplayEnabled)
     {
-        OperatorMenuItem level;
-        level.label = std::to_wstring(percent)+L"%";
-        level.checked = percent == toggles.floatingDisplayOpacity;
-        level.radio = true;
-        AddChoice(level, {{OperatorActionKind::SetFloatingDisplayOpacity,percent}});
-        floatingDisplayOpacity.children.push_back(std::move(level));
+        OperatorMenuItem floatingText;
+        floatingText.label = L"Show Floating Text";
+        floatingText.checked = toggles.floatingTextVisible;
+        AddChoice(floatingText, {{toggles.floatingTextVisible
+            ? OperatorActionKind::HideFloatingText : OperatorActionKind::ShowFloatingText}});
+        menu.push_back(std::move(floatingText));
+        OperatorMenuItem floatingCharts;
+        floatingCharts.label = L"Show Floating Charts";
+        floatingCharts.checked = toggles.floatingChartsVisible;
+        AddChoice(floatingCharts, {{toggles.floatingChartsVisible
+            ? OperatorActionKind::HideFloatingCharts : OperatorActionKind::ShowFloatingCharts}});
+        menu.push_back(std::move(floatingCharts));
+        OperatorMenuItem floatingDisplayOpacity;
+        floatingDisplayOpacity.label = L"Floating Display Opacity";
+        for (int percent = 10; percent <= 100; percent += 10)
+        {
+            OperatorMenuItem level;
+            level.label = std::to_wstring(percent)+L"%";
+            level.checked = percent == toggles.floatingDisplayOpacity;
+            level.radio = true;
+            AddChoice(level, {{OperatorActionKind::SetFloatingDisplayOpacity,percent}});
+            floatingDisplayOpacity.children.push_back(std::move(level));
+        }
+        menu.push_back(std::move(floatingDisplayOpacity));
     }
-    menu.push_back(std::move(floatingDisplayOpacity));
     menu.push_back({.separator = true});
 
     OperatorMenuItem startAtSignIn;

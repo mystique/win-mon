@@ -32,6 +32,8 @@ private:
     [[nodiscard]] HICON LoadTrayIcon() const noexcept;
     void UpdateTrayIconTheme() noexcept;
     void SaveFloatingDisplayPosition();
+    [[nodiscard]] winmon::OperatorMenuToggles MenuToggles() const;
+    void MaintainMenuAccess();
 
     [[nodiscard]] winmon::OperatorAction ShowOperatorMenu();
     void HandleOperatorMenuAction(winmon::OperatorAction action);
@@ -56,6 +58,8 @@ private:
     NetworkObservationReader networkReader_;
     std::uint64_t displayedNetworkGeneration_ = 0;
     bool trayIconAdded_ = false;
+    bool taskbarTextVisible_ = true;
+    bool trayIconVisible_ = true;
     bool shellRecoveryTimerActive_ = false;
     bool shuttingDown_ = false;
 };

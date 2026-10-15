@@ -50,6 +50,30 @@ bool WriteFlag(const wchar_t* valueName, bool enabled) noexcept
 
 namespace settings
 {
+bool IsTaskbarTextVisible() noexcept
+{
+    DWORD value = 1, size = sizeof(value);
+    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, L"TaskbarTextVisible", RRF_RT_REG_DWORD,
+        nullptr, &value, &size) != ERROR_SUCCESS || size != sizeof(value) || value != 0;
+}
+
+bool SetTaskbarTextVisible(bool visible) noexcept
+{
+    return WriteFlag(L"TaskbarTextVisible", visible);
+}
+
+bool IsTrayIconVisible() noexcept
+{
+    DWORD value = 1, size = sizeof(value);
+    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, L"TrayIconVisible", RRF_RT_REG_DWORD,
+        nullptr, &value, &size) != ERROR_SUCCESS || size != sizeof(value) || value != 0;
+}
+
+bool SetTrayIconVisible(bool visible) noexcept
+{
+    return WriteFlag(L"TrayIconVisible", visible);
+}
+
 int GetFloatingDisplayOpacity() noexcept
 {
     DWORD value = 100, size = sizeof(value);

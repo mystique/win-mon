@@ -22,11 +22,11 @@ Double-clicking the circular body cycles circle only → charts → charts and t
 _Avoid_: floating window, dashboard, overlay, main window
 
 **Tray Icon**:
-The notification-area icon that is the primary operator entry (Operator Menu only). Required for a successful run; if it cannot be created at startup, Win Mon shows an error message and exits.
+The notification-area icon that is the primary operator entry (Operator Menu only). Visible by default and controlled by Show Tray Icon. If no other menu entry is actually available, it is temporarily restored even when its saved preference is hidden; normal visibility resumes when another entry becomes available. Startup establishes this safety entry before restoring the displays; if icon creation fails, Win Mon shows an error message and exits.
 _Avoid_: main window, shell icon (ambiguous)
 
 **Operator Menu**:
-The tray context menu, opened from the Tray Icon, from the Rate Strip when **Enable Taskbar Context Menu** is on, or from the Floating Rate Display. Structure: **Monitored Network** submenu; separator; **Taskbar Display Position** submenu (Left / Right), **Enable Taskbar Context Menu**; separator; **Show Floating Display**, **Show Floating Text**, **Show Floating Charts**, **Floating Display Opacity** submenu (10% through 100%); separator; **Start at Sign-in**; separator; **Exit**. The submenu is a radio list with **All** first, then each NIC represented in the classic Windows Network Connections folder (friendly/alias name, else description). Labels are plain English, free of internal terms such as NIC or Rate Strip.
+The tray context menu, opened from the Tray Icon, from the Rate Strip when **Enable Taskbar Context Menu** is on, or from the Floating Rate Display. Structure: **Monitored Network** submenu; separator; **Show Taskbar Text**, **Taskbar Display Position** submenu (Left / Right), **Enable Taskbar Context Menu**; separator; **Show Tray Icon**; separator; **Show Floating Display**, **Show Floating Text**, **Show Floating Charts**, **Floating Display Opacity** submenu (10% through 100%); separator; **Start at Sign-in**; separator; **Exit**. Taskbar position and context-menu configuration only appear while Show Taskbar Text is enabled; floating text, charts and opacity configuration only appear while Show Floating Display is enabled. Hidden configuration retains its saved values. Closing the last actual menu entry is disabled: taskbar access requires visible text and its context menu enabled, tray access requires the icon, and floating access requires the visible body. Actions recheck availability before execution. The submenu is a radio list with **All** first, then each NIC represented in the classic Windows Network Connections folder (friendly/alias name, else description). Labels are plain English, free of internal terms such as NIC or Rate Strip.
 _Avoid_: main menu, settings dialog
 
 **Start at Sign-in**:
@@ -43,7 +43,7 @@ _Avoid_: show window, floating display toggle
 
 
 **Show Floating Text**:
-Operator Menu check item, on by default. Persists as the `FloatingTextVisible` DWORD (0/1; absent, unreadable, wrong type or unknown values mean on). Applies to both floating LED rows and dim lamps, with reversible width/opacity transitions; can be configured while the display is closed. Failed persistence restores the prior live choice.
+Operator Menu check item, on by default. Persists as the `FloatingTextVisible` DWORD (0/1; absent, unreadable, wrong type or unknown values mean on). Applies to both floating LED rows and dim lamps, with reversible width/opacity transitions; its menu item appears only while the display is enabled. Failed persistence restores the prior live choice.
 
 **Exit**:
 Operator Menu command that removes the Tray Icon, destroys the Rate Strip and Floating Rate Display, and ends the process without leaving shell chrome behind and without altering other taskbar children.
@@ -86,3 +86,5 @@ Extension (2026-10-11): Show Floating Charts independently controls both trend r
 **Floating Display Opacity**: A native Operator Menu submenu with ten radio choices, 10%, 20%, ... 100% (100% fully opaque). Selection immediately applies to the floating body and shadow, then persists FloatingDisplayOpacity as a DWORD. Missing/invalid data defaults to 100; legacy slider values round to the nearest ten. Failed saving restores the previous live value. The Rate Strip is unaffected. The entire Operator Menu uses native Windows menus.
 
 Menu terminology update (2026-10-14): registry values use TaskbarContextMenuEnabled, TaskbarDisplayPosition, FloatingDisplayVisible, FloatingTextVisible, FloatingChartsVisible, FloatingDisplayOpacity and FloatingDisplayPosition. Previous names are not read or migrated; missing values use the documented defaults. The sign-in Run entry remains named Win Mon.
+
+Display visibility update (2026-10-15): Show Taskbar Text and Show Tray Icon persist as TaskbarTextVisible and TrayIconVisible DWORDs (default on, including invalid data). Shell recovery respects hidden display preferences and temporarily restores the Tray Icon if every other actual menu entry is unavailable.

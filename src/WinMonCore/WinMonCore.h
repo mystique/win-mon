@@ -58,6 +58,10 @@ enum class OperatorActionKind
     DisableStartAtSignIn,
     EnableTaskbarContextMenu,
     DisableTaskbarContextMenu,
+    ShowTaskbarText,
+    HideTaskbarText,
+    ShowTrayIcon,
+    HideTrayIcon,
     ShowFloatingDisplay,
     HideFloatingDisplay,
     ShowFloatingCharts,
@@ -109,7 +113,13 @@ struct OperatorMenuToggles final
     bool floatingTextVisible = true;
     bool floatingChartsVisible = true;
     int floatingDisplayOpacity = 100;
+    bool taskbarTextVisible = true;
+    bool trayIconVisible = true;
+    bool taskbarDisplayAvailable = true;
+    bool floatingDisplayAvailable = true;
 };
+
+[[nodiscard]] bool CanApplyOperatorAction(OperatorActionKind action, const OperatorMenuToggles& toggles) noexcept;
 
 struct NicSnapshot final
 {

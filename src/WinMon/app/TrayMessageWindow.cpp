@@ -163,6 +163,8 @@ bool TrayMessageWindow::Initialize()
     }
 
     shuttingDown_ = false;
+    taskbarTextVisible_ = settings::IsTaskbarTextVisible();
+    trayIconVisible_ = settings::IsTrayIconVisible();
     rateStrip_.SetContextMenuOwner(GetSafeHwnd(), kDisplayContextMenuMessage);
     rateStrip_.SetContextMenuEnabled(settings::IsTaskbarContextMenuEnabled());
     static_cast<void>(rateStrip_.SetTaskbarDisplayOnLeft(settings::IsTaskbarDisplayOnLeft()));
@@ -197,6 +199,7 @@ bool TrayMessageWindow::Initialize()
             SaveFloatingDisplayPosition();
         }
     }
+    MaintainMenuAccess();
     return true;
 }
 
@@ -216,18 +219,21 @@ void TrayMessageWindow::Shutdown() noexcept
 LRESULT TrayMessageWindow::OnTaskbarCreated(WPARAM, LPARAM)
 {
     shellLifecycle_.OnShellCreated();
+    MaintainMenuAccess();
     return 0;
 }
 
 LRESULT TrayMessageWindow::OnDpiChanged(WPARAM, LPARAM)
 {
     shellLifecycle_.OnEnvironmentChanged();
+    MaintainMenuAccess();
     return 0;
 }
 
 void TrayMessageWindow::OnDisplayChange(UINT, int, int)
 {
     shellLifecycle_.OnEnvironmentChanged();
+    MaintainMenuAccess();
 }
 
 void TrayMessageWindow::OnSettingChange(UINT, LPCTSTR section)
@@ -237,12 +243,14 @@ void TrayMessageWindow::OnSettingChange(UINT, LPCTSTR section)
         shellLifecycle_.OnRateSample();
     else
         shellLifecycle_.OnEnvironmentChanged();
+    MaintainMenuAccess();
 }
 
 LRESULT TrayMessageWindow::OnThemeChanged()
 {
     UpdateTrayIconTheme();
     shellLifecycle_.OnRateSample();
+    MaintainMenuAccess();
     return 0;
 }
 
@@ -277,6 +285,7 @@ void TrayMessageWindow::OnTimer(UINT_PTR timerId)
         CancelRecovery();
         shellLifecycle_.Retry();
     }
+    MaintainMenuAccess();
     CWnd::OnTimer(timerId);
 }
 
@@ -315,6 +324,7 @@ void TrayMessageWindow::UpdateTrayIconTheme() noexcept
 winmon::RateStripState TrayMessageWindow::RecreateRateStrip()
 {
     rateStrip_.Shutdown();
+    if (!taskbarTextVisible_) return winmon::RateStripState::Hidden;
     if (!RateStrip::IsPrimaryBottomTaskbarAvailable())
     {
         return winmon::RateStripState::Hidden;
@@ -325,6 +335,11 @@ winmon::RateStripState TrayMessageWindow::RecreateRateStrip()
 
 winmon::RateStripState TrayMessageWindow::RefreshRateStrip()
 {
+    if (!taskbarTextVisible_)
+    {
+        rateStrip_.Shutdown();
+        return winmon::RateStripState::Hidden;
+    }
     if (rateStrip_.GetSafeHwnd() != nullptr && rateStrip_.Refresh())
     {
         return rateStrip_.IsDisplayVisible() ? winmon::RateStripState::Visible : winmon::RateStripState::Hidden;
@@ -371,6 +386,12 @@ void TrayMessageWindow::SaveFloatingDisplayPosition()
 
 bool TrayMessageWindow::EnsureTrayIcon()
 {
+    const auto toggles = MenuToggles();
+    if (!trayIconVisible_ && winmon::CanApplyOperatorAction(winmon::OperatorActionKind::HideTrayIcon, toggles))
+    {
+        RemoveTrayIcon();
+        return !trayIconAdded_;
+    }
     if (trayIconAdded_) return true;
     NOTIFYICONDATAW iconData{};
     iconData.cbSize = sizeof(iconData);
@@ -412,8 +433,28 @@ void TrayMessageWindow::RemoveTrayIcon() noexcept
     iconData.cbSize = sizeof(iconData);
     iconData.hWnd = GetSafeHwnd();
     iconData.uID = kTrayIconId;
-    Shell_NotifyIconW(NIM_DELETE, &iconData);
-    trayIconAdded_ = false;
+    if (Shell_NotifyIconW(NIM_DELETE, &iconData)) trayIconAdded_ = false;
+}
+
+winmon::OperatorMenuToggles TrayMessageWindow::MenuToggles() const
+{
+    const HWND floating = floatingRateDisplay_.GetSafeHwnd();
+    return {.startAtSignInEnabled = autostart::IsEnabled(),
+        .taskbarContextMenuEnabled = rateStrip_.IsContextMenuEnabled(),
+        .floatingDisplayEnabled = settings::IsFloatingDisplayEnabled(),
+        .taskbarDisplayOnLeft = rateStrip_.IsTaskbarDisplayOnLeft(),
+        .floatingTextVisible = floatingRateDisplay_.IsTextVisible(),
+        .floatingChartsVisible = floatingRateDisplay_.IsChartVisible(),
+        .floatingDisplayOpacity = floatingRateDisplay_.GetOpacity(),
+        .taskbarTextVisible = taskbarTextVisible_,
+        .trayIconVisible = trayIconAdded_,
+        .taskbarDisplayAvailable = rateStrip_.IsDisplayVisible(),
+        .floatingDisplayAvailable = floating != nullptr && ::IsWindowVisible(floating)};
+}
+
+void TrayMessageWindow::MaintainMenuAccess()
+{
+    if (!shuttingDown_ && !EnsureTrayIcon()) ScheduleRecovery();
 }
 
 winmon::OperatorAction TrayMessageWindow::ShowOperatorMenu()
@@ -421,14 +462,8 @@ winmon::OperatorAction TrayMessageWindow::ShowOperatorMenu()
     CPoint cursorPosition;
     if (!GetCursorPos(&cursorPosition)) return {};
     core_.ObserveNetwork(networkReader_.Read());
-    const auto model = core_.BeginOperatorMenu(
-        {.startAtSignInEnabled = autostart::IsEnabled(),
-         .taskbarContextMenuEnabled = rateStrip_.IsContextMenuEnabled(),
-         .floatingDisplayEnabled = settings::IsFloatingDisplayEnabled(),
-         .taskbarDisplayOnLeft = rateStrip_.IsTaskbarDisplayOnLeft(),
-         .floatingTextVisible = floatingRateDisplay_.IsTextVisible(),
-         .floatingChartsVisible = floatingRateDisplay_.IsChartVisible(),
-         .floatingDisplayOpacity = floatingRateDisplay_.GetOpacity()});
+    MaintainMenuAccess();
+    const auto model = core_.BeginOperatorMenu(MenuToggles());
     if (!model.has_value()) return {};
     OperatorMenuScope transaction{core_};
 
@@ -456,8 +491,33 @@ void TrayMessageWindow::RequestExit()
 
 void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
 {
+    if (!winmon::CanApplyOperatorAction(action.kind, MenuToggles())) return;
     switch (action.kind)
     {
+    case winmon::OperatorActionKind::ShowTaskbarText:
+    case winmon::OperatorActionKind::HideTaskbarText:
+    {
+        const bool previous = taskbarTextVisible_;
+        taskbarTextVisible_ = action.kind == winmon::OperatorActionKind::ShowTaskbarText;
+        shellLifecycle_.OnEnvironmentChanged();
+        if (!settings::SetTaskbarTextVisible(taskbarTextVisible_))
+        {
+            taskbarTextVisible_ = previous;
+            shellLifecycle_.OnEnvironmentChanged();
+        }
+        break;
+    }
+    case winmon::OperatorActionKind::ShowTrayIcon:
+    case winmon::OperatorActionKind::HideTrayIcon:
+    {
+        const bool previous = trayIconVisible_;
+        trayIconVisible_ = action.kind == winmon::OperatorActionKind::ShowTrayIcon;
+        if (!EnsureTrayIcon() || !settings::SetTrayIconVisible(trayIconVisible_))
+        {
+            trayIconVisible_ = previous;
+        }
+        break;
+    }
     case winmon::OperatorActionKind::EnableStartAtSignIn:
         static_cast<void>(autostart::Enable());
         break;
@@ -534,6 +594,7 @@ void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
     case winmon::OperatorActionKind::None:
         break;
     }
+    MaintainMenuAccess();
 }
 
 LRESULT TrayMessageWindow::OnTrayNotification(WPARAM, LPARAM lParam)

@@ -226,10 +226,10 @@ void OperatorMenuTransactionCorrelatesEveryAction()
 {
     WinMonCore core;
     core.ObserveNetwork({{NamedNic("a", L"Alpha", L"A desc")}, true});
-    auto menu = core.BeginOperatorMenu({false, true, false});
+    auto menu = core.BeginOperatorMenu({false, true, true});
     const std::vector<std::wstring> expectedLabels{
-        L"Monitored Network", L"", L"Taskbar Display Position", L"Enable Taskbar Context Menu",
-        L"", L"Show Floating Display", L"Show Floating Text", L"Show Floating Charts",
+        L"Monitored Network", L"", L"Show Taskbar Text", L"Taskbar Display Position", L"Enable Taskbar Context Menu",
+        L"", L"Show Tray Icon", L"", L"Show Floating Display", L"Show Floating Text", L"Show Floating Charts",
         L"Floating Display Opacity", L"", L"Start at Sign-in", L"", L"Exit"};
     Require(menu->size() == expectedLabels.size(), "menu contains exactly the approved items");
     for (size_t i = 0; i < expectedLabels.size(); ++i)
@@ -239,11 +239,11 @@ void OperatorMenuTransactionCorrelatesEveryAction()
     }
     Require(!FindItem(*menu, L"Start at Sign-in").checked, "Start at Sign-in reflects live state");
     Require(FindItem(*menu, L"Enable Taskbar Context Menu").checked, "Enable Taskbar Context Menu reflects live state");
-    Require(!FindItem(*menu, L"Show Floating Display").checked, "Floating Rate Display reflects live state");
+    Require(FindItem(*menu, L"Show Floating Display").checked, "Floating Rate Display reflects live state");
     Require(FindItem(*menu, L"Show Floating Text").checked, "floating text defaults checked");
     Require(FindItem(*menu, L"Show Floating Charts").checked, "chart defaults checked");
     Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Charts").choiceToken).kind == OperatorActionKind::HideFloatingCharts, "checked chart hides");
-    menu = core.BeginOperatorMenu({false,true,false,false,true,false});
+    menu = core.BeginOperatorMenu({false,true,true,false,true,false});
     Require(!FindItem(*menu,L"Show Floating Charts").checked, "hidden chart unchecked independently");
     const auto& opacity = FindItem(*menu,L"Floating Display Opacity");
     Require(opacity.children.size() == 10, "opacity has ten native submenu choices");
@@ -254,16 +254,16 @@ void OperatorMenuTransactionCorrelatesEveryAction()
         Require(level.checked == (i == 9), "opacity defaults to 100 percent");
     }
     Require(core.CompleteOperatorMenu(opacity.children[3].choiceToken).opacity == 40, "opacity action carries selected percentage");
-    menu = core.BeginOperatorMenu({false,true,false,false,true,false,40});
+    menu = core.BeginOperatorMenu({false,true,true,false,true,false,40});
     const auto& selectedOpacity = FindItem(*menu,L"Floating Display Opacity");
     Require(selectedOpacity.children[3].checked && !selectedOpacity.children[9].checked, "opacity menu reflects current value");
     Require(core.CompleteOperatorMenu(selectedOpacity.children[0].choiceToken).kind == OperatorActionKind::SetFloatingDisplayOpacity, "opacity choice action");
-    menu = core.BeginOperatorMenu({false,true,false,false,true,false,40});
+    menu = core.BeginOperatorMenu({false,true,true,false,true,false,40});
     const auto displayItem = std::find_if(menu->begin(),menu->end(),[](const auto& item){ return item.label == L"Show Floating Display"; });
     Require((displayItem+1)->label == L"Show Floating Text", "text toggle follows display toggle");
     Require(std::count_if(menu->begin(), menu->end(), [](const OperatorMenuItem& item) {
         return item.separator;
-    }) == 4, "Operator Menu separates network, taskbar, floating display, startup and Exit");
+    }) == 5, "Operator Menu separates network, taskbar, floating display, startup and Exit");
     const auto& startAtSignIn = FindItem(*menu, L"Start at Sign-in");
     Require(core.CompleteOperatorMenu(startAtSignIn.choiceToken).kind == OperatorActionKind::EnableStartAtSignIn, "startAtSignIn choice meaning");
 
@@ -275,10 +275,10 @@ void OperatorMenuTransactionCorrelatesEveryAction()
     const auto& floatingDisplay = FindItem(*menu, L"Show Floating Display");
     Require(core.CompleteOperatorMenu(floatingDisplay.choiceToken).kind == OperatorActionKind::HideFloatingDisplay, "floating display choice meaning");
 
-    menu = core.BeginOperatorMenu({});
+    menu = core.BeginOperatorMenu({.floatingDisplayEnabled = true});
     Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Text").choiceToken).kind == OperatorActionKind::HideFloatingText, "checked text action hides");
-    menu = core.BeginOperatorMenu({false,false,false,false,false});
-    Require(!FindItem(*menu,L"Show Floating Text").checked, "hidden text unchecked even when whole display closed");
+    menu = core.BeginOperatorMenu({false,false,true,false,false});
+    Require(!FindItem(*menu,L"Show Floating Text").checked, "hidden text unchecked");
     Require(core.CompleteOperatorMenu(FindItem(*menu,L"Show Floating Text").choiceToken).kind == OperatorActionKind::ShowFloatingText, "unchecked text action shows");
     menu = core.BeginOperatorMenu({});
     Require(std::none_of(menu->begin(), menu->end(), [](const auto& item) { return item.label == L"Set Font..." || item.label.starts_with(L"Font:"); }), "fixed LED font has no chooser");
@@ -288,6 +288,65 @@ void OperatorMenuTransactionCorrelatesEveryAction()
     const auto& exit = FindItem(*menu, L"Exit");
     Require(core.CompleteOperatorMenu(exit.choiceToken).kind == OperatorActionKind::Exit, "exit choice meaning");
 }
+void OperatorMenuProtectsLastEntryAndHidesInactiveSettings()
+{
+    for (int flags = 0; flags < 64; ++flags)
+    {
+        const bool text = (flags & 1) != 0;
+        const bool context = (flags & 2) != 0;
+        const bool tray = (flags & 4) != 0;
+        const bool floating = (flags & 8) != 0;
+        const bool taskbarAvailable = (flags & 16) != 0;
+        const bool floatingAvailable = (flags & 32) != 0;
+        winmon::OperatorMenuToggles toggles{.taskbarContextMenuEnabled = context,
+            .floatingDisplayEnabled = floating, .taskbarTextVisible = text,
+            .trayIconVisible = tray, .taskbarDisplayAvailable = taskbarAvailable,
+            .floatingDisplayAvailable = floatingAvailable};
+        WinMonCore core;
+        auto menu = core.BeginOperatorMenu(toggles);
+        const auto present = [&](const wchar_t* label) {
+            return std::any_of(menu->begin(), menu->end(), [&](const auto& item) { return item.label == label; });
+        };
+        Require(present(L"Taskbar Display Position") == text && present(L"Enable Taskbar Context Menu") == text,
+            "taskbar configuration exists only while taskbar text enabled");
+        for (const auto* label : {L"Show Floating Text", L"Show Floating Charts", L"Floating Display Opacity"})
+            Require(present(label) == floating, "floating configuration exists only while floating display enabled");
+        const bool taskbarEntry = text && context && taskbarAvailable;
+        const bool floatingEntry = floating && floatingAvailable;
+        const auto check = [&](const wchar_t* label, bool checked, bool allowed) {
+            const auto& item = FindItem(*menu, label);
+            Require(item.checked == checked && item.enabled == allowed, "entry toggle protection matches actual availability");
+            if (!allowed) Require(item.choiceToken == 0, "disabled action has no executable token");
+        };
+        check(L"Show Taskbar Text", text, !text || tray || floatingEntry);
+        if (text) check(L"Enable Taskbar Context Menu", context, !context || tray || floatingEntry);
+        check(L"Show Tray Icon", tray, !tray || taskbarEntry || floatingEntry);
+        check(L"Show Floating Display", floating, !floating || tray || taskbarEntry);
+        core.CancelOperatorMenu();
+        for (const auto kind : {OperatorActionKind::HideTaskbarText, OperatorActionKind::DisableTaskbarContextMenu,
+            OperatorActionKind::HideTrayIcon, OperatorActionKind::HideFloatingDisplay})
+        {
+            const bool expected = kind == OperatorActionKind::HideTrayIcon ? taskbarEntry || floatingEntry
+                : kind == OperatorActionKind::HideFloatingDisplay ? tray || taskbarEntry : tray || floatingEntry;
+            Require(CanApplyOperatorAction(kind, toggles) == expected, "execution guard protects the last entry");
+        }
+        Require(CanApplyOperatorAction(OperatorActionKind::Exit, toggles), "Exit is always available");
+    }
+    WinMonCore core;
+    auto menu = core.BeginOperatorMenu({});
+    Require(core.CompleteOperatorMenu(FindItem(*menu, L"Show Taskbar Text").choiceToken).kind == OperatorActionKind::HideTaskbarText,
+        "taskbar hide action");
+    menu = core.BeginOperatorMenu({.taskbarContextMenuEnabled = true});
+    Require(core.CompleteOperatorMenu(FindItem(*menu, L"Show Tray Icon").choiceToken).kind == OperatorActionKind::HideTrayIcon,
+        "tray hide action");
+    menu = core.BeginOperatorMenu({.taskbarTextVisible = false, .trayIconVisible = false});
+    Require(core.CompleteOperatorMenu(FindItem(*menu, L"Show Taskbar Text").choiceToken).kind == OperatorActionKind::ShowTaskbarText,
+        "taskbar show action");
+    menu = core.BeginOperatorMenu({.trayIconVisible = false});
+    Require(core.CompleteOperatorMenu(FindItem(*menu, L"Show Tray Icon").choiceToken).kind == OperatorActionKind::ShowTrayIcon,
+        "tray show action");
+}
+
 void TaskbarDisplayPositionMenuReflectsAndSelectsSide()
 {
     WinMonCore core;
@@ -517,6 +576,7 @@ int main()
         NetworkSessionPresentsOneCanonicalObservation();
         ClassificationFallbackPreservesAllAndSelectedNicRates();
         OperatorMenuTransactionCorrelatesEveryAction();
+        OperatorMenuProtectsLastEntryAndHidesInactiveSettings();
         TaskbarDisplayPositionMenuReflectsAndSelectsSide();
         OperatorSettingTransactionPreservesPreviousChoice();
         FirstSampleIsZero();

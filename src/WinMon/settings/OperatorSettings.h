@@ -7,6 +7,10 @@
 
 namespace settings
 {
+[[nodiscard]] bool IsTaskbarTextVisible() noexcept;
+bool SetTaskbarTextVisible(bool visible) noexcept;
+[[nodiscard]] bool IsTrayIconVisible() noexcept;
+bool SetTrayIconVisible(bool visible) noexcept;
 int GetFloatingDisplayOpacity() noexcept;
 bool SetFloatingDisplayOpacity(int percent) noexcept;
 [[nodiscard]] bool AreFloatingChartsVisible() noexcept;

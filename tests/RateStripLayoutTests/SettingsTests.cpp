@@ -40,6 +40,22 @@ int main()
     try
     {
         IsolatedRegistry registry;
+        Require(settings::IsTaskbarTextVisible() && settings::IsTrayIconVisible(), "new entry toggles default visible");
+        Require(settings::SetTaskbarTextVisible(false) && !settings::IsTaskbarTextVisible(), "taskbar hidden preference persists");
+        Require(settings::SetTaskbarTextVisible(true) && settings::IsTaskbarTextVisible(), "taskbar shown preference persists");
+        Require(settings::SetTrayIconVisible(false) && !settings::IsTrayIconVisible(), "tray hidden preference persists");
+        Require(settings::SetTrayIconVisible(true) && settings::IsTrayIconVisible(), "tray shown preference persists");
+        for (const auto* name : {L"TaskbarTextVisible", L"TrayIconVisible"})
+        {
+            const DWORD invalid = 2;
+            Require(RegSetKeyValueW(HKEY_CURRENT_USER, L"Software\\Win Mon", name, REG_DWORD,
+                &invalid, sizeof(invalid)) == ERROR_SUCCESS, "invalid visibility fixture");
+            Require(settings::IsTaskbarTextVisible() && settings::IsTrayIconVisible(), "invalid flags retain visible defaults");
+            const wchar_t wrongType[] = L"0";
+            Require(RegSetKeyValueW(HKEY_CURRENT_USER, L"Software\\Win Mon", name, REG_SZ,
+                wrongType, sizeof(wrongType)) == ERROR_SUCCESS, "wrong type visibility fixture");
+            Require(settings::IsTaskbarTextVisible() && settings::IsTrayIconVisible(), "wrong type defaults visible");
+        }
         Require(!settings::IsTaskbarContextMenuEnabled(), "taskbar context menu defaults off");
         Require(settings::SetTaskbarContextMenuEnabled(true) && settings::IsTaskbarContextMenuEnabled(), "taskbar context menu persists on");
         Require(settings::SetTaskbarContextMenuEnabled(false) && !settings::IsTaskbarContextMenuEnabled(), "taskbar context menu persists off");
