@@ -4,6 +4,7 @@
 #pragma once
 #include "floating/PunctumGlyphs.h"
 #include <d2d1.h>
+#include <array>
 #include <string>
 #include <algorithm>
 #include <cmath>

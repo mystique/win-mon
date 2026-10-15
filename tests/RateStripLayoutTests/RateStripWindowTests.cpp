@@ -1,7 +1,6 @@
 #include <afxwin.h>
 #include "taskbar/RateStrip.h"
-#include "taskbar/TaskbarSpaceProbe.h"
-#include "settings/TaskbarDisplayPositionSettingChange.h"
+#include "WinMonCore.h"
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -134,8 +133,7 @@ int main(int argc, char** argv)
             RECT startBounds{};
             Require(SUCCEEDED(start->get_CurrentBoundingRectangle(&startBounds)), "Start clickable bounds");
             RECT startPadding{startBounds.left + 1, startBounds.top + 1, startBounds.left + 2, startBounds.top + 2};
-            MapWindowPoints(nullptr, taskbar, reinterpret_cast<POINT*>(&startPadding), 2);
-            Require(!TaskbarSpaceProbe{}.IsFree(taskbar, startPadding, strip.GetSafeHwnd()), "Start clickable padding is occupied even outside icon content");
+            Require(!strip.IsTaskbarSpaceFree(taskbar, startPadding), "Start clickable padding is occupied even outside icon content");
             RECT rect{}, client{};
             Require(::GetWindowRect(strip.GetSafeHwnd(), &rect), "Left bounds");
             MapWindowPoints(nullptr, taskbar, reinterpret_cast<POINT*>(&rect), 2);
@@ -158,7 +156,7 @@ int main(int argc, char** argv)
         CWnd unknown;
         Require(unknown.CreateEx(0, AfxRegisterWndClass(0), L"Unknown taskbar", WS_POPUP,
             CRect(0, 0, 200, 60), nullptr, 0), "unknown surface");
-        Require(!TaskbarSpaceProbe{}.IsFree(unknown.GetSafeHwnd(), {0, 0, 100, 40}), "unknown shell cannot prove free space");
+        Require(!strip.IsTaskbarSpaceFree(unknown.GetSafeHwnd(), {0, 0, 100, 40}), "unknown shell cannot prove free space");
         Require(strip.SetTaskbarDisplayOnLeft(false) && strip.IsDisplayVisible(), "switch back to Right");
         strip.SetRates(L"123.4 K/s", L"56.7 M/s");
         if (!evidence.empty())
@@ -169,11 +167,16 @@ int main(int argc, char** argv)
             Capture(strip.GetSafeHwnd(), evidence / "quiet.bmp");
         }
         Require(!strip.IsTaskbarDisplayOnLeft(), "Right selection retained");
-        TaskbarDisplayPositionSettingChange change{strip, true, PersistPosition};
-        Require(winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RolledBack &&
+        const auto commitLeft = [&] {
+            return winmon::OperatorSettingTransaction::Commit(
+                [&] { return strip.SetTaskbarDisplayOnLeft(true); },
+                [&] { return PersistPosition(true); },
+                [&] { return strip.SetTaskbarDisplayOnLeft(false); });
+        };
+        Require(commitLeft() == winmon::OperatorSettingOutcome::RolledBack &&
             !strip.IsTaskbarDisplayOnLeft() && !savedLeft, "failed persistence restores native Right layout");
         canPersist = true;
-        Require(winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::Applied &&
+        Require(commitLeft() == winmon::OperatorSettingOutcome::Applied &&
             strip.IsTaskbarDisplayOnLeft() && savedLeft, "position transaction applies and saves Left");
         const auto started = std::chrono::steady_clock::now();
         for (int sample = 0; sample < 3; ++sample) Require(strip.Refresh(), "steady Left refresh");

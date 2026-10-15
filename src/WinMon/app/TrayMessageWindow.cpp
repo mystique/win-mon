@@ -4,10 +4,6 @@
 #include "app/TrayMessageWindow.h"
 #include "platform/LaunchAtLogin.h"
 #include "settings/OperatorSettings.h"
-#include "settings/FloatingRateTextSettingChange.h"
-#include "settings/FloatingRateChartSettingChange.h"
-#include "settings/TaskbarDisplayPositionSettingChange.h"
-#include "platform/Theme.h"
 
 #include "res/resource.h"
 
@@ -70,58 +66,6 @@ struct OperatorMenuScope final
     winmon::WinMonCore& core;
     bool completed = false;
 };
-class TaskbarContextMenuSettingChange final : public winmon::OperatorSettingChange
-{
-public:
-    TaskbarContextMenuSettingChange(RateStrip& rateStrip, bool enabled) noexcept
-        : rateStrip_(rateStrip), previous_(rateStrip.IsContextMenuEnabled()), enabled_(enabled) {}
-
-    bool ApplyLive() override
-    {
-        rateStrip_.SetContextMenuEnabled(enabled_);
-        return true;
-    }
-    bool Persist() override { return settings::SetTaskbarContextMenuEnabled(enabled_); }
-    bool RollbackLive() override
-    {
-        rateStrip_.SetContextMenuEnabled(previous_);
-        return true;
-    }
-
-private:
-    RateStrip& rateStrip_;
-    bool previous_;
-    bool enabled_;
-};
-
-class FloatingRateDisplaySettingChange final : public winmon::OperatorSettingChange
-{
-public:
-    FloatingRateDisplaySettingChange(FloatingRateDisplay& display, bool previous, bool enabled) noexcept
-        : display_(display), previous_(previous), enabled_(enabled) {}
-
-    bool ApplyLive() override { return SetVisible(enabled_); }
-    bool Persist() override { return settings::SetFloatingDisplayEnabled(enabled_); }
-    bool RollbackLive() override { return SetVisible(previous_); }
-
-private:
-    bool SetVisible(bool visible) noexcept
-    {
-        if (!visible)
-        {
-            display_.Shutdown();
-            return true;
-        }
-        POINT position{};
-        return display_.ShowFloating(
-            position,
-            settings::GetFloatingDisplayPosition(position));
-    }
-
-    FloatingRateDisplay& display_;
-    bool previous_;
-    bool enabled_;
-};
 }
 
 BEGIN_MESSAGE_MAP(TrayMessageWindow, CWnd)
@@ -163,23 +107,16 @@ bool TrayMessageWindow::Initialize()
     }
 
     shuttingDown_ = false;
-    taskbarTextVisible_ = settings::IsTaskbarTextVisible();
-    trayIconVisible_ = settings::IsTrayIconVisible();
-    bool floatingDisplayEnabled = settings::IsFloatingDisplayEnabled();
-    if (!settings::HasConfiguredMenuAccess())
-    {
-        trayIconVisible_ = true;
-        floatingDisplayEnabled = true;
-        // Keep live access even if externally restricted registry permissions prevent repair.
-        static_cast<void>(settings::SetTrayIconVisible(true));
-        static_cast<void>(settings::SetFloatingDisplayEnabled(true));
-    }
+    const auto startup = settings::LoadStartupToggles();
+    taskbarTextVisible_ = startup.taskbarTextVisible;
+    trayIconVisible_ = startup.trayIconVisible;
+    floatingDisplayEnabled_ = startup.floatingDisplayEnabled;
     rateStrip_.SetContextMenuOwner(GetSafeHwnd(), kDisplayContextMenuMessage);
-    rateStrip_.SetContextMenuEnabled(settings::IsTaskbarContextMenuEnabled());
-    static_cast<void>(rateStrip_.SetTaskbarDisplayOnLeft(settings::IsTaskbarDisplayOnLeft()));
-    static_cast<void>(floatingRateDisplay_.SetTextVisible(settings::IsFloatingTextVisible()));
-    static_cast<void>(floatingRateDisplay_.SetChartVisible(settings::AreFloatingChartsVisible()));
-    static_cast<void>(floatingRateDisplay_.SetOpacity(settings::GetFloatingDisplayOpacity()));
+    rateStrip_.SetContextMenuEnabled(startup.taskbarContextMenuEnabled);
+    static_cast<void>(rateStrip_.SetTaskbarDisplayOnLeft(startup.taskbarDisplayOnLeft));
+    static_cast<void>(floatingRateDisplay_.SetTextVisible(startup.floatingTextVisible));
+    static_cast<void>(floatingRateDisplay_.SetChartVisible(startup.floatingChartsVisible));
+    static_cast<void>(floatingRateDisplay_.SetOpacity(startup.floatingDisplayOpacity));
     floatingRateDisplay_.SetContextMenuOwner(GetSafeHwnd(), kDisplayContextMenuMessage);
     floatingRateDisplay_.SetVisibilityChangeHandler([this](bool text, bool visible) {
         HandleOperatorMenuAction({text
@@ -198,7 +135,7 @@ bool TrayMessageWindow::Initialize()
         Shutdown();
         return false;
     }
-    if (floatingDisplayEnabled)
+    if (floatingDisplayEnabled_)
     {
         POINT position{};
         if (floatingRateDisplay_.ShowFloating(
@@ -300,7 +237,7 @@ void TrayMessageWindow::OnTimer(UINT_PTR timerId)
 
 HICON TrayMessageWindow::LoadTrayIcon() const noexcept
 {
-    const int resourceId = theme::ReadMode() == theme::Mode::Light
+    const int resourceId = settings::IsLightTheme()
         ? IDI_WINMON_TRAY_LIGHT
         : IDI_WINMON_TRAY_DARK;
     return static_cast<HICON>(::LoadImageW(
@@ -395,8 +332,7 @@ void TrayMessageWindow::SaveFloatingDisplayPosition()
 
 bool TrayMessageWindow::EnsureTrayIcon()
 {
-    const auto toggles = MenuToggles();
-    if (!trayIconVisible_ && winmon::CanApplyOperatorAction(winmon::OperatorActionKind::HideTrayIcon, toggles))
+    if (!winmon::ShouldShowTrayIcon(MenuToggles()))
     {
         RemoveTrayIcon();
         return !trayIconAdded_;
@@ -450,13 +386,13 @@ winmon::OperatorMenuToggles TrayMessageWindow::MenuToggles() const
     const HWND floating = floatingRateDisplay_.GetSafeHwnd();
     return {.startAtSignInEnabled = autostart::IsEnabled(),
         .taskbarContextMenuEnabled = rateStrip_.IsContextMenuEnabled(),
-        .floatingDisplayEnabled = settings::IsFloatingDisplayEnabled(),
+        .floatingDisplayEnabled = floatingDisplayEnabled_,
         .taskbarDisplayOnLeft = rateStrip_.IsTaskbarDisplayOnLeft(),
         .floatingTextVisible = floatingRateDisplay_.IsTextVisible(),
         .floatingChartsVisible = floatingRateDisplay_.IsChartVisible(),
         .floatingDisplayOpacity = floatingRateDisplay_.GetOpacity(),
         .taskbarTextVisible = taskbarTextVisible_,
-        .trayIconVisible = trayIconAdded_,
+        .trayIconVisible = trayIconVisible_,
         .taskbarDisplayAvailable = rateStrip_.IsDisplayVisible(),
         .floatingDisplayAvailable = floating != nullptr && ::IsWindowVisible(floating)};
 }
@@ -507,24 +443,22 @@ void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
     case winmon::OperatorActionKind::HideTaskbarText:
     {
         const bool previous = taskbarTextVisible_;
-        taskbarTextVisible_ = action.kind == winmon::OperatorActionKind::ShowTaskbarText;
-        shellLifecycle_.OnEnvironmentChanged();
-        if (!settings::SetTaskbarTextVisible(taskbarTextVisible_))
-        {
-            taskbarTextVisible_ = previous;
-            shellLifecycle_.OnEnvironmentChanged();
-        }
+        const bool visible = action.kind == winmon::OperatorActionKind::ShowTaskbarText;
+        static_cast<void>(winmon::OperatorSettingTransaction::Commit(
+            [&] { taskbarTextVisible_ = visible; shellLifecycle_.OnEnvironmentChanged(); return true; },
+            [&] { return settings::SetTaskbarTextVisible(visible); },
+            [&] { taskbarTextVisible_ = previous; shellLifecycle_.OnEnvironmentChanged(); return true; }));
         break;
     }
     case winmon::OperatorActionKind::ShowTrayIcon:
     case winmon::OperatorActionKind::HideTrayIcon:
     {
         const bool previous = trayIconVisible_;
-        trayIconVisible_ = action.kind == winmon::OperatorActionKind::ShowTrayIcon;
-        if (!EnsureTrayIcon() || !settings::SetTrayIconVisible(trayIconVisible_))
-        {
-            trayIconVisible_ = previous;
-        }
+        const bool visible = action.kind == winmon::OperatorActionKind::ShowTrayIcon;
+        static_cast<void>(winmon::OperatorSettingTransaction::Commit(
+            [&] { trayIconVisible_ = visible; return EnsureTrayIcon(); },
+            [&] { return settings::SetTrayIconVisible(visible); },
+            [&] { trayIconVisible_ = previous; return EnsureTrayIcon(); }));
         break;
     }
     case winmon::OperatorActionKind::EnableStartAtSignIn:
@@ -536,18 +470,29 @@ void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
     case winmon::OperatorActionKind::EnableTaskbarContextMenu:
     case winmon::OperatorActionKind::DisableTaskbarContextMenu:
     {
+        const bool previous = rateStrip_.IsContextMenuEnabled();
         const bool enabled = action.kind == winmon::OperatorActionKind::EnableTaskbarContextMenu;
-        TaskbarContextMenuSettingChange change{rateStrip_, enabled};
-        static_cast<void>(winmon::OperatorSettingTransaction::Commit(change));
+        static_cast<void>(winmon::OperatorSettingTransaction::Commit(
+            [&] { rateStrip_.SetContextMenuEnabled(enabled); return true; },
+            [&] { return settings::SetTaskbarContextMenuEnabled(enabled); },
+            [&] { rateStrip_.SetContextMenuEnabled(previous); return true; }));
         break;
     }
     case winmon::OperatorActionKind::ShowFloatingDisplay:
     case winmon::OperatorActionKind::HideFloatingDisplay:
     {
+        const bool previous = floatingDisplayEnabled_;
         const bool enabled = action.kind == winmon::OperatorActionKind::ShowFloatingDisplay;
-        FloatingRateDisplaySettingChange change{
-            floatingRateDisplay_, settings::IsFloatingDisplayEnabled(), enabled};
-        if (winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::Applied)
+        const auto applyFloating = [&](bool show) {
+            floatingDisplayEnabled_ = show;
+            if (!show) { floatingRateDisplay_.Shutdown(); return true; }
+            POINT position{};
+            return floatingRateDisplay_.ShowFloating(position, settings::GetFloatingDisplayPosition(position));
+        };
+        if (winmon::OperatorSettingTransaction::Commit(
+                [&] { return applyFloating(enabled); },
+                [&] { return settings::SetFloatingDisplayEnabled(enabled); },
+                [&] { return applyFloating(previous); }) == winmon::OperatorSettingOutcome::Applied)
         {
             SaveFloatingDisplayPosition();
         }
@@ -556,35 +501,50 @@ void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
     case winmon::OperatorActionKind::ShowFloatingText:
     case winmon::OperatorActionKind::HideFloatingText:
     {
-        FloatingRateTextSettingChange change{floatingRateDisplay_,
-            action.kind == winmon::OperatorActionKind::ShowFloatingText, settings::SetFloatingTextVisible};
-        if (winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RecoveryRequired)
+        const bool previous = floatingRateDisplay_.IsTextVisible();
+        const bool visible = action.kind == winmon::OperatorActionKind::ShowFloatingText;
+        if (winmon::OperatorSettingTransaction::Commit(
+                [&] { return floatingRateDisplay_.SetTextVisible(visible); },
+                [&] { return settings::SetFloatingTextVisible(visible); },
+                [&] { return floatingRateDisplay_.SetTextVisible(previous); }) == winmon::OperatorSettingOutcome::RecoveryRequired)
+        {
             static_cast<void>(floatingRateDisplay_.SetTextVisible(settings::IsFloatingTextVisible()));
+        }
         break;
     }
     case winmon::OperatorActionKind::ShowFloatingCharts:
     case winmon::OperatorActionKind::HideFloatingCharts:
     {
-        FloatingRateChartSettingChange change{floatingRateDisplay_,
-            action.kind == winmon::OperatorActionKind::ShowFloatingCharts, settings::SetFloatingChartsVisible};
-        if (winmon::OperatorSettingTransaction::Commit(change) == winmon::OperatorSettingOutcome::RecoveryRequired)
+        const bool previous = floatingRateDisplay_.IsChartVisible();
+        const bool visible = action.kind == winmon::OperatorActionKind::ShowFloatingCharts;
+        if (winmon::OperatorSettingTransaction::Commit(
+                [&] { return floatingRateDisplay_.SetChartVisible(visible); },
+                [&] { return settings::SetFloatingChartsVisible(visible); },
+                [&] { return floatingRateDisplay_.SetChartVisible(previous); }) == winmon::OperatorSettingOutcome::RecoveryRequired)
+        {
             static_cast<void>(floatingRateDisplay_.SetChartVisible(settings::AreFloatingChartsVisible()));
+        }
         break;
     }
     case winmon::OperatorActionKind::SetFloatingDisplayOpacity:
     {
         const int previous = floatingRateDisplay_.GetOpacity();
-        if (floatingRateDisplay_.SetOpacity(action.opacity) && !settings::SetFloatingDisplayOpacity(action.opacity))
-            static_cast<void>(floatingRateDisplay_.SetOpacity(previous));
+        static_cast<void>(winmon::OperatorSettingTransaction::Commit(
+            [&] { return floatingRateDisplay_.SetOpacity(action.opacity); },
+            [&] { return settings::SetFloatingDisplayOpacity(action.opacity); },
+            [&] { return floatingRateDisplay_.SetOpacity(previous); }));
         break;
     }
     case winmon::OperatorActionKind::SetTaskbarDisplayLeft:
     case winmon::OperatorActionKind::SetTaskbarDisplayRight:
     {
+        const bool previous = rateStrip_.IsTaskbarDisplayOnLeft();
         const bool left = action.kind == winmon::OperatorActionKind::SetTaskbarDisplayLeft;
-        if (rateStrip_.IsTaskbarDisplayOnLeft() == left) break;
-        TaskbarDisplayPositionSettingChange change{rateStrip_, left, settings::SetTaskbarDisplayOnLeft};
-        const auto outcome = winmon::OperatorSettingTransaction::Commit(change);
+        if (previous == left) break;
+        const auto outcome = winmon::OperatorSettingTransaction::Commit(
+            [&] { return rateStrip_.SetTaskbarDisplayOnLeft(left); },
+            [&] { return settings::SetTaskbarDisplayOnLeft(left); },
+            [&] { return rateStrip_.SetTaskbarDisplayOnLeft(previous); });
         if (outcome == winmon::OperatorSettingOutcome::RecoveryRequired)
         {
             rateStrip_.Shutdown();

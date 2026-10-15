@@ -18,7 +18,6 @@ using winmon::ShellLifecycle;
 using winmon::ShellSurface;
 using winmon::OperatorActionKind;
 using winmon::OperatorMenuItem;
-using winmon::OperatorSettingChange;
 using winmon::OperatorSettingOutcome;
 using winmon::OperatorSettingTransaction;
 
@@ -331,6 +330,10 @@ void OperatorMenuProtectsLastEntryAndHidesInactiveSettings()
             Require(CanApplyOperatorAction(kind, toggles) == expected, "execution guard protects the last entry");
         }
         Require(CanApplyOperatorAction(OperatorActionKind::Exit, toggles), "Exit is always available");
+        Require(winmon::HasConfiguredMenuAccess(toggles) == (tray || floating || (text && context)),
+            "configured menu access depends only on persisted entry preferences");
+        Require(winmon::ShouldShowTrayIcon(toggles) == (tray || (!taskbarEntry && !floatingEntry)),
+            "tray icon shows when preferred or when all other configured entries are unavailable");
     }
     WinMonCore core;
     auto menu = core.BeginOperatorMenu({});
@@ -361,27 +364,33 @@ void TaskbarDisplayPositionMenuReflectsAndSelectsSide()
     Require(FindItem(FindItem(*menu, L"Taskbar Display Position").children, L"Left").checked, "selected Left is reflected");
     Require(core.CompleteOperatorMenu(FindItem(FindItem(*menu, L"Taskbar Display Position").children, L"Right").choiceToken).kind == OperatorActionKind::SetTaskbarDisplayRight, "Right action");
 }
-class FakeOperatorSettingChange final : public OperatorSettingChange
+struct FakeOperatorSettingChange final
 {
-public:
-    bool ApplyLive() override
+    bool ApplyLive()
     {
         ++applyCalls;
         firstDisplaySetting = 2;
         if (applyResult) secondDisplaySetting = 2;
         return applyResult;
     }
-    bool Persist() override
+    bool Persist()
     {
         ++persistCalls;
         if (persistResult) savedSetting = 2;
         return persistResult;
     }
-    bool RollbackLive() override
+    bool RollbackLive()
     {
         ++rollbackCalls;
         if (rollbackResult) firstDisplaySetting = secondDisplaySetting = 1;
         return rollbackResult;
+    }
+    OperatorSettingOutcome Commit()
+    {
+        return OperatorSettingTransaction::Commit(
+            [this] { return ApplyLive(); },
+            [this] { return Persist(); },
+            [this] { return RollbackLive(); });
     }
 
     bool applyResult = true;
@@ -398,7 +407,7 @@ void OperatorSettingTransactionPreservesPreviousChoice()
     FakeOperatorSettingChange change;
     change.applyResult = false;
     Require(
-        OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::LiveApplicationFailed,
+        change.Commit() == OperatorSettingOutcome::LiveApplicationFailed,
         "live failure rejects setting before persistence");
     Require(change.firstDisplaySetting == 1 && change.secondDisplaySetting == 1 && change.savedSetting == 1,
         "partial live failure restores both displays and leaves storage untouched");
@@ -406,13 +415,13 @@ void OperatorSettingTransactionPreservesPreviousChoice()
     change = {};
     change.applyResult = false;
     change.rollbackResult = false;
-    Require(OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::RecoveryRequired,
+    Require(change.Commit() == OperatorSettingOutcome::RecoveryRequired,
         "partial live failure with failed rollback requires recovery");
 
     change = {};
     change.persistResult = false;
     Require(
-        OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::RolledBack,
+        change.Commit() == OperatorSettingOutcome::RolledBack,
         "storage failure restores previous live setting");
     Require(change.applyCalls == 1 && change.persistCalls == 1 && change.rollbackCalls == 1, "rollback transaction order");
     Require(change.firstDisplaySetting == 1 && change.secondDisplaySetting == 1 && change.savedSetting == 1,
@@ -422,16 +431,29 @@ void OperatorSettingTransactionPreservesPreviousChoice()
     change.persistResult = false;
     change.rollbackResult = false;
     Require(
-        OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::RecoveryRequired,
+        change.Commit() == OperatorSettingOutcome::RecoveryRequired,
         "failed rollback requests recreation from persisted truth");
 
     change = {};
     Require(
-        OperatorSettingTransaction::Commit(change) == OperatorSettingOutcome::Applied,
+        change.Commit() == OperatorSettingOutcome::Applied,
         "successful change applies and persists exactly once");
     Require(change.rollbackCalls == 0, "successful change needs no rollback");
     Require(change.firstDisplaySetting == 2 && change.secondDisplaySetting == 2 && change.savedSetting == 2,
         "successful change updates both displays and storage");
+    int liveValue = 10, persistedValue = 10;
+    Require(OperatorSettingTransaction::Commit(
+        [&] { liveValue = 40; return true; },
+        [&] { return false; },
+        [&] { liveValue = 10; return true; }) == OperatorSettingOutcome::RolledBack &&
+        liveValue == 10 && persistedValue == 10,
+        "callable transaction overload rolls back live state on persistence failure");
+    Require(OperatorSettingTransaction::Commit(
+        [&] { liveValue = 40; return true; },
+        [&] { persistedValue = 40; return true; },
+        [&] { liveValue = 10; return true; }) == OperatorSettingOutcome::Applied &&
+        liveValue == 40 && persistedValue == 40,
+        "callable transaction overload commits live and persisted state");
 }
 
 void RequireRate(const winmon::RateDisplay& display, double upload, double download)

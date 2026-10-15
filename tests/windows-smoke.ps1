@@ -79,6 +79,9 @@ public static class WinMonNative {
     public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern uint RegisterWindowMessage(string message);
+    [DllImport("user32.dll")]
+    public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr dpiContext);
+    static WinMonNative() { SetThreadDpiAwarenessContext(new IntPtr(-4)); }
     public static IntPtr FindTopLevel(uint processId, string title, string className) {
         IntPtr result = IntPtr.Zero;
         EnumWindows((window, parameter) => {
@@ -189,12 +192,12 @@ try {
     } "A supported primary bottom taskbar did not produce exactly one Rate Strip"
 
     $popup = Open-StripMenu $strips[0] ([uint32]$process.Id)
-    # Exercise the native menu loop: Network, Position, expand, select Left.
-    foreach ($key in @(0x28, 0x28, 0x27, 0x0D)) {
+    # Exercise the native menu loop: Network, Show Taskbar Text, Position, expand, select Left.
+    foreach ($key in @(0x28, 0x28, 0x28, 0x27, 0x0D)) {
         [WinMonNative]::PostMessage($popup, 0x0100, [IntPtr]$key, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 50
     }
-    Wait-Until { (Get-ItemPropertyValue -Path $productKey -Name $positionName -ErrorAction SilentlyContinue) -eq 1 } 'Native Left selection did not persist' | Out-Null
+    Wait-Until { (Save-RegistryValue $positionName) -eq 1 } 'Native Left selection did not persist' | Out-Null
     Wait-Until { [WinMonNative]::FindTopLevel([uint32]$process.Id, $null, '#32768') -eq [IntPtr]::Zero } 'Position menu did not close' | Out-Null
     if ($RequireLeft) {
         Wait-Until { [WinMonNative]::IsWindowVisible($strips[0]) } 'Unoccupied Left disappeared after menu selection' | Out-Null

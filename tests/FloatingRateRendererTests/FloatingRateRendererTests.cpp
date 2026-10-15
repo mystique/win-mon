@@ -254,4 +254,23 @@ int main(int argc, char** argv)
         if (!evidence.empty())
             for (bool light : {false,true}) SaveBitmap(renderer, evidence / (std::to_string(dpi) + (light ? "-light.bmp" : "-dark.bmp")), light ? 0xf4f5f7 : 0x101419);
     }
+    {
+        FloatingRateRenderer stateful;
+        stateful.SetRates(L"10.0 K/s", L"20.0 K/s", 1000, 1000, 1000);
+        Require(stateful.StepAnimation(1100, true, true), "active rate sample drives water and scroll animation");
+        Require(stateful.RenderCurrent(96, true) && stateful.CurrentSizeForDpi(96).cx == 220, "stateful full capsule renders");
+        stateful.BeginVisibility(true, false, 1100, true, true);
+        Require(stateful.StepAnimation(1210, true, true), "mid-transition text hide keeps animation active");
+        const LONG midWidth = stateful.CurrentSizeForDpi(96).cx;
+        Require(midWidth < 220 && midWidth > FloatingRateRenderer::SizeForDpi(96, 0, 1).cx, "renderer owns cubic ease-out width progress");
+        stateful.BeginVisibility(true, false, 1210, false, true);
+        stateful.BeginVisibility(false, false, 1210, false, true);
+        Require(!stateful.IsTextVisible() && !stateful.IsChartVisible() && stateful.CurrentSizeForDpi(96).cx == 54, "hidden window finishes transitions immediately");
+        auto step = stateful.NextVisibilityCycleStep();
+        Require(!step.changeText && step.visible, "cycle from circle expands charts first");
+        stateful.BeginVisibility(false, step.visible, 1300, false, true);
+        stateful.CommitVisibilityCycleStep(true, step.visible);
+        step = stateful.NextVisibilityCycleStep();
+        Require(step.changeText && step.visible, "second cycle step expands text");
+    }
 }

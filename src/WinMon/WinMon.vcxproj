@@ -113,7 +113,6 @@
     <ClCompile Include="app\TrayMessageWindow.cpp" />
     <ClCompile Include="settings\OperatorSettings.cpp" />
     <ClCompile Include="taskbar\RateStrip.cpp" />
-    <ClCompile Include="platform\Theme.cpp" />
     <ClCompile Include="app\WinMonApp.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -134,11 +133,6 @@
     <ClInclude Include="floating\FloatingRateRenderer.h" />
     <ClInclude Include="floating\PunctumGlyphs.h" />
     <ClInclude Include="platform\NetworkObservationReader.h" />
-    <ClInclude Include="platform\Theme.h" />
-    <ClInclude Include="settings\FloatingRateChartSettingChange.h" />
-    <ClInclude Include="settings\FloatingRateTextSettingChange.h" />
-    <ClInclude Include="settings\TaskbarDisplayPositionSettingChange.h" />
-    <ClInclude Include="taskbar\TaskbarSpaceProbe.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="floating\FloatingRateDisplay.cpp" />

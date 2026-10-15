@@ -4,6 +4,7 @@
 #pragma once
 
 #include <chrono>
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -87,20 +88,24 @@ enum class OperatorSettingOutcome
     RecoveryRequired,
 };
 
-class OperatorSettingChange
-{
-public:
-    virtual ~OperatorSettingChange() = default;
-    // Failure may leave partial changes; Commit always attempts RollbackLive.
-    [[nodiscard]] virtual bool ApplyLive() = 0;
-    [[nodiscard]] virtual bool Persist() = 0;
-    [[nodiscard]] virtual bool RollbackLive() = 0;
-};
-
 class OperatorSettingTransaction final
 {
 public:
-    [[nodiscard]] static OperatorSettingOutcome Commit(OperatorSettingChange& change);
+    template <class ApplyFn, class PersistFn, class RollbackFn>
+    [[nodiscard]] static OperatorSettingOutcome Commit(
+        ApplyFn&& applyLive,
+        PersistFn&& persist,
+        RollbackFn&& rollbackLive)
+    {
+        if (!applyLive())
+            return rollbackLive()
+                ? OperatorSettingOutcome::LiveApplicationFailed
+                : OperatorSettingOutcome::RecoveryRequired;
+        if (persist()) return OperatorSettingOutcome::Applied;
+        return rollbackLive()
+            ? OperatorSettingOutcome::RolledBack
+            : OperatorSettingOutcome::RecoveryRequired;
+    }
 };
 
 // Persisted operator settings that the Operator Menu renders as check marks.
@@ -120,6 +125,8 @@ struct OperatorMenuToggles final
 };
 
 [[nodiscard]] bool CanApplyOperatorAction(OperatorActionKind action, const OperatorMenuToggles& toggles) noexcept;
+[[nodiscard]] bool HasConfiguredMenuAccess(const OperatorMenuToggles& toggles) noexcept;
+[[nodiscard]] bool ShouldShowTrayIcon(const OperatorMenuToggles& toggles) noexcept;
 
 struct NicSnapshot final
 {
@@ -159,6 +166,8 @@ struct RateDisplay final
     double downloadBytesPerSecond = 0.0;
     std::wstring uploadText;
     std::wstring downloadText;
+    std::array<wchar_t, 9> uploadCells{};
+    std::array<wchar_t, 9> downloadCells{};
 };
 
 class WinMonCore final
@@ -171,6 +180,7 @@ public:
     OperatorAction CompleteOperatorMenu(std::uint32_t choiceToken) noexcept;
     void CancelOperatorMenu() noexcept;
     static std::wstring FormatRate(double bytesPerSecond);
+    static std::array<wchar_t, 9> FormatRateCells(double bytesPerSecond, wchar_t arrow) noexcept;
 
 private:
     struct PreviousSample final

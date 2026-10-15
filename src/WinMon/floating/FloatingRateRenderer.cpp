@@ -29,6 +29,31 @@ float BodyRight(float progress, float chartProgress) noexcept
 void Check(HRESULT result) { if (FAILED(result)) throw result; }
 double Rate(double value) noexcept { return std::isfinite(value) && value > 0 ? value : 0; }
 }
+void VisibilityTransition::Begin(bool show, ULONGLONG now) noexcept
+{
+    visible = show;
+    start = progress;
+    tick = now;
+    // Scale duration to the remaining distance so reversing mid-transition stays continuous.
+    duration = (show ? 180.0f : 220.0f) * std::abs((show ? 1.0f : 0.0f) - progress);
+}
+
+void VisibilityTransition::Advance(ULONGLONG now) noexcept
+{
+    if (duration <= 0) return;
+    const float t = std::clamp(static_cast<float>(now - tick) / duration, 0.0f, 1.0f);
+    const float eased = 1 - (1 - t) * (1 - t) * (1 - t);
+    const float target = visible ? 1.0f : 0.0f;
+    progress = start + (target - start) * eased;
+    if (t >= 1) Finish();
+}
+
+void VisibilityTransition::Finish() noexcept
+{
+    progress = visible ? 1.0f : 0.0f;
+    duration = 0;
+}
+
 
 FloatingRateRenderer::~FloatingRateRenderer()
 {
@@ -69,6 +94,9 @@ void FloatingRateRenderer::ResetHistory() noexcept
     upload_ = download_ = 0;
     uploadHistory_.fill(0);
     downloadHistory_.fill(0);
+    waterLevel_ = 0;
+    pulsePhase_ = 0;
+    chartScrollProgress_ = 1;
 }
 
 void FloatingRateRenderer::AddSample(double upload, double download) noexcept
@@ -101,6 +129,108 @@ bool FloatingRateRenderer::HasScrollingTrend() const noexcept
             std::abs(downloadHistory_[i] - downloadHistory_[i - 1]) > 0.5) return true;
     return false;
 }
+float FloatingRateRenderer::TargetWaterLevel() const noexcept
+{
+    const double activity = Activity();
+    return activity > 0 ? 0.15f + 0.65f * static_cast<float>(activity) : 0.0f;
+}
+
+void FloatingRateRenderer::SetRates(
+    const std::wstring& upload,
+    const std::wstring& download,
+    double uploadBytesPerSecond,
+    double downloadBytesPerSecond,
+    ULONGLONG now) noexcept
+{
+    if (uploadText_ != upload || downloadText_ != download)
+    {
+        readoutTransition_ = {uploadText_, downloadText_, 0};
+        readoutTick_ = now;
+    }
+    uploadText_ = upload;
+    downloadText_ = download;
+    AddSample(uploadBytesPerSecond, downloadBytesPerSecond);
+    chartSampleTick_ = now;
+    chartScrollProgress_ = 0;
+    if (pulseTick_ == 0) pulseTick_ = now;
+}
+
+void FloatingRateRenderer::BeginVisibility(bool text, bool visible, ULONGLONG now, bool windowVisible, bool animationsEnabled) noexcept
+{
+    expandingVisibility_ = false;
+    auto& transition = text ? textTransition_ : chartTransition_;
+    if (visible != transition.visible) transition.Begin(visible, now);
+    if (!windowVisible || !animationsEnabled) transition.Finish();
+}
+
+VisibilityCycleStep FloatingRateRenderer::NextVisibilityCycleStep() const noexcept
+{
+    const bool changeText = textTransition_.visible || (chartTransition_.visible && expandingVisibility_);
+    const bool visible = changeText ? !textTransition_.visible : !chartTransition_.visible;
+    return {changeText, visible, expandingVisibility_};
+}
+
+void FloatingRateRenderer::CommitVisibilityCycleStep(bool applied, bool visible, bool previousDirection) noexcept
+{
+    expandingVisibility_ = applied ? visible : previousDirection;
+}
+
+void FloatingRateRenderer::FinishTransitions(bool resetWater) noexcept
+{
+    if (resetWater)
+    {
+        pulsePhase_ = 0;
+        waterLevel_ = 0;
+    }
+    readoutTransition_.progress = 1;
+    chartScrollProgress_ = 1;
+    textTransition_.Finish();
+    chartTransition_.Finish();
+}
+
+bool FloatingRateRenderer::SyncAnimationState(bool windowVisible, bool animationsEnabled) noexcept
+{
+    const float targetLevel = TargetWaterLevel();
+    if (!windowVisible || !textTransition_.visible) readoutTransition_.progress = 1;
+    if (!windowVisible || !chartTransition_.visible || !HasScrollingTrend()) chartScrollProgress_ = 1;
+    if (!animationsEnabled)
+    {
+        readoutTransition_.progress = 1;
+        chartScrollProgress_ = 1;
+        waterLevel_ = targetLevel;
+        textTransition_.Finish();
+        chartTransition_.Finish();
+    }
+    return windowVisible && animationsEnabled &&
+        (targetLevel > 0 || waterLevel_ != targetLevel || HasActiveVisibilityTransition() ||
+            readoutTransition_.progress < 1 || chartScrollProgress_ < 1);
+}
+
+bool FloatingRateRenderer::StepAnimation(ULONGLONG now, bool windowVisible, bool animationsEnabled) noexcept
+{
+    if (windowVisible && animationsEnabled)
+    {
+        const ULONGLONG elapsed = pulseTick_ > 0 && now >= pulseTick_ ? now - pulseTick_ : 0;
+        chartScrollProgress_ = std::min(1.0f, static_cast<float>(now - chartSampleTick_) / 1000.0f);
+        textTransition_.Advance(now);
+        chartTransition_.Advance(now);
+        readoutTransition_.progress = std::min(1.0f, static_cast<float>(now - readoutTick_) / 180.0f);
+        const float targetLevel = TargetWaterLevel();
+        const float step = static_cast<float>(elapsed) / 450.0f;
+        waterLevel_ += std::clamp(targetLevel - waterLevel_, -step, step);
+        const double period = 2200 - 1200 * Activity();
+        pulsePhase_ = std::fmod(pulsePhase_ + elapsed / period, 1.0);
+    }
+    pulseTick_ = now;
+    return SyncAnimationState(windowVisible, animationsEnabled);
+}
+
+bool FloatingRateRenderer::RenderCurrent(UINT dpi, bool pulseActive) noexcept
+{
+    return Render(uploadText_, downloadText_, dpi, pulseActive ? pulsePhase_ : 0.5,
+        waterLevel_, textTransition_.progress, &readoutTransition_, chartTransition_.progress, chartScrollProgress_);
+}
+
 
 void FloatingRateRenderer::ReleaseTarget() noexcept
 {
@@ -258,7 +388,7 @@ bool FloatingRateRenderer::Render(const std::wstring& upload, const std::wstring
         arc(2, upload_ > 0 ? uploadHistory_.back() / maximum : 0, true, 0x61e5b7);
         arc(3, download_ > 0 ? downloadHistory_.back() / maximum : 0, false, 0x32bdeb);
         const float level = std::isfinite(waterLevel) && waterLevel >= 0
-            ? std::clamp(waterLevel, 0.0f, 1.0f) : (Activity() > 0 ? 0.15f + 0.65f * static_cast<float>(Activity()) : 0);
+            ? std::clamp(waterLevel, 0.0f, 1.0f) : TargetWaterLevel();
         if (level > 0)
         {
             const float phase = static_cast<float>(std::isfinite(pulsePhase) ? pulsePhase : 0.5);

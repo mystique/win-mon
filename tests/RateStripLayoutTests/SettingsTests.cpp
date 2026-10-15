@@ -71,6 +71,15 @@ int main()
             Require(settings::HasConfiguredMenuAccess() ==
                 ((flags & 3) != 0 || (flags & 12) == 12), "configured menu access covers all entry combinations");
         }
+        Require(settings::SetTrayIconVisible(false) &&
+            settings::SetFloatingDisplayEnabled(false) &&
+            settings::SetTaskbarTextVisible(true) &&
+            settings::SetTaskbarContextMenuEnabled(false), "lockout startup fixture");
+        const auto repaired = settings::LoadStartupToggles();
+        Require(repaired.trayIconVisible && repaired.floatingDisplayEnabled &&
+            repaired.taskbarTextVisible && !repaired.taskbarContextMenuEnabled &&
+            settings::IsTrayIconVisible() && settings::IsFloatingDisplayEnabled(),
+            "startup loader repairs and persists tray and floating access when all entries are disabled");
         Require(settings::SetFloatingDisplayEnabled(false), "restore floating display fixture");
         POINT position{};
         Require(!settings::GetFloatingDisplayPosition(position), "floating position initially absent");
@@ -122,6 +131,16 @@ int main()
         Require(RegSetKeyValueW(HKEY_CURRENT_USER, L"Software\\Win Mon", L"TaskbarDisplayPosition",
             REG_DWORD, &shortValue, sizeof(shortValue)) == ERROR_SUCCESS, "short DWORD fixture");
         Require(!settings::IsTaskbarDisplayOnLeft(), "short DWORD defaults Right");
+        Require(!settings::IsLightTheme(), "missing personalize key defaults to dark theme");
+        const DWORD lightTheme = 1, darkTheme = 0;
+        Require(RegSetKeyValueW(HKEY_CURRENT_USER,
+            L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+            L"AppsUseLightTheme", REG_DWORD, &lightTheme, sizeof(lightTheme)) == ERROR_SUCCESS &&
+            settings::IsLightTheme(), "AppsUseLightTheme=1 selects light theme");
+        Require(RegSetKeyValueW(HKEY_CURRENT_USER,
+            L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+            L"AppsUseLightTheme", REG_DWORD, &darkTheme, sizeof(darkTheme)) == ERROR_SUCCESS &&
+            !settings::IsLightTheme(), "AppsUseLightTheme=0 selects dark theme");
         std::cout << "SettingsTests passed\n";
         return 0;
     }

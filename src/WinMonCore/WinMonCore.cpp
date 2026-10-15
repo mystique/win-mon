@@ -81,17 +81,6 @@ void ShellLifecycle::HandleRateStripState(RateStripState state) noexcept
     }
 }
 
-OperatorSettingOutcome OperatorSettingTransaction::Commit(OperatorSettingChange& change)
-{
-    if (!change.ApplyLive())
-        return change.RollbackLive()
-            ? OperatorSettingOutcome::LiveApplicationFailed
-            : OperatorSettingOutcome::RecoveryRequired;
-    if (change.Persist()) return OperatorSettingOutcome::Applied;
-    return change.RollbackLive()
-        ? OperatorSettingOutcome::RolledBack
-        : OperatorSettingOutcome::RecoveryRequired;
-}
 
 void WinMonCore::ObserveNetwork(NetworkObservation observation)
 {
@@ -180,6 +169,17 @@ bool CanApplyOperatorAction(OperatorActionKind action, const OperatorMenuToggles
     return taskbar || tray || floating;
 }
 
+bool HasConfiguredMenuAccess(const OperatorMenuToggles& toggles) noexcept
+{
+    return toggles.trayIconVisible || toggles.floatingDisplayEnabled ||
+        (toggles.taskbarTextVisible && toggles.taskbarContextMenuEnabled);
+}
+
+bool ShouldShowTrayIcon(const OperatorMenuToggles& toggles) noexcept
+{
+    return toggles.trayIconVisible || !CanApplyOperatorAction(OperatorActionKind::HideTrayIcon, toggles);
+}
+
 RateDisplay WinMonCore::SampleObserved(
     const std::vector<NicSnapshot>& snapshots,
     std::chrono::steady_clock::time_point sampledAt)
@@ -217,6 +217,8 @@ RateDisplay WinMonCore::SampleObserved(
     hasPrevious_ = true;
     display.uploadText = FormatRate(display.uploadBytesPerSecond);
     display.downloadText = FormatRate(display.downloadBytesPerSecond);
+    display.uploadCells = FormatRateCells(display.uploadBytesPerSecond, L'\u2191');
+    display.downloadCells = FormatRateCells(display.downloadBytesPerSecond, L'\u2193');
     return display;
 }
 
@@ -395,5 +397,20 @@ std::wstring WinMonCore::FormatRate(double bytesPerSecond)
     text.imbue(std::locale::classic());
     text << std::fixed << std::setprecision(1) << scaled << L' ' << suffix;
     return text.str();
+}
+
+std::array<wchar_t, 9> WinMonCore::FormatRateCells(double bytesPerSecond, wchar_t arrow) noexcept
+{
+    const double magnitude = std::isfinite(bytesPerSecond) && bytesPerSecond > 0.0 ? bytesPerSecond : 0.0;
+    wchar_t unit = L'K';
+    double scaled = magnitude / 1000.0;
+    if (magnitude >= 1'000'000'000.0) { unit = L'G'; scaled = magnitude / 1'000'000'000.0; }
+    else if (magnitude >= 1'000'000.0) { unit = L'M'; scaled = magnitude / 1'000'000.0; }
+    const long long tenths = std::min<long long>(9999, std::llround(scaled * 10.0));
+    long long whole = tenths / 10;
+    std::array<wchar_t, 9> out{arrow, L' ', L' ', L'0', L'.', static_cast<wchar_t>(L'0' + (tenths % 10)), unit, L'/', L's'};
+    for (size_t pos = 3; whole > 0 && pos >= 1; --pos, whole /= 10)
+        out[pos] = static_cast<wchar_t>(L'0' + (whole % 10));
+    return out;
 }
 }

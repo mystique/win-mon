@@ -50,17 +50,19 @@ set_target_properties(WinMon PROPERTIES
 
 include(CTest)
 if(BUILD_TESTING)
-    add_executable(LedRateStripTests tests/RateStripLayoutTests/LedRateStripTests.cpp)
+    add_executable(LedRateStripTests tests/RateStripLayoutTests/LedRateStripTests.cpp
+        src/WinMon/taskbar/RateStrip.cpp src/WinMon/settings/OperatorSettings.cpp)
     target_include_directories(LedRateStripTests PRIVATE src/WinMon)
-    target_link_libraries(LedRateStripTests PRIVATE d2d1)
+    target_link_libraries(LedRateStripTests PRIVATE WinMonCore d2d1 ole32 oleaut32)
     add_test(NAME LedRateStripTests COMMAND LedRateStripTests "${CMAKE_BINARY_DIR}/led-strip-evidence")
     add_executable(RateStripWindowTests tests/RateStripLayoutTests/RateStripWindowTests.cpp
-        src/WinMon/taskbar/RateStrip.cpp src/WinMon/platform/Theme.cpp)
+        src/WinMon/taskbar/RateStrip.cpp src/WinMon/settings/OperatorSettings.cpp)
     target_include_directories(RateStripWindowTests PRIVATE src/WinMon)
     target_link_libraries(RateStripWindowTests PRIVATE WinMonCore ole32 oleaut32 dwmapi d2d1)
     add_test(NAME RateStripWindowTests COMMAND RateStripWindowTests "${CMAKE_BINARY_DIR}/rate-strip-evidence")
     add_executable(SettingsTests tests/RateStripLayoutTests/SettingsTests.cpp src/WinMon/settings/OperatorSettings.cpp)
     target_include_directories(SettingsTests PRIVATE src/WinMon)
+    target_link_libraries(SettingsTests PRIVATE WinMonCore)
     add_test(NAME SettingsTests COMMAND SettingsTests)
     file(GLOB WINMONCORETESTS_SOURCES CONFIGURE_DEPENDS
         tests/WinMonCoreTests/*.cpp

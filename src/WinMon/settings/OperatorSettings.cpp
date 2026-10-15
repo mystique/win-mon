@@ -13,24 +13,23 @@ constexpr wchar_t kTaskbarContextMenuValue[] = L"TaskbarContextMenuEnabled";
 constexpr wchar_t kFloatingDisplayValue[] = L"FloatingDisplayVisible";
 constexpr wchar_t kFloatingDisplayPositionValue[] = L"FloatingDisplayPosition";
 constexpr wchar_t kTaskbarDisplayPositionValue[] = L"TaskbarDisplayPosition";
-bool ReadFlag(const wchar_t* valueName, bool& enabled) noexcept
+bool ReadBool(const wchar_t* valueName, bool defaultValue) noexcept
 {
-    DWORD value = 0;
+    DWORD value = defaultValue ? 1u : 0u;
     DWORD size = sizeof(value);
-    const LSTATUS status = RegGetValueW(
-        HKEY_CURRENT_USER,
-        kProductKey,
-        valueName,
-        RRF_RT_REG_DWORD,
-        nullptr,
-        &value,
-        &size);
-    if (status != ERROR_SUCCESS)
+    if (RegGetValueW(
+            HKEY_CURRENT_USER,
+            kProductKey,
+            valueName,
+            RRF_RT_REG_DWORD,
+            nullptr,
+            &value,
+            &size) != ERROR_SUCCESS ||
+        size != sizeof(value) || value > 1u)
     {
-        return false;
+        return defaultValue;
     }
-    enabled = value != 0;
-    return true;
+    return value == 1u;
 }
 
 bool WriteFlag(const wchar_t* valueName, bool enabled) noexcept
@@ -52,15 +51,52 @@ namespace settings
 {
 bool HasConfiguredMenuAccess() noexcept
 {
-    return IsTrayIconVisible() || IsFloatingDisplayEnabled() ||
-        (IsTaskbarTextVisible() && IsTaskbarContextMenuEnabled());
+    return winmon::HasConfiguredMenuAccess({
+        .taskbarContextMenuEnabled = IsTaskbarContextMenuEnabled(),
+        .floatingDisplayEnabled = IsFloatingDisplayEnabled(),
+        .taskbarTextVisible = IsTaskbarTextVisible(),
+        .trayIconVisible = IsTrayIconVisible()});
 }
+
+winmon::OperatorMenuToggles LoadStartupToggles() noexcept
+{
+    winmon::OperatorMenuToggles toggles{
+        .taskbarContextMenuEnabled = IsTaskbarContextMenuEnabled(),
+        .floatingDisplayEnabled = IsFloatingDisplayEnabled(),
+        .taskbarDisplayOnLeft = IsTaskbarDisplayOnLeft(),
+        .floatingTextVisible = IsFloatingTextVisible(),
+        .floatingChartsVisible = AreFloatingChartsVisible(),
+        .floatingDisplayOpacity = GetFloatingDisplayOpacity(),
+        .taskbarTextVisible = IsTaskbarTextVisible(),
+        .trayIconVisible = IsTrayIconVisible()};
+    if (!winmon::HasConfiguredMenuAccess(toggles))
+    {
+        toggles.trayIconVisible = true;
+        toggles.floatingDisplayEnabled = true;
+        // Keep live access even if externally restricted registry permissions prevent repair.
+        static_cast<void>(SetTrayIconVisible(true));
+        static_cast<void>(SetFloatingDisplayEnabled(true));
+    }
+    return toggles;
+}
+bool IsLightTheme() noexcept
+{
+    DWORD value = 0, size = sizeof(value);
+    return RegGetValueW(
+               HKEY_CURRENT_USER,
+               L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+               L"AppsUseLightTheme",
+               RRF_RT_REG_DWORD,
+               nullptr,
+               &value,
+               &size) == ERROR_SUCCESS &&
+        size == sizeof(value) && value != 0;
+}
+
 
 bool IsTaskbarTextVisible() noexcept
 {
-    DWORD value = 1, size = sizeof(value);
-    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, L"TaskbarTextVisible", RRF_RT_REG_DWORD,
-        nullptr, &value, &size) != ERROR_SUCCESS || size != sizeof(value) || value != 0;
+    return ReadBool(L"TaskbarTextVisible", true);
 }
 
 bool SetTaskbarTextVisible(bool visible) noexcept
@@ -70,9 +106,7 @@ bool SetTaskbarTextVisible(bool visible) noexcept
 
 bool IsTrayIconVisible() noexcept
 {
-    DWORD value = 1, size = sizeof(value);
-    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, L"TrayIconVisible", RRF_RT_REG_DWORD,
-        nullptr, &value, &size) != ERROR_SUCCESS || size != sizeof(value) || value != 0;
+    return ReadBool(L"TrayIconVisible", true);
 }
 
 bool SetTrayIconVisible(bool visible) noexcept
@@ -96,9 +130,7 @@ bool SetFloatingDisplayOpacity(int percent) noexcept
 }
 bool AreFloatingChartsVisible() noexcept
 {
-    DWORD value = 1, size = sizeof(value);
-    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, L"FloatingChartsVisible",
-        RRF_RT_REG_DWORD, nullptr, &value, &size) != ERROR_SUCCESS || size != sizeof(value) || value != 0;
+    return ReadBool(L"FloatingChartsVisible", true);
 }
 bool SetFloatingChartsVisible(bool visible) noexcept
 {
@@ -107,9 +139,7 @@ bool SetFloatingChartsVisible(bool visible) noexcept
 
 bool IsFloatingTextVisible() noexcept
 {
-    DWORD value = 1, size = sizeof(value);
-    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, L"FloatingTextVisible",
-        RRF_RT_REG_DWORD, nullptr, &value, &size) != ERROR_SUCCESS || size != sizeof(value) || value != 0;
+    return ReadBool(L"FloatingTextVisible", true);
 }
 bool SetFloatingTextVisible(bool visible) noexcept
 {
@@ -118,10 +148,7 @@ bool SetFloatingTextVisible(bool visible) noexcept
 
 bool IsTaskbarDisplayOnLeft() noexcept
 {
-    DWORD value = 0, size = sizeof(value);
-    return RegGetValueW(HKEY_CURRENT_USER, kProductKey, kTaskbarDisplayPositionValue,
-        RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS &&
-        size == sizeof(value) && value == 1;
+    return ReadBool(kTaskbarDisplayPositionValue, false);
 }
 
 bool SetTaskbarDisplayOnLeft(bool left) noexcept
@@ -131,8 +158,7 @@ bool SetTaskbarDisplayOnLeft(bool left) noexcept
 
 bool IsTaskbarContextMenuEnabled() noexcept
 {
-    bool enabled = false;
-    return ReadFlag(kTaskbarContextMenuValue, enabled) && enabled;
+    return ReadBool(kTaskbarContextMenuValue, false);
 }
 
 bool SetTaskbarContextMenuEnabled(bool enabled) noexcept
@@ -142,8 +168,7 @@ bool SetTaskbarContextMenuEnabled(bool enabled) noexcept
 
 bool IsFloatingDisplayEnabled() noexcept
 {
-    bool enabled = false;
-    return ReadFlag(kFloatingDisplayValue, enabled) && enabled;
+    return ReadBool(kFloatingDisplayValue, false);
 }
 
 bool SetFloatingDisplayEnabled(bool enabled) noexcept

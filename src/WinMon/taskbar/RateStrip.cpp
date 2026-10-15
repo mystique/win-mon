@@ -2,12 +2,13 @@
 // Copyright (c) 2026 mk2.app
 
 #include "taskbar/RateStrip.h"
-#include "platform/Theme.h"
-#include "taskbar/LedRateStrip.h"
+#include "settings/OperatorSettings.h"
+#include "floating/LedReadout.h"
 
 #include <algorithm>
 #include <array>
 
+#include <initializer_list>
 #include <cwchar>
 #include <iterator>
 
@@ -35,6 +36,108 @@ BOOL CALLBACK FindNotificationAreaChild(HWND child, LPARAM parameter)
     return TRUE;
 }
 
+struct NativeTaskbarSpace final
+{
+    RECT candidate;
+    HWND xamlHost, strip;
+    bool free = true;
+};
+
+BOOL CALLBACK CheckNativeTaskbarChild(HWND child, LPARAM parameter)
+{
+    auto& space = *reinterpret_cast<NativeTaskbarSpace*>(parameter);
+    if (child == space.strip || child == space.xamlHost || IsChild(space.xamlHost, child) || IsChild(child, space.xamlHost) ||
+        !IsWindowVisible(child)) return TRUE;
+    wchar_t className[64]{};
+    if (GetClassNameW(child, className, 64) > 0 && wcscmp(className, L"ReBarWindow32") == 0 &&
+        FindWindowExW(child, nullptr, L"MSTaskSwWClass", nullptr) != nullptr)
+        return TRUE; // The old Win11 container spans empty space; its children are still checked.
+    RECT occupied{}, overlap{};
+    if (!GetWindowRect(child, &occupied) || IntersectRect(&overlap, &space.candidate, &occupied))
+    {
+        space.free = false;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+}
+
+RateStrip::~RateStrip()
+{
+    ReleaseSurface();
+    d2dBrush_.Reset();
+    d2dTarget_.Reset();
+    d2dFactory_.Reset();
+    automation_.Release();
+    if (apartmentOwned_) CoUninitialize();
+}
+
+bool RateStrip::IsTaskbarSpaceFree(HWND taskbar, RECT candidate) noexcept
+{
+    const HWND strip = GetSafeHwnd();
+    const HWND bridge = ::FindWindowExW(taskbar, nullptr, L"Windows.UI.Composition.DesktopWindowContentBridge", nullptr);
+    const HWND xamlHost = bridge == nullptr ? nullptr :
+        ::FindWindowExW(bridge, nullptr, L"Windows.UI.Input.InputSite.WindowClass", nullptr);
+    if (xamlHost == nullptr) return false;
+    NativeTaskbarSpace native{candidate, xamlHost, strip};
+    EnumChildWindows(taskbar, CheckNativeTaskbarChild, reinterpret_cast<LPARAM>(&native));
+    if (!native.free) return false;
+    if (!automation_)
+    {
+        if (!apartmentOwned_)
+        {
+            const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+            apartmentOwned_ = SUCCEEDED(initialized);
+            if (FAILED(initialized) && initialized != RPC_E_CHANGED_MODE) return false;
+        }
+        if (FAILED(automation_.CoCreateInstance(__uuidof(CUIAutomation8)))) return false;
+        if (FAILED(automation_->put_ConnectionTimeout(250)) ||
+            FAILED(automation_->put_TransactionTimeout(250)))
+        {
+            automation_.Release();
+            return false;
+        }
+    }
+    CComPtr<IUIAutomationElement> root;
+    CComPtr<IUIAutomationCondition> condition;
+    CComPtr<IUIAutomationCacheRequest> cache;
+    CComPtr<IUIAutomationElementArray> controls;
+    // Query Explorer's XAML host rather than our own sibling window's UIA provider.
+    if (FAILED(automation_->ElementFromHandle(xamlHost, &root)) ||
+        FAILED(automation_->get_ControlViewCondition(&condition)) ||
+        FAILED(automation_->CreateCacheRequest(&cache)) ||
+        FAILED(cache->put_TreeScope(TreeScope_Element)) ||
+        FAILED(cache->put_TreeFilter(condition))) return false;
+    for (PROPERTYID property : {UIA_NativeWindowHandlePropertyId, UIA_IsOffscreenPropertyId,
+        UIA_ClassNamePropertyId, UIA_AutomationIdPropertyId, UIA_BoundingRectanglePropertyId})
+    {
+        if (FAILED(cache->AddProperty(property))) return false;
+    }
+    if (FAILED(root->FindAllBuildCache(TreeScope_Descendants, condition, cache, &controls))) return false;
+    int count = 0;
+    if (FAILED(controls->get_Length(&count))) return false;
+    bool foundStart = false;
+    for (int index = 0; index < count; ++index)
+    {
+        CComPtr<IUIAutomationElement> control;
+        BOOL offscreen = FALSE;
+        UIA_HWND nativeWindow = nullptr;
+        CComBSTR className, id;
+        if (FAILED(controls->GetElement(index, &control)) ||
+            FAILED(control->get_CachedNativeWindowHandle(&nativeWindow)) ||
+            FAILED(control->get_CachedIsOffscreen(&offscreen))) return false;
+        if (offscreen || (strip != nullptr && reinterpret_cast<HWND>(nativeWindow) == strip)) continue;
+        if (FAILED(control->get_CachedClassName(&className)) ||
+            FAILED(control->get_CachedAutomationId(&id))) return false;
+        const bool structuralFrame = className && wcscmp(className, L"Taskbar.TaskbarFrameAutomationPeer") == 0;
+        foundStart |= id && wcscmp(id, L"StartButton") == 0;
+        if (structuralFrame) continue;
+        RECT occupied{}, overlap{};
+        if (FAILED(control->get_CachedBoundingRectangle(&occupied)) || IsRectEmpty(&occupied)) return false;
+        if (IntersectRect(&overlap, &candidate, &occupied)) return false;
+    }
+    return foundStart;
 }
 
 void RateStrip::SetRates(
@@ -227,6 +330,17 @@ bool RateStrip::Relayout(HWND taskbar, HWND notificationArea) noexcept
     return PlaceOnTaskbar(taskbar, notificationArea);
 }
 
+void RateStrip::ReleaseSurface() noexcept
+{
+    if (surfacePrevious_ != nullptr) ::SelectObject(surfaceDc_, surfacePrevious_);
+    if (surfaceBitmap_ != nullptr) ::DeleteObject(surfaceBitmap_);
+    if (surfaceDc_ != nullptr) ::DeleteDC(surfaceDc_);
+    surfaceDc_ = nullptr;
+    surfaceBitmap_ = nullptr;
+    surfacePrevious_ = nullptr;
+    surfaceSize_ = {};
+}
+
 void RateStrip::Shutdown() noexcept
 {
     if (GetSafeHwnd() != nullptr)
@@ -234,7 +348,9 @@ void RateStrip::Shutdown() noexcept
         DestroyWindow();
     }
 
-
+    ReleaseSurface();
+    d2dBrush_.Reset();
+    d2dTarget_.Reset();
     taskbar_ = nullptr;
     size_ = {};
     visible_ = false;
@@ -277,8 +393,7 @@ HWND RateStrip::FindNotificationArea(HWND taskbar) noexcept
 
 CSize RateStrip::MeasureSize(HWND taskbar)
 {
-    const UINT dpi = GetDpiForWindow(taskbar);
-    const SIZE size = ledStrip::Size(dpi);
+    const SIZE size = SizeForDpi(GetDpiForWindow(taskbar));
     return {size.cx, size.cy};
 }
 
@@ -309,8 +424,9 @@ bool RateStrip::PlaceOnTaskbar(HWND taskbar, HWND notificationArea) noexcept
     }
     const int x = taskbarDisplayOnLeft_ ? taskbarClientRect.left + margin : notificationRect.left - size_.cx - margin;
     const int y = taskbarClientRect.top + (availableHeight - size_.cy) / 2;
-    const RECT candidate{x, y, x + size_.cx, y + size_.cy};
-    if (taskbarDisplayOnLeft_ && !taskbarSpace_.IsFree(taskbar, candidate, GetSafeHwnd()))
+    RECT candidate{x, y, x + size_.cx, y + size_.cy};
+    ::MapWindowPoints(taskbar, nullptr, reinterpret_cast<POINT*>(&candidate), 2);
+    if (taskbarDisplayOnLeft_ && !IsTaskbarSpaceFree(taskbar, candidate))
     {
         ShowWindow(SW_HIDE);
         return true;
@@ -328,6 +444,46 @@ bool RateStrip::PlaceOnTaskbar(HWND taskbar, HWND notificationArea) noexcept
     return visible_;
 }
 
+bool RateStrip::RenderToDc(HDC dc, SIZE size, bool lightTheme, bool hitTestableBackground) noexcept
+{
+    std::array<wchar_t, 9> up{}, down{};
+    if (dc == nullptr || size.cx <= 0 || size.cy <= 0 ||
+        !led::Cells(uploadText_, L'\u2191', up) || !led::Cells(downloadText_, L'\u2193', down))
+    {
+        return false;
+    }
+    if (!d2dFactory_ && FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2dFactory_.GetAddressOf())))
+    {
+        return false;
+    }
+    if (!d2dTarget_)
+    {
+        const auto properties = D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+        if (FAILED(d2dFactory_->CreateDCRenderTarget(&properties, d2dTarget_.GetAddressOf())) ||
+            FAILED(d2dTarget_->CreateSolidColorBrush(D2D1::ColorF(0xffffff), d2dBrush_.GetAddressOf())))
+        {
+            d2dBrush_.Reset();
+            d2dTarget_.Reset();
+            return false;
+        }
+    }
+    const RECT bounds{0, 0, size.cx, size.cy};
+    if (FAILED(d2dTarget_->BindDC(dc, &bounds))) return false;
+    d2dTarget_->BeginDraw();
+    d2dTarget_->Clear(D2D1::ColorF(0, hitTestableBackground ? (1.0f / 255.0f) : 0.0f));
+    d2dTarget_->SetTransform(D2D1::Matrix3x2F::Scale(size.cx / 55.0f, size.cy / 22.0f));
+    led::Draw(d2dTarget_.Get(), d2dBrush_.Get(), up, up, 2, 8, 0x61e5b7, 1, 1, lightTheme, !taskbarDisplayOnLeft_, true);
+    led::Draw(d2dTarget_.Get(), d2dBrush_.Get(), down, down, 2, 19, 0x32bdeb, 1, 1, lightTheme, !taskbarDisplayOnLeft_, true);
+    const HRESULT hr = d2dTarget_->EndDraw();
+    if (hr == D2DERR_RECREATE_TARGET)
+    {
+        d2dBrush_.Reset();
+        d2dTarget_.Reset();
+    }
+    return SUCCEEDED(hr);
+}
+
 bool RateStrip::Render() noexcept
 {
     if (GetSafeHwnd() == nullptr || size_.cx <= 0 || size_.cy <= 0)
@@ -335,65 +491,34 @@ bool RateStrip::Render() noexcept
         return false;
     }
 
-    const HDC screenDc = ::GetDC(nullptr);
-    if (screenDc == nullptr)
+    if (surfaceDc_ == nullptr || surfaceSize_.cx != size_.cx || surfaceSize_.cy != size_.cy)
     {
-        return false;
+        ReleaseSurface();
+        surfaceDc_ = ::CreateCompatibleDC(nullptr);
+        if (surfaceDc_ == nullptr) return false;
+        BITMAPINFO bitmapInfo{};
+        bitmapInfo.bmiHeader = {sizeof(BITMAPINFOHEADER), size_.cx, -size_.cy, 1, 32, BI_RGB};
+        void* bitmapBits = nullptr;
+        surfaceBitmap_ = ::CreateDIBSection(surfaceDc_, &bitmapInfo, DIB_RGB_COLORS, &bitmapBits, nullptr, 0);
+        if (surfaceBitmap_ == nullptr || bitmapBits == nullptr)
+        {
+            ReleaseSurface();
+            return false;
+        }
+        surfacePrevious_ = ::SelectObject(surfaceDc_, surfaceBitmap_);
+        if (surfacePrevious_ == nullptr || surfacePrevious_ == HGDI_ERROR)
+        {
+            surfacePrevious_ = nullptr;
+            ReleaseSurface();
+            return false;
+        }
+        surfaceSize_ = {size_.cx, size_.cy};
     }
-
-    const HDC memoryDc = ::CreateCompatibleDC(screenDc);
-    if (memoryDc == nullptr)
-    {
-        ::ReleaseDC(nullptr, screenDc);
-        return false;
-    }
-
-    BITMAPINFO bitmapInfo{};
-    bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bitmapInfo.bmiHeader.biWidth = size_.cx;
-    bitmapInfo.bmiHeader.biHeight = -size_.cy;
-    bitmapInfo.bmiHeader.biPlanes = 1;
-    bitmapInfo.bmiHeader.biBitCount = 32;
-    bitmapInfo.bmiHeader.biCompression = BI_RGB;
-
-    void* bitmapBits = nullptr;
-    const HBITMAP bitmap = ::CreateDIBSection(memoryDc, &bitmapInfo, DIB_RGB_COLORS, &bitmapBits, nullptr, 0);
-    if (bitmap == nullptr || bitmapBits == nullptr)
-    {
-        ::DeleteDC(memoryDc);
-        ::ReleaseDC(nullptr, screenDc);
-        return false;
-    }
-
-    const HGDIOBJ previousBitmap = ::SelectObject(memoryDc, bitmap);
-    auto* const pixels = static_cast<DWORD*>(bitmapBits);
-    const size_t pixelCount = static_cast<size_t>(size_.cx) * static_cast<size_t>(size_.cy);
-    std::fill_n(pixels, pixelCount, 0u);
-    bool rendered = ledStrip::Render(memoryDc, {size_.cx, size_.cy}, uploadText_, downloadText_,
-        taskbarDisplayOnLeft_, theme::ReadMode() == theme::Mode::Light);
-    if (rendered && contextMenuEnabled_)
-        for (size_t index = 0; index < pixelCount; ++index)
-            if (!(pixels[index] >> 24)) pixels[index] = 0x01000000;
-
     POINT source{};
-    SIZE windowSize{ size_.cx, size_.cy };
-    BLENDFUNCTION blend{ AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
-    rendered = rendered && ::UpdateLayeredWindow(
-                              GetSafeHwnd(),
-                              screenDc,
-                              nullptr,
-                              &windowSize,
-                              memoryDc,
-                              &source,
-                              0,
-                              &blend,
-                              ULW_ALPHA) != FALSE;
-
-    ::SelectObject(memoryDc, previousBitmap);
-    ::DeleteObject(bitmap);
-    ::DeleteDC(memoryDc);
-    ::ReleaseDC(nullptr, screenDc);
-    return rendered;
+    SIZE windowSize{size_.cx, size_.cy};
+    BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+    return RenderToDc(surfaceDc_, windowSize, settings::IsLightTheme(), contextMenuEnabled_) &&
+        ::UpdateLayeredWindow(GetSafeHwnd(), nullptr, nullptr, &windowSize, surfaceDc_, &source, 0, &blend, ULW_ALPHA) != FALSE;
 }
 
 void RateStrip::OnPaint()

@@ -16,6 +16,33 @@ struct LedReadoutTransition
     std::wstring download;
     float progress = 1;
 };
+struct VisibilityTransition
+{
+    bool visible = true;
+    float progress = 1;
+    float start = 1;
+    ULONGLONG tick = 0;
+    float duration = 0;
+
+    void Begin(bool show, ULONGLONG now) noexcept;
+    void Advance(ULONGLONG now) noexcept;
+    void Finish() noexcept;
+};
+
+struct VisibilityCycleStep
+{
+    bool changeText = false;
+    bool visible = false;
+    bool previousDirection = false;
+};
+
+struct VisibilityStateSnapshot
+{
+    VisibilityTransition text;
+    VisibilityTransition chart;
+    bool expandingVisibility = false;
+};
+
 
 // One concrete offscreen renderer, also used by the layered desktop window.
 class FloatingRateRenderer final
@@ -27,6 +54,42 @@ public:
     ~FloatingRateRenderer();
     void AddSample(double upload, double download) noexcept;
     void ResetHistory() noexcept;
+    void SetRates(const std::wstring& upload, const std::wstring& download,
+        double uploadBytesPerSecond, double downloadBytesPerSecond, ULONGLONG now) noexcept;
+    void BeginVisibility(bool text, bool visible, ULONGLONG now, bool windowVisible, bool animationsEnabled) noexcept;
+    [[nodiscard]] VisibilityStateSnapshot CaptureVisibilityState() const noexcept
+    {
+        return {textTransition_, chartTransition_, expandingVisibility_};
+    }
+    void RestoreVisibilityState(const VisibilityStateSnapshot& snapshot) noexcept
+    {
+        textTransition_ = snapshot.text;
+        chartTransition_ = snapshot.chart;
+        expandingVisibility_ = snapshot.expandingVisibility;
+    }
+    [[nodiscard]] bool IsTextVisible() const noexcept { return textTransition_.visible; }
+    [[nodiscard]] bool IsChartVisible() const noexcept { return chartTransition_.visible; }
+    [[nodiscard]] bool HasActiveVisibilityTransition() const noexcept
+    {
+        return textTransition_.duration > 0 || chartTransition_.duration > 0;
+    }
+    [[nodiscard]] VisibilityCycleStep NextVisibilityCycleStep() const noexcept;
+    void CommitVisibilityCycleStep(bool applied, bool visible, bool previousDirection = false) noexcept;
+    void StartAnimationClock(ULONGLONG now) noexcept { pulseTick_ = now; }
+    void StopAnimationClock() noexcept { pulsePhase_ = 0; }
+    void FinishTransitions(bool resetWater = false) noexcept;
+    [[nodiscard]] bool SyncAnimationState(bool windowVisible, bool animationsEnabled) noexcept;
+    [[nodiscard]] bool StepAnimation(ULONGLONG now, bool windowVisible, bool animationsEnabled) noexcept;
+    [[nodiscard]] bool RenderCurrent(UINT dpi, bool pulseActive) noexcept;
+    [[nodiscard]] SIZE CurrentSizeForDpi(UINT dpi) const noexcept
+    {
+        return SizeForDpi(dpi, textTransition_.progress, chartTransition_.progress);
+    }
+    [[nodiscard]] bool HitTestCurrent(POINT client, UINT dpi) const noexcept
+    {
+        return HitTest(client, dpi, textTransition_.progress, chartTransition_.progress);
+    }
+    [[nodiscard]] float TargetWaterLevel() const noexcept;
     bool Render(const std::wstring& upload, const std::wstring& download,
         UINT dpi, double pulsePhase = 0.5, float waterLevel = -1, float textProgress = 1, const LedReadoutTransition* transition = nullptr, float chartProgress = 1, float scrollProgress = 1) noexcept;
     double Activity() const noexcept;
@@ -67,4 +130,16 @@ private:
     size_t count_ = 0;
     double upload_ = 0;
     double download_ = 0;
+    std::wstring uploadText_ = L"0.0 K/s";
+    std::wstring downloadText_ = L"0.0 K/s";
+    LedReadoutTransition readoutTransition_{};
+    ULONGLONG readoutTick_ = 0;
+    ULONGLONG chartSampleTick_ = 0;
+    float chartScrollProgress_ = 1;
+    VisibilityTransition textTransition_{};
+    VisibilityTransition chartTransition_{};
+    bool expandingVisibility_ = false;
+    float waterLevel_ = 0;
+    double pulsePhase_ = 0;
+    ULONGLONG pulseTick_ = 0;
 };

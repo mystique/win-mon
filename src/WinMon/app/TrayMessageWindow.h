@@ -60,6 +60,7 @@ private:
     bool trayIconAdded_ = false;
     bool taskbarTextVisible_ = true;
     bool trayIconVisible_ = true;
+    bool floatingDisplayEnabled_ = false;
     bool shellRecoveryTimerActive_ = false;
     bool shuttingDown_ = false;
 };

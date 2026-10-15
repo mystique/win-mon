@@ -1,4 +1,6 @@
-#include "taskbar/LedRateStrip.h"
+#include "taskbar/RateStrip.h"
+#include "floating/LedReadout.h"
+#include "WinMonCore.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -19,10 +21,15 @@ int main(int argc, char** argv)
         Require(led::Cells(L"1000.0 G/s", L'\u2191', cells) && cells == saturated, "overflow saturates in selected unit");
         Require(led::Cells(L"0000.0 K/s", L'\u2191', cells) && cells[1] == L' ' && cells[3] == L'0', "leading cells are blank");
         Require(!led::Cells(L"12.x K/s", L'\u2191', cells) && !led::Cells(L"12.0 B/s", L'\u2191', cells), "malformed readouts rejected");
+        Require(winmon::WinMonCore::FormatRateCells(0.0, L'\u2191') == std::array<wchar_t, 9>{L'\u2191', L' ', L' ', L'0', L'.', L'0', L'K', L'/', L's'}, "numeric zero cells");
+        Require(winmon::WinMonCore::FormatRateCells(12345.0, L'\u2193') == std::array<wchar_t, 9>{L'\u2193', L' ', L'1', L'2', L'.', L'3', L'K', L'/', L's'}, "numeric K cells");
+        Require(winmon::WinMonCore::FormatRateCells(999999999.0, L'\u2191') == std::array<wchar_t, 9>{L'\u2191', L'9', L'9', L'9', L'.', L'9', L'M', L'/', L's'}, "numeric rounding overflow saturates in unit");
+        RateStrip strip;
         for (UINT dpi : {96u, 120u, 144u, 192u})
         for (bool left : {false, true})
         {
-            const SIZE size = ledStrip::Size(dpi);
+            Require(strip.SetTaskbarDisplayOnLeft(left), "configure strip side");
+            const SIZE size = RateStrip::SizeForDpi(dpi);
             HDC dc = CreateCompatibleDC(nullptr);
             BITMAPINFO info{};
             info.bmiHeader = {sizeof(BITMAPINFOHEADER), size.cx, -size.cy, 1, 32, BI_RGB};
@@ -34,7 +41,8 @@ int main(int argc, char** argv)
             std::vector<DWORD> dark;
             for (bool light : {false, true})
             {
-                Require(ledStrip::Render(dc, size, L"999.9 G/s", L"12.8 M/s", left, light), "DPI/theme frame renders");
+                strip.SetRates(L"999.9 G/s", L"12.8 M/s");
+                Require(strip.RenderToDc(dc, size, light), "DPI/theme frame renders");
                 const size_t count = static_cast<size_t>(size.cx) * size.cy;
                 Require(std::count_if(pixels, pixels + count, [](DWORD p) { return (p >> 24) != 0; }) > static_cast<std::ptrdiff_t>(count / 10), "lit lamps occupy both readouts");
                 for (bool upload : {true, false})
@@ -83,9 +91,10 @@ int main(int argc, char** argv)
                     Require(out.good(), "evidence saved");
                 }
             }
-            Require(ledStrip::Render(dc, size, L"999.9 G/s", L"12.8 M/s", left, false), "switch back to dark theme");
+            Require(strip.RenderToDc(dc, size, false), "switch back to dark theme");
             Require(std::equal(dark.begin(), dark.end(), pixels), "dark-light-dark restores the exact original frame");
-            Require(ledStrip::Render(dc, size, L"1.8 K/s", L"1.8 K/s", left, false), "short readouts render");
+            strip.SetRates(L"1.8 K/s", L"1.8 K/s");
+            Require(strip.RenderToDc(dc, size, false), "short readouts render");
             if (!left)
             {
                 const int gapLeft = static_cast<int>(std::ceil(42.0f * size.cx / 55));
@@ -108,7 +117,8 @@ int main(int argc, char** argv)
                     Require(pixels[y * size.cx + x] == 0, "leading cell has no dark-lamp grid");
             if (left)
             {
-                Require(ledStrip::Render(dc, size, L"888.8 K/s", L"888.8 K/s", true, false), "full left numeric capacity renders");
+                strip.SetRates(L"888.8 K/s", L"888.8 K/s");
+                Require(strip.RenderToDc(dc, size, false), "full left numeric capacity renders");
                 const int gapLeft = static_cast<int>(std::ceil(7.0f * size.cx / 55));
                 const int gapRight = static_cast<int>(11.0f * size.cx / 55);
                 for (int y = 0; y < size.cy; ++y)

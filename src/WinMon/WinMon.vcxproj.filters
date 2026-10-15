@@ -22,20 +22,14 @@
     <ClInclude Include="platform\LaunchAtLogin.h"><Filter>platform</Filter></ClInclude>
     <ClCompile Include="platform\NetworkObservationReader.cpp"><Filter>platform</Filter></ClCompile>
     <ClInclude Include="platform\NetworkObservationReader.h"><Filter>platform</Filter></ClInclude>
-    <ClCompile Include="platform\Theme.cpp"><Filter>platform</Filter></ClCompile>
-    <ClInclude Include="platform\Theme.h"><Filter>platform</Filter></ClInclude>
     <ClInclude Include="res\resource.h"><Filter>res</Filter></ClInclude>
     <Image Include="res\WinMon.ico"><Filter>res</Filter></Image>
     <ResourceCompile Include="res\WinMon.rc"><Filter>res</Filter></ResourceCompile>
     <Image Include="res\WinMonTrayDark.ico"><Filter>res</Filter></Image>
     <Image Include="res\WinMonTrayLight.ico"><Filter>res</Filter></Image>
-    <ClInclude Include="settings\FloatingRateChartSettingChange.h"><Filter>settings</Filter></ClInclude>
-    <ClInclude Include="settings\FloatingRateTextSettingChange.h"><Filter>settings</Filter></ClInclude>
     <ClCompile Include="settings\OperatorSettings.cpp"><Filter>settings</Filter></ClCompile>
     <ClInclude Include="settings\OperatorSettings.h"><Filter>settings</Filter></ClInclude>
-    <ClInclude Include="settings\TaskbarDisplayPositionSettingChange.h"><Filter>settings</Filter></ClInclude>
     <ClCompile Include="taskbar\RateStrip.cpp"><Filter>taskbar</Filter></ClCompile>
     <ClInclude Include="taskbar\RateStrip.h"><Filter>taskbar</Filter></ClInclude>
-    <ClInclude Include="taskbar\TaskbarSpaceProbe.h"><Filter>taskbar</Filter></ClInclude>
   </ItemGroup>
 </Project>

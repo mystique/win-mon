@@ -14,13 +14,13 @@ public:
     [[nodiscard]] bool Refresh() noexcept { return Render(); }
     void Shutdown() noexcept;
     [[nodiscard]] bool SetTextVisible(bool visible) noexcept;
-    [[nodiscard]] bool IsTextVisible() const noexcept { return textTransition_.visible; }
+    [[nodiscard]] bool IsTextVisible() const noexcept { return floatingRenderer_.IsTextVisible(); }
     [[nodiscard]] bool SetChartVisible(bool visible) noexcept;
-    [[nodiscard]] bool IsChartVisible() const noexcept { return chartTransition_.visible; }
+    [[nodiscard]] bool IsChartVisible() const noexcept { return floatingRenderer_.IsChartVisible(); }
     void SetVisibilityChangeHandler(std::function<bool(bool, bool)> handler) { visibilityChangeHandler_ = std::move(handler); }
     [[nodiscard]] bool SetOpacity(int percent) noexcept;
     int GetOpacity() const noexcept { return opacity_; }
-    void ResetHistory() noexcept { floatingRenderer_.ResetHistory(); waterLevel_ = 0; pulsePhase_ = 0; chartScrollProgress_ = 1; UpdatePulseTimer(); }
+    void ResetHistory() noexcept { floatingRenderer_.ResetHistory(); UpdatePulseTimer(); }
     void SetRates(const std::wstring& uploadText, const std::wstring& downloadText,
         double uploadBytesPerSecond, double downloadBytesPerSecond) noexcept;
     void SetContextMenuOwner(HWND owner, UINT notificationMessage) noexcept;
@@ -28,19 +28,7 @@ public:
     [[nodiscard]] POINT GetFloatingPosition() const noexcept;
 
 private:
-    struct VisibilityTransition
-    {
-        bool visible = true;
-        float progress = 1;
-        float start = 1;
-        ULONGLONG tick = 0;
-        float duration = 0;
-
-        void Begin(bool show, ULONGLONG now) noexcept;
-        void Advance(ULONGLONG now) noexcept;
-        void Finish() noexcept;
-    };
-    bool SetVisible(VisibilityTransition& transition, bool visible) noexcept;
+    bool SetVisible(bool text, bool visible) noexcept;
     bool RelayoutFloating() noexcept;
     bool Render() noexcept;
     void UpdatePulseTimer() noexcept;
@@ -62,26 +50,14 @@ private:
     DECLARE_MESSAGE_MAP()
 
     CSize size_{};
-    std::wstring uploadText_ = L"0.0 K/s";
-    std::wstring downloadText_ = L"0.0 K/s";
     CWnd floatingShadow_;
     FloatingRateRenderer floatingRenderer_;
     HWND contextMenuOwner_ = nullptr;
     UINT contextMenuMessage_ = 0;
     HWND positionChangedOwner_ = nullptr;
     UINT positionChangedMessage_ = 0;
-    LedReadoutTransition readoutTransition_;
-    ULONGLONG readoutTick_ = 0;
-    ULONGLONG chartSampleTick_ = 0;
-    float chartScrollProgress_ = 1;
-    VisibilityTransition textTransition_;
     int opacity_ = 100;
-    VisibilityTransition chartTransition_;
-    bool expandingVisibility_ = false;
     std::function<bool(bool, bool)> visibilityChangeHandler_;
     bool positionDirty_ = false;
     bool pulseTimerActive_ = false;
-    float waterLevel_ = 0;
-    double pulsePhase_ = 0;
-    ULONGLONG pulseTick_ = 0;
 };
