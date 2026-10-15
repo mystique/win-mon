@@ -50,6 +50,12 @@ bool WriteFlag(const wchar_t* valueName, bool enabled) noexcept
 
 namespace settings
 {
+bool HasConfiguredMenuAccess() noexcept
+{
+    return IsTrayIconVisible() || IsFloatingDisplayEnabled() ||
+        (IsTaskbarTextVisible() && IsTaskbarContextMenuEnabled());
+}
+
 bool IsTaskbarTextVisible() noexcept
 {
     DWORD value = 1, size = sizeof(value);

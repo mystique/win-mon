@@ -88,3 +88,5 @@ Extension (2026-10-11): Show Floating Charts independently controls both trend r
 Menu terminology update (2026-10-14): registry values use TaskbarContextMenuEnabled, TaskbarDisplayPosition, FloatingDisplayVisible, FloatingTextVisible, FloatingChartsVisible, FloatingDisplayOpacity and FloatingDisplayPosition. Previous names are not read or migrated; missing values use the documented defaults. The sign-in Run entry remains named Win Mon.
 
 Display visibility update (2026-10-15): Show Taskbar Text and Show Tray Icon persist as TaskbarTextVisible and TrayIconVisible DWORDs (default on, including invalid data). Shell recovery respects hidden display preferences and temporarily restores the Tray Icon if every other actual menu entry is unavailable.
+
+At startup, if saved preferences disable every menu entry (including taskbar text with its context menu disabled), enable both the Tray Icon and Floating Rate Display and persist both choices. Registry write failure retains the live recovery choices. Temporary loss of an otherwise configured entry still uses the tray-only fallback above.

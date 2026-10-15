@@ -62,6 +62,16 @@ int main()
         Require(!settings::IsFloatingDisplayEnabled(), "floating display defaults off");
         Require(settings::SetFloatingDisplayEnabled(true) && settings::IsFloatingDisplayEnabled(), "floating display persists on");
         Require(settings::SetFloatingDisplayEnabled(false) && !settings::IsFloatingDisplayEnabled(), "floating display persists off");
+        for (unsigned flags = 0; flags < 16; ++flags)
+        {
+            Require(settings::SetTrayIconVisible((flags & 1) != 0) &&
+                settings::SetFloatingDisplayEnabled((flags & 2) != 0) &&
+                settings::SetTaskbarTextVisible((flags & 4) != 0) &&
+                settings::SetTaskbarContextMenuEnabled((flags & 8) != 0), "menu access fixture");
+            Require(settings::HasConfiguredMenuAccess() ==
+                ((flags & 3) != 0 || (flags & 12) == 12), "configured menu access covers all entry combinations");
+        }
+        Require(settings::SetFloatingDisplayEnabled(false), "restore floating display fixture");
         POINT position{};
         Require(!settings::GetFloatingDisplayPosition(position), "floating position initially absent");
         Require(settings::SetFloatingDisplayPosition({120, 240}) &&

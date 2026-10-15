@@ -165,6 +165,15 @@ bool TrayMessageWindow::Initialize()
     shuttingDown_ = false;
     taskbarTextVisible_ = settings::IsTaskbarTextVisible();
     trayIconVisible_ = settings::IsTrayIconVisible();
+    bool floatingDisplayEnabled = settings::IsFloatingDisplayEnabled();
+    if (!settings::HasConfiguredMenuAccess())
+    {
+        trayIconVisible_ = true;
+        floatingDisplayEnabled = true;
+        // Keep live access even if externally restricted registry permissions prevent repair.
+        static_cast<void>(settings::SetTrayIconVisible(true));
+        static_cast<void>(settings::SetFloatingDisplayEnabled(true));
+    }
     rateStrip_.SetContextMenuOwner(GetSafeHwnd(), kDisplayContextMenuMessage);
     rateStrip_.SetContextMenuEnabled(settings::IsTaskbarContextMenuEnabled());
     static_cast<void>(rateStrip_.SetTaskbarDisplayOnLeft(settings::IsTaskbarDisplayOnLeft()));
@@ -189,7 +198,7 @@ bool TrayMessageWindow::Initialize()
         Shutdown();
         return false;
     }
-    if (settings::IsFloatingDisplayEnabled())
+    if (floatingDisplayEnabled)
     {
         POINT position{};
         if (floatingRateDisplay_.ShowFloating(

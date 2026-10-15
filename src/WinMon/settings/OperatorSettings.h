@@ -7,6 +7,7 @@
 
 namespace settings
 {
+[[nodiscard]] bool HasConfiguredMenuAccess() noexcept;
 [[nodiscard]] bool IsTaskbarTextVisible() noexcept;
 bool SetTaskbarTextVisible(bool visible) noexcept;
 [[nodiscard]] bool IsTrayIconVisible() noexcept;
