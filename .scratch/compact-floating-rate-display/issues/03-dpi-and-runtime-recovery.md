@@ -48,7 +48,7 @@ Compact Floating Rate Display — Direct2D / DirectWrite 实现规格。基于�
 
 - 最终 `cmake -S . -B build -A x64`、Release build 和 CTest：3/3 通过。
 - Standards / Spec 双轴审查：初审阴影跨进程穿透问题已用独立 `WS_EX_TRANSPARENT` 分层阴影修复；复审均无剩余发现。
-- [验证报告及待人工验收清单](../validation.md)。勾选项表示实现和相应自动检查已完成，不代表未执行的设备场景已人工通过。
+- 勾选项表示实现和相应自动检查已完成，不代表未执行的设备场景已人工通过。
 - 状态 `ready-for-human`：代码实现完成，保留人工验收项，不将 ticket 虚标为全部验收完成。
 
 ### 2026-09-20 下载优先与双向活动修订（当前设计）

@@ -22,4 +22,4 @@ Status: resolved
 
 ## Comments
 
-2026-10-11: Implementation and automated verification complete. See [implementation record](../implementation.md) for evidence, review fixes and physical-monitor verification limits.
+2026-10-11: Implementation and automated verification complete.

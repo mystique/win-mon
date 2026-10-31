@@ -26,4 +26,4 @@ Acceptance: automated and current-desktop checks passed
 
 ## Comments
 
-2026-10-11: Implemented fixed columns and actual-font glyph-bearing reservations. Rendering tests compare complete rows with unclipped references across fonts, units, arrows, both rows, both sides, DPI and overflow; see validation.md in the feature directory. No shared rate-format change.
+2026-10-11: Implemented fixed columns and actual-font glyph-bearing reservations. Rendering tests compare complete rows with unclipped references across fonts, units, arrows, both rows, both sides, DPI and overflow. No shared rate-format change.

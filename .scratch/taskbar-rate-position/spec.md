@@ -73,7 +73,7 @@ Secondary taskbars, vertical/top taskbars, Windows 10, automatic side switching,
 
 ## Further Notes
 
-- [Completed grill and rationale](grill.md); [domain vocabulary](../../CONTEXT.md); [taskbar embedding decision](../../docs/adr/0001-taskbar-rate-strip-embed.md); [primary bottom taskbar restriction](../../docs/adr/0002-win11-primary-bottom-only.md); [settings persistence](../../docs/adr/0007-registry-persisted-operator-settings.md).
+- [Domain vocabulary](../../CONTEXT.md); [taskbar embedding decision](../../docs/adr/0001-taskbar-rate-strip-embed.md); [primary bottom taskbar restriction](../../docs/adr/0002-win11-primary-bottom-only.md); [settings persistence](../../docs/adr/0007-registry-persisted-operator-settings.md).
 - Automatically selected assumptions: exact English menu label and order; left-edge 4 DIP anchor; key name/encoding; four-digit numeric capacity; font-space column gaps; numeric overflow ellipsis; hide-and-retry collision behavior; testing seam. These are recommended decisions synthesized under the invoked skill, not separately confirmed user statements.
 - Evidence unknown: stable detection of free left-end geometry across Windows 11 builds. Conservative plan: unknown geometry means hidden; implementation must inspect the actual supported shell surfaces and prove both usable and occupied cases before completion. If reliable detection cannot be achieved within existing embedding constraints, record the blocker and revisit the placement decision rather than silently claim support.
 - Existing code proves neither universal free space at the left end nor a strict numeric maximum of 999.9. These limitations are explicitly reflected in the capacity and verification requirements.

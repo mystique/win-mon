@@ -28,4 +28,4 @@ Acceptance: pending manual Windows scenarios
 
 ## Comments
 
-2026-10-11: Runtime wiring, hidden/visible reporting, font refresh, collision retries and smoke cleanup implemented. CTest and current-desktop menu/restart/synthetic Shell Recovery tests pass. Remaining unchecked criteria include combinations that need real system preferences/hardware changes; they are not claimed as passed. In particular the TaskbarCreated test does not replace a real Explorer restart. See validation.md in the feature directory for evidence and the explicit pending matrix.
+2026-10-11: Runtime wiring, hidden/visible reporting, font refresh, collision retries and smoke cleanup implemented. CTest and current-desktop menu/restart/synthetic Shell Recovery tests pass. Remaining unchecked criteria include combinations that need real system preferences/hardware changes; they are not claimed as passed. In particular the TaskbarCreated test does not replace a real Explorer restart.
