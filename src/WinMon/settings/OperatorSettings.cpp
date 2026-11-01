@@ -49,15 +49,6 @@ bool WriteFlag(const wchar_t* valueName, bool enabled) noexcept
 
 namespace settings
 {
-bool HasConfiguredMenuAccess() noexcept
-{
-    return winmon::HasConfiguredMenuAccess({
-        .taskbarContextMenuEnabled = IsTaskbarContextMenuEnabled(),
-        .floatingDisplayEnabled = IsFloatingDisplayEnabled(),
-        .taskbarTextVisible = IsTaskbarTextVisible(),
-        .trayIconVisible = IsTrayIconVisible()});
-}
-
 winmon::OperatorMenuToggles LoadStartupToggles() noexcept
 {
     winmon::OperatorMenuToggles toggles{

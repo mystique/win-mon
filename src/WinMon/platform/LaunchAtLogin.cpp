@@ -52,7 +52,8 @@ bool Enable() noexcept
     quotedPath[0] = L'"';
     if (wcscpy_s(quotedPath + 1, MAX_PATH + 1, rawPath) != 0) return false;
     quotedPath[charsWritten + 1] = L'"';
-    // quotedPath[charsWritten + 2] is already zero from value-initialization
+    // The debug secure CRT can fill the unused destination after copying.
+    quotedPath[charsWritten + 2] = L'\0';
 
     const RunKey key{KEY_SET_VALUE};
     if (!key.ok()) return false;

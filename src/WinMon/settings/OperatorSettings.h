@@ -8,7 +8,6 @@
 
 namespace settings
 {
-[[nodiscard]] bool HasConfiguredMenuAccess() noexcept;
 [[nodiscard]] winmon::OperatorMenuToggles LoadStartupToggles() noexcept;
 [[nodiscard]] bool IsLightTheme() noexcept;
 [[nodiscard]] bool IsTaskbarTextVisible() noexcept;

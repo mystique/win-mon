@@ -19,6 +19,9 @@ public:
     TrayMessageWindow() noexcept;
     [[nodiscard]] bool Initialize();
     void Shutdown() noexcept;
+    // Commands and the live menu model are shared by every operator entry.
+    void ExecuteOperatorAction(winmon::OperatorAction action);
+    [[nodiscard]] winmon::OperatorMenuToggles MenuToggles() const;
 
 private:
     [[nodiscard]] bool EnsureTrayIcon() override;
@@ -32,11 +35,9 @@ private:
     [[nodiscard]] HICON LoadTrayIcon() const noexcept;
     void UpdateTrayIconTheme() noexcept;
     void SaveFloatingDisplayPosition();
-    [[nodiscard]] winmon::OperatorMenuToggles MenuToggles() const;
     void MaintainMenuAccess();
 
     [[nodiscard]] winmon::OperatorAction ShowOperatorMenu();
-    void HandleOperatorMenuAction(winmon::OperatorAction action);
     void RequestExit();
     void SampleRates();
     afx_msg LRESULT OnTrayNotification(WPARAM wParam, LPARAM lParam);

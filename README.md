@@ -100,7 +100,7 @@ Win Mon 是一款 Windows 11 网速监控工具。它在任务栏上显示实时
 
 ## 技术文档
 
-模块职责、数据流和构建方法见 [技术架构](docs/architecture.md)。
+模块职责、数据流和构建方法见 [技术架构](docs/architecture.md)。测试分层、运行方式和用例编写规范见 [测试指南](tests/README.md)。
 
 ## 致谢与许可
 

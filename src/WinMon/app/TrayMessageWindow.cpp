@@ -119,7 +119,7 @@ bool TrayMessageWindow::Initialize()
     static_cast<void>(floatingRateDisplay_.SetOpacity(startup.floatingDisplayOpacity));
     floatingRateDisplay_.SetContextMenuOwner(GetSafeHwnd(), kDisplayContextMenuMessage);
     floatingRateDisplay_.SetVisibilityChangeHandler([this](bool text, bool visible) {
-        HandleOperatorMenuAction({text
+        ExecuteOperatorAction({text
             ? (visible ? winmon::OperatorActionKind::ShowFloatingText : winmon::OperatorActionKind::HideFloatingText)
             : (visible ? winmon::OperatorActionKind::ShowFloatingCharts : winmon::OperatorActionKind::HideFloatingCharts)});
         return (text ? floatingRateDisplay_.IsTextVisible() : floatingRateDisplay_.IsChartVisible()) == visible;
@@ -152,7 +152,7 @@ bool TrayMessageWindow::Initialize()
 void TrayMessageWindow::Shutdown() noexcept
 {
     shuttingDown_ = true;
-    KillTimer(kRateSampleTimer);
+    if (GetSafeHwnd() != nullptr) KillTimer(kRateSampleTimer);
     floatingRateDisplay_.Shutdown();
     shellLifecycle_.Shutdown();
 
@@ -434,7 +434,7 @@ void TrayMessageWindow::RequestExit()
     PostQuitMessage(0);
 }
 
-void TrayMessageWindow::HandleOperatorMenuAction(winmon::OperatorAction action)
+void TrayMessageWindow::ExecuteOperatorAction(winmon::OperatorAction action)
 {
     if (!winmon::CanApplyOperatorAction(action.kind, MenuToggles())) return;
     switch (action.kind)
@@ -570,14 +570,14 @@ LRESULT TrayMessageWindow::OnTrayNotification(WPARAM, LPARAM lParam)
 {
     const UINT notification = LOWORD(lParam);
     if (notification != WM_RBUTTONUP && notification != WM_CONTEXTMENU) return 0;
-    HandleOperatorMenuAction(ShowOperatorMenu());
+    ExecuteOperatorAction(ShowOperatorMenu());
     return 0;
 }
 
 LRESULT TrayMessageWindow::OnDisplayContextMenu(WPARAM, LPARAM)
 {
     if (shuttingDown_) return 0;
-    HandleOperatorMenuAction(ShowOperatorMenu());
+    ExecuteOperatorAction(ShowOperatorMenu());
     return 0;
 }
 

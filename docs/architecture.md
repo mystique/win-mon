@@ -127,14 +127,14 @@ ctest --test-dir build -C Release --output-on-failure
 
 程序输出为 `build/Release/WinMon.exe`。所有配置、编译和测试均通过 CMake 执行。
 
-| CTest 目标 | 检查范围 |
+| CTest 标签 | 检查范围 |
 | --- | --- |
-| `WinMonCoreTests` | 核心速率、网络选择、菜单、设置事务与恢复策略。 |
-| `NetworkObservationTests` | 网络读取与连接分类缓存。 |
-| `SettingsTests` | 设置的读取、保存与默认值。 |
-| `LedRateStripTests`、`RateStripWindowTests` | 任务栏 LED 绘制、布局和窗口行为。 |
-| `FloatingRateRendererTests`、`FloatingWindowTests` | 悬浮窗渲染、动画状态和原生窗口行为。 |
+| `unit` | 核心速率、网络选择、菜单、设置事务、恢复策略、注入的网络读取、动画状态和读数解析。 |
+| `integration` | 隔离注册表、拒绝写入、登录启动项、离屏渲染和原生悬浮窗行为。 |
+| `acceptance` | 显式开启的真实桌面验收：单实例、正常退出、Shell 恢复、菜单、宿主设置回滚和任务栏输入。 |
 
-自动化测试不能代替真实任务栏、多显示器环境和鼠标拖动手感的人工验证。测试目标与链接依赖以 [CMakeLists.txt](../CMakeLists.txt) 为准。
+Catch2 将每个行为用例独立注册到 CTest。默认只运行单元与集成测试，截图生成单独使用 `visual-evidence` 目标。分层边界、验收开关、离线依赖和增加用例的方法见 [测试指南](../tests/README.md)，具体目标与链接依赖见 [tests/CMakeLists.txt](../tests/CMakeLists.txt)。自动化测试不能代替多显示器环境和鼠标拖动手感的人工验证。
+
+[tests.yml](../.github/workflows/tests.yml) 在拉取请求和 main 分支更新时验证 Debug 与 Release。
 
 发布工作流见 [release.yml](../.github/workflows/release.yml)。工作流读取资源文件中的版本，构建并运行测试，再打包程序、所需运行库和字体许可，发布到对应 GitHub Release。
