@@ -8,7 +8,7 @@
 
 namespace settings
 {
-[[nodiscard]] winmon::OperatorMenuToggles LoadStartupToggles() noexcept;
+[[nodiscard]] winmon::OperatorMenuToggles LoadStartupToggles(bool gpuAvailable = false) noexcept;
 [[nodiscard]] bool IsLightTheme() noexcept;
 [[nodiscard]] bool IsTaskbarTextVisible() noexcept;
 bool SetTaskbarTextVisible(bool visible) noexcept;
@@ -20,6 +20,11 @@ bool SetFloatingDisplayOpacity(int percent) noexcept;
 bool SetFloatingChartsVisible(bool visible) noexcept;
 [[nodiscard]] bool IsFloatingTextVisible() noexcept;
 bool SetFloatingTextVisible(bool visible) noexcept;
+[[nodiscard]] bool IsTaskbarRatesVisible() noexcept;
+bool SetTaskbarGpuVisible(bool visible) noexcept;
+bool SetTaskbarRatesVisible(bool visible) noexcept;
+[[nodiscard]] bool IsTaskbarMemoryVisible() noexcept;
+bool SetTaskbarMemoryVisible(bool visible) noexcept;
 [[nodiscard]] bool IsTaskbarDisplayOnLeft() noexcept;
 bool SetTaskbarDisplayOnLeft(bool left) noexcept;
 // Returns true if the Rate Strip is allowed to answer right-click with the

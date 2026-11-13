@@ -49,7 +49,7 @@ bool WriteFlag(const wchar_t* valueName, bool enabled) noexcept
 
 namespace settings
 {
-winmon::OperatorMenuToggles LoadStartupToggles() noexcept
+winmon::OperatorMenuToggles LoadStartupToggles(bool gpuAvailable) noexcept
 {
     winmon::OperatorMenuToggles toggles{
         .taskbarContextMenuEnabled = IsTaskbarContextMenuEnabled(),
@@ -59,7 +59,16 @@ winmon::OperatorMenuToggles LoadStartupToggles() noexcept
         .floatingChartsVisible = AreFloatingChartsVisible(),
         .floatingDisplayOpacity = GetFloatingDisplayOpacity(),
         .taskbarTextVisible = IsTaskbarTextVisible(),
-        .trayIconVisible = IsTrayIconVisible()};
+        .trayIconVisible = IsTrayIconVisible(),
+        .taskbarMemoryVisible = IsTaskbarMemoryVisible(),
+        .taskbarRatesVisible = IsTaskbarRatesVisible(),
+        .gpuAvailable = gpuAvailable,
+        .gpuVisible = gpuAvailable && ReadBool(L"TaskbarGpuVisible", false)};
+    if (!toggles.taskbarRatesVisible && !toggles.taskbarMemoryVisible && !toggles.gpuVisible)
+    {
+        toggles.taskbarRatesVisible = true;
+        // Keep the saved GPU-only selection for the next successful probe.
+    }
     if (!winmon::HasConfiguredMenuAccess(toggles))
     {
         toggles.trayIconVisible = true;
@@ -135,6 +144,31 @@ bool IsFloatingTextVisible() noexcept
 bool SetFloatingTextVisible(bool visible) noexcept
 {
     return WriteFlag(L"FloatingTextVisible", visible);
+}
+
+bool IsTaskbarRatesVisible() noexcept
+{
+    return ReadBool(L"TaskbarRatesVisible", true);
+}
+
+bool SetTaskbarGpuVisible(bool visible) noexcept
+{
+    return WriteFlag(L"TaskbarGpuVisible", visible);
+}
+
+bool SetTaskbarRatesVisible(bool visible) noexcept
+{
+    return WriteFlag(L"TaskbarRatesVisible", visible);
+}
+
+bool IsTaskbarMemoryVisible() noexcept
+{
+    return ReadBool(L"TaskbarMemoryVisible", true);
+}
+
+bool SetTaskbarMemoryVisible(bool visible) noexcept
+{
+    return WriteFlag(L"TaskbarMemoryVisible", visible);
 }
 
 bool IsTaskbarDisplayOnLeft() noexcept

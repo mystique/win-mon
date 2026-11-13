@@ -152,6 +152,48 @@ void RateStrip::SetRates(
     }
 }
 
+void RateStrip::SetContentVisible(bool rates, bool memory, bool gpu) noexcept
+{
+    if (!rates && !memory && !gpu) return;
+    gpuVisible_ = gpu;
+    ratesVisible_ = rates;
+    memoryVisible_ = memory;
+    if (taskbar_ != nullptr)
+    {
+        naturalSize_ = MeasureSize(taskbar_);
+        static_cast<void>(Refresh());
+    }
+}
+
+void RateStrip::SetGpuSample(std::optional<GpuSample> sample)
+{
+    gpuLoad_ = (sample ? std::to_wstring(sample->load) : L"--") + L"%";
+    gpuTemperature_ = (sample ? std::to_wstring(sample->celsius) : L"--") + L"\u00b0C";
+}
+
+void RateStrip::SetMemorySample(const MEMORYSTATUSEX& sample)
+{
+    if (!sample.ullTotalPhys || sample.ullAvailPhys > sample.ullTotalPhys)
+    {
+        memoryLoad_ = L"--%";
+        memorySize_ = L"--GB";
+        return;
+    }
+    const auto used = sample.ullTotalPhys - sample.ullAvailPhys;
+    wchar_t load[16]{};
+    swprintf_s(load, L"%.1f%%", 100.0 * used / sample.ullTotalPhys);
+    memoryLoad_ = load;
+    constexpr double gib = 1073741824.0;
+    const bool useTb = sample.ullTotalPhys >= 1000 * gib;
+    const double unit = useTb ? 1024 * gib : gib;
+    wchar_t sizes[32]{};
+    swprintf_s(sizes, useTb ? L"%.1fTB" : L"%.1fGB",
+        used / unit);
+    memorySize_ = sizes;
+    swprintf_s(sizes, L"%.1f", sample.ullTotalPhys / unit);
+    memoryAmountChars_ = (std::max)(3, static_cast<int>(wcslen(sizes)) - 2);
+}
+
 bool RateStrip::SetTaskbarDisplayOnLeft(bool left) noexcept
 {
     if (taskbarDisplayOnLeft_ == left) return true;
@@ -393,7 +435,7 @@ HWND RateStrip::FindNotificationArea(HWND taskbar) noexcept
 
 CSize RateStrip::MeasureSize(HWND taskbar)
 {
-    const SIZE size = SizeForDpi(GetDpiForWindow(taskbar));
+    const SIZE size = SizeForDpi(GetDpiForWindow(taskbar), memoryVisible_, memoryAmountChars_, ratesVisible_, gpuVisible_);
     return {size.cx, size.cy};
 }
 
@@ -415,6 +457,7 @@ bool RateStrip::PlaceOnTaskbar(HWND taskbar, HWND notificationArea) noexcept
         ? taskbarClientRect.right - taskbarClientRect.left - margin * 2
         : notificationRect.left - margin - taskbarClientRect.left;
     const int availableHeight = taskbarClientRect.bottom - taskbarClientRect.top;
+    naturalSize_ = MeasureSize(taskbar);
     size_ = naturalSize_;
     visible_ = false;
     if (naturalSize_.cx > availableWidth || naturalSize_.cy > availableHeight || availableWidth <= 0 || availableHeight <= 0)
@@ -448,7 +491,7 @@ bool RateStrip::RenderToDc(HDC dc, SIZE size, bool lightTheme, bool hitTestableB
 {
     std::array<wchar_t, 9> up{}, down{};
     if (dc == nullptr || size.cx <= 0 || size.cy <= 0 ||
-        !led::Cells(uploadText_, L'\u2191', up) || !led::Cells(downloadText_, L'\u2193', down))
+        (ratesVisible_ && (!led::Cells(uploadText_, L'\u2191', up) || !led::Cells(downloadText_, L'\u2193', down))))
     {
         return false;
     }
@@ -472,9 +515,100 @@ bool RateStrip::RenderToDc(HDC dc, SIZE size, bool lightTheme, bool hitTestableB
     if (FAILED(d2dTarget_->BindDC(dc, &bounds))) return false;
     d2dTarget_->BeginDraw();
     d2dTarget_->Clear(D2D1::ColorF(0, hitTestableBackground ? (1.0f / 255.0f) : 0.0f));
-    d2dTarget_->SetTransform(D2D1::Matrix3x2F::Scale(size.cx / 55.0f, size.cy / 22.0f));
-    led::Draw(d2dTarget_.Get(), d2dBrush_.Get(), up, up, 2, 8, 0x61e5b7, 1, 1, lightTheme, !taskbarDisplayOnLeft_, true);
-    led::Draw(d2dTarget_.Get(), d2dBrush_.Get(), down, down, 2, 19, 0x32bdeb, 1, 1, lightTheme, !taskbarDisplayOnLeft_, true);
+    const float stripWidth = SizeForDpi(96, memoryVisible_, memoryAmountChars_, ratesVisible_, gpuVisible_).cx * (55.0f / 94);
+    d2dTarget_->SetTransform(D2D1::Matrix3x2F::Scale(size.cx / stripWidth, size.cy / 22.0f));
+    if (ratesVisible_)
+    {
+        led::Draw(d2dTarget_.Get(), d2dBrush_.Get(), up, up, 2, 8, 0x61e5b7, 1, 1, lightTheme, !taskbarDisplayOnLeft_, true);
+        led::Draw(d2dTarget_.Get(), d2dBrush_.Get(), down, down, 2, 19, 0x32bdeb, 1, 1, lightTheme, !taskbarDisplayOnLeft_, true);
+    }
+    if (gpuVisible_ || memoryVisible_)
+    {
+        constexpr float gap = GroupGap * (55.0f / 94);
+        float groupEnd = ratesVisible_ ? 55.0f : 0.0f;
+        float groupStart = 0;
+        const auto beginGroup = [&](float width)
+        {
+            groupStart = groupEnd;
+            if (groupStart > 0)
+            {
+                const float divider = groupStart + gap / 2;
+                d2dBrush_->SetColor(D2D1::ColorF(lightTheme ? 0x52646c : 0x9aa5af, 0.5f));
+                d2dTarget_->FillRectangle(D2D1::RectF(divider, 2, divider + 0.65f, 20), d2dBrush_.Get());
+                groupStart += gap;
+            }
+            groupEnd = groupStart + width;
+        };
+        constexpr punctum::Glyph loadIcon{0, {0, 31, 17, 27, 17, 31, 21}};
+        constexpr punctum::Glyph capacityIcon{0, {0, 31, 17, 31, 0, 17, 31}};
+        const auto drawGlyph = [&](const punctum::Glyph& glyph, float x, float baseline,
+                                   float pitch)
+        {
+            const float radius = pitch * (lightTheme ? 0.46f : 0.4f);
+            for (int row = 0; row < 7; ++row)
+            {
+                for (int col = 0; col < 5; ++col)
+                {
+                    if (glyph.rows[row] & (1 << col))
+                    {
+                        const auto point = D2D1::Point2F(x + col * pitch,
+                            baseline - (6 - row) * pitch);
+                        d2dTarget_->FillEllipse(D2D1::Ellipse(point, radius, radius), d2dBrush_.Get());
+                    }
+                }
+            }
+        };
+        const auto drawRow = [&](const std::wstring& text, const punctum::Glyph& icon,
+                                 float baseline, UINT32 color, UINT32 iconColor)
+        {
+            const float iconX = taskbarDisplayOnLeft_ ? groupStart + 4 : groupEnd - 6;
+            d2dBrush_->SetColor(D2D1::ColorF(iconColor));
+            drawGlyph(icon, iconX, baseline, 1.05f);
+
+            const size_t suffix = text.find_first_of(L"%GT\u00b0");
+            const auto isUnit = [&](size_t i)
+            {
+                return i >= suffix;
+            };
+            constexpr float unitWidth = 5.5f * 0.8f;
+            const auto cellWidth = [&](size_t i)
+            {
+                if (isUnit(i)) return unitWidth;
+                if (text[i] == L'.') return 3.5f * 1.05f;
+                return (i + 1 == suffix ? 6.0f : 5.5f) * 1.05f;
+            };
+            const float fieldEnd = groupEnd - (taskbarDisplayOnLeft_ ? 1.5f : 10.5f);
+            float x = fieldEnd - 2 * unitWidth;
+            for (size_t i = 0; i < suffix; ++i)
+            {
+                x -= cellWidth(i);
+            }
+            for (size_t i = 0; i < text.size(); ++i)
+            {
+                const float pitch = isUnit(i) ? 0.8f : 1.05f;
+                if (const auto* glyph = punctum::Find(text[i]))
+                {
+                    d2dBrush_->SetColor(D2D1::ColorF(isUnit(i) ? (lightTheme ? 0x18212a : 0x9aa5af) : color));
+                    drawGlyph(*glyph, text[i] == L'.' ? x - pitch : x, baseline, pitch);
+                }
+                x += cellWidth(i);
+            }
+        };
+        if (gpuVisible_)
+        {
+            constexpr punctum::Glyph chip{0, {10, 31, 17, 27, 17, 31, 10}};
+            constexpr punctum::Glyph thermometer{0, {4, 10, 10, 14, 14, 31, 14}};
+            beginGroup(GpuWidth * (55.0f / 94));
+            drawRow(gpuLoad_, chip, 8, lightTheme ? 0x003923 : 0x9affd4, lightTheme ? 0x003923 : 0x61e5b7);
+            drawRow(gpuTemperature_, thermometer, 19, lightTheme ? 0x003452 : 0x80e4ff, lightTheme ? 0x003452 : 0x32bdeb);
+        }
+        if (memoryVisible_)
+        {
+            beginGroup(SizeForDpi(96, true, memoryAmountChars_, false).cx * (55.0f / 94));
+            drawRow(memoryLoad_, loadIcon, 8, lightTheme ? 0x003923 : 0x9affd4, lightTheme ? 0x003923 : 0x61e5b7);
+            drawRow(memorySize_, capacityIcon, 19, lightTheme ? 0x003452 : 0x80e4ff, lightTheme ? 0x003452 : 0x32bdeb);
+        }
+    }
     const HRESULT hr = d2dTarget_->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET)
     {

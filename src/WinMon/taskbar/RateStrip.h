@@ -3,6 +3,7 @@
 
 #pragma once
 #include <afxwin.h>
+#include "platform/NvidiaGpuReader.h"
 #include <UIAutomation.h>
 #include <atlbase.h>
 #include <string>
@@ -20,13 +21,28 @@ public:
     [[nodiscard]] bool Refresh();
     void Shutdown() noexcept;
     [[nodiscard]] static bool IsPrimaryBottomTaskbarAvailable() noexcept;
-    [[nodiscard]] static SIZE SizeForDpi(UINT dpi) noexcept { return {MulDiv(94, dpi, 96), MulDiv(36, dpi, 96)}; }
+    [[nodiscard]] static SIZE SizeForDpi(UINT dpi, bool memoryVisible = false, int amountChars = 3, bool ratesVisible = true, bool gpuVisible = false) noexcept
+    {
+        // Reserve used-memory digits independently of the current reading.
+        const int groups = ratesVisible + memoryVisible + gpuVisible;
+        const int width = (ratesVisible ? 94 : 0) + (memoryVisible ? 88 + 10 * (amountChars - 3) : 0)
+            + (gpuVisible ? GpuWidth : 0) + (groups > 1 ? (groups - 1) * GroupGap : 0);
+        return {MulDiv(width, dpi, 96), MulDiv(36, dpi, 96)};
+    }
     [[nodiscard]] bool RenderToDc(HDC dc, SIZE size, bool lightTheme, bool hitTestableBackground = false) noexcept;
     void SetRates(const std::wstring& uploadText, const std::wstring& downloadText) noexcept;
     [[nodiscard]] bool SetTaskbarDisplayOnLeft(bool left) noexcept;
     [[nodiscard]] bool IsTaskbarDisplayOnLeft() const noexcept { return taskbarDisplayOnLeft_; }
     [[nodiscard]] bool IsTaskbarSpaceFree(HWND taskbar, RECT screenCandidate) noexcept;
     [[nodiscard]] bool IsDisplayVisible() const noexcept { return visible_; }
+    static constexpr int GpuWidth = 74;
+    static constexpr int GroupGap = 8; // Extra space around the divider at 96 DPI.
+    bool IsRatesVisible() const noexcept { return ratesVisible_; }
+    void SetContentVisible(bool rates, bool memory, bool gpu = false) noexcept;
+    bool IsMemoryVisible() const noexcept { return memoryVisible_; }
+    bool IsGpuVisible() const noexcept { return gpuVisible_; }
+    void SetGpuSample(std::optional<GpuSample> sample);
+    void SetMemorySample(const MEMORYSTATUSEX& sample);
     void SetContextMenuOwner(HWND owner, UINT notificationMessage) noexcept;
     void SetContextMenuEnabled(bool enabled) noexcept;
     [[nodiscard]] bool IsContextMenuEnabled() const noexcept { return contextMenuEnabled_; }
@@ -59,6 +75,14 @@ private:
     CSize size_{};
     std::wstring uploadText_ = L"0.0 K/s";
     std::wstring downloadText_ = L"0.0 K/s";
+    int memoryAmountChars_ = 3;
+    std::wstring gpuLoad_ = L"--%";
+    std::wstring gpuTemperature_ = L"--\u00b0C";
+    bool gpuVisible_ = false;
+    bool ratesVisible_ = true;
+    bool memoryVisible_ = false;
+    std::wstring memoryLoad_ = L"--%";
+    std::wstring memorySize_ = L"--GB";
     HWND taskbar_ = nullptr; // Borrowed from Explorer; invalidated by shell recovery.
     HWND contextMenuOwner_ = nullptr;
     UINT contextMenuMessage_ = 0;

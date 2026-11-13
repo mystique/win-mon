@@ -70,6 +70,12 @@ enum class OperatorActionKind
     ShowFloatingText,
     HideFloatingText,
     SetFloatingDisplayOpacity,
+    ShowTaskbarGpu,
+    HideTaskbarGpu,
+    ShowTaskbarRates,
+    HideTaskbarRates,
+    ShowTaskbarMemory,
+    HideTaskbarMemory,
     SetTaskbarDisplayLeft,
     SetTaskbarDisplayRight,
     Exit,
@@ -122,6 +128,10 @@ struct OperatorMenuToggles final
     bool trayIconVisible = true;
     bool taskbarDisplayAvailable = true;
     bool floatingDisplayAvailable = true;
+    bool taskbarMemoryVisible = true;
+    bool taskbarRatesVisible = true;
+    bool gpuAvailable = false;
+    bool gpuVisible = false;
 };
 
 [[nodiscard]] bool CanApplyOperatorAction(OperatorActionKind action, const OperatorMenuToggles& toggles) noexcept;

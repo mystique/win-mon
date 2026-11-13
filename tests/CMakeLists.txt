@@ -18,6 +18,7 @@ target_include_directories(WinMonTestRendering PUBLIC ../src/WinMon)
 target_link_libraries(WinMonTestRendering PUBLIC d2d1 windowscodecs ole32)
 
 add_library(WinMonTestWindows STATIC
+    ../src/WinMon/platform/NvidiaGpuReader.cpp
     ../src/WinMon/platform/LaunchAtLogin.cpp
     ../src/WinMon/settings/OperatorSettings.cpp
     ../src/WinMon/floating/FloatingRateDisplay.cpp

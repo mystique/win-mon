@@ -153,6 +153,14 @@ bool CanApplyOperatorAction(OperatorActionKind action, const OperatorMenuToggles
     bool floating = toggles.floatingDisplayEnabled && toggles.floatingDisplayAvailable;
     switch (action)
     {
+    case OperatorActionKind::ShowTaskbarGpu:
+        return toggles.gpuAvailable;
+    case OperatorActionKind::HideTaskbarGpu:
+        return toggles.gpuAvailable && (toggles.taskbarRatesVisible || toggles.taskbarMemoryVisible);
+    case OperatorActionKind::HideTaskbarRates:
+        return toggles.taskbarMemoryVisible || (toggles.gpuAvailable && toggles.gpuVisible);
+    case OperatorActionKind::HideTaskbarMemory:
+        return toggles.taskbarRatesVisible || (toggles.gpuAvailable && toggles.gpuVisible);
     case OperatorActionKind::HideTaskbarText:
     case OperatorActionKind::DisableTaskbarContextMenu:
         taskbar = false;
@@ -264,6 +272,33 @@ std::vector<OperatorMenuItem> WinMonCore::BuildOperatorMenu(
     menu.push_back(std::move(taskbarText));
     if (toggles.taskbarTextVisible)
     {
+        OperatorMenuItem content;
+        content.label = L"Taskbar Display Content";
+        OperatorMenuItem rates;
+        rates.label = L"Network Speed";
+        rates.checked = toggles.taskbarRatesVisible;
+        rates.enabled = !rates.checked || CanApplyOperatorAction(OperatorActionKind::HideTaskbarRates, toggles);
+        AddChoice(rates, {{rates.checked ? OperatorActionKind::HideTaskbarRates : OperatorActionKind::ShowTaskbarRates}});
+        content.children.push_back(std::move(rates));
+        if (toggles.gpuAvailable)
+        {
+            OperatorMenuItem gpu;
+            gpu.label = L"GPU";
+            gpu.checked = toggles.gpuVisible;
+            const auto action = gpu.checked ? OperatorActionKind::HideTaskbarGpu : OperatorActionKind::ShowTaskbarGpu;
+            gpu.enabled = CanApplyOperatorAction(action, toggles);
+            AddChoice(gpu, {{action}});
+            content.children.push_back(std::move(gpu));
+        }
+        OperatorMenuItem memory;
+        memory.label = L"Memory";
+        memory.enabled = !toggles.taskbarMemoryVisible || CanApplyOperatorAction(OperatorActionKind::HideTaskbarMemory, toggles);
+        memory.checked = toggles.taskbarMemoryVisible;
+        AddChoice(memory, {{memory.checked ? OperatorActionKind::HideTaskbarMemory
+                                          : OperatorActionKind::ShowTaskbarMemory}});
+        content.children.push_back(std::move(memory));
+        menu.push_back(std::move(content));
+
         OperatorMenuItem taskbarDisplayPosition;
         taskbarDisplayPosition.label = L"Taskbar Display Position";
         for (bool left : {true, false})

@@ -13,6 +13,8 @@ struct BooleanSetting
     bool (*write)(bool) noexcept;
 };
 const BooleanSetting flags[]{
+    {L"TaskbarRatesVisible", true, settings::IsTaskbarRatesVisible, settings::SetTaskbarRatesVisible},
+    {L"TaskbarMemoryVisible", true, settings::IsTaskbarMemoryVisible, settings::SetTaskbarMemoryVisible},
     {L"TaskbarTextVisible", true, settings::IsTaskbarTextVisible, settings::SetTaskbarTextVisible},
     {L"TrayIconVisible", true, settings::IsTrayIconVisible, settings::SetTrayIconVisible},
     {L"TaskbarContextMenuEnabled", false, settings::IsTaskbarContextMenuEnabled,
@@ -25,7 +27,7 @@ const BooleanSetting flags[]{
 
 TEST_CASE("Boolean settings persist and reject invalid registry data", "[integration][registry]")
 {
-    const auto index = GENERATE(0, 1, 2, 3, 4, 5, 6);
+    const auto index = GENERATE(0, 1, 2, 3, 4, 5, 6, 7, 8);
     CAPTURE(index);
     test::IsolatedRegistry registry;
     const auto& setting = flags[index];
@@ -138,4 +140,19 @@ TEST_CASE("Theme follows the isolated Windows preference", "[integration][regist
                          REG_DWORD, &value, sizeof(value));
         CHECK(settings::IsLightTheme() == (value != 0));
     }
+}
+
+TEST_CASE("GPU-only preferences survive an unavailable driver", "[integration][registry]")
+{
+    test::IsolatedRegistry registry;
+    CHECK_FALSE(settings::LoadStartupToggles(true).gpuVisible);
+    REQUIRE(settings::SetTaskbarGpuVisible(true));
+    REQUIRE(settings::SetTaskbarRatesVisible(false));
+    REQUIRE(settings::SetTaskbarMemoryVisible(false));
+    const auto fallback = settings::LoadStartupToggles(false);
+    CHECK(fallback.taskbarRatesVisible);
+    CHECK_FALSE(fallback.gpuVisible);
+    const auto restored = settings::LoadStartupToggles(true);
+    CHECK_FALSE(restored.taskbarRatesVisible);
+    CHECK(restored.gpuVisible);
 }

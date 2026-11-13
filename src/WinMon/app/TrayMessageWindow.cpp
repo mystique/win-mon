@@ -107,10 +107,13 @@ bool TrayMessageWindow::Initialize()
     }
 
     shuttingDown_ = false;
-    const auto startup = settings::LoadStartupToggles();
+    const auto gpu = gpuReader_.Probe();
+    rateStrip_.SetGpuSample(gpu);
+    const auto startup = settings::LoadStartupToggles(gpu.has_value());
     taskbarTextVisible_ = startup.taskbarTextVisible;
     trayIconVisible_ = startup.trayIconVisible;
     floatingDisplayEnabled_ = startup.floatingDisplayEnabled;
+    rateStrip_.SetContentVisible(startup.taskbarRatesVisible, startup.taskbarMemoryVisible, startup.gpuVisible);
     rateStrip_.SetContextMenuOwner(GetSafeHwnd(), kDisplayContextMenuMessage);
     rateStrip_.SetContextMenuEnabled(startup.taskbarContextMenuEnabled);
     static_cast<void>(rateStrip_.SetTaskbarDisplayOnLeft(startup.taskbarDisplayOnLeft));
@@ -208,6 +211,19 @@ void TrayMessageWindow::SampleRates()
     {
         floatingRateDisplay_.ResetHistory();
         displayedNetworkGeneration_ = display.networkGeneration;
+    }
+    if (rateStrip_.IsGpuVisible() && taskbarTextVisible_)
+    {
+        rateStrip_.SetGpuSample(gpuReader_.Read());
+    }
+    if (rateStrip_.IsMemoryVisible() && taskbarTextVisible_)
+    {
+        MEMORYSTATUSEX memory{sizeof(MEMORYSTATUSEX)};
+        if (!GlobalMemoryStatusEx(&memory))
+        {
+            memory = {};
+        }
+        rateStrip_.SetMemorySample(memory);
     }
     rateStrip_.SetRates(
         display.uploadText,
@@ -394,7 +410,11 @@ winmon::OperatorMenuToggles TrayMessageWindow::MenuToggles() const
         .taskbarTextVisible = taskbarTextVisible_,
         .trayIconVisible = trayIconVisible_,
         .taskbarDisplayAvailable = rateStrip_.IsDisplayVisible(),
-        .floatingDisplayAvailable = floating != nullptr && ::IsWindowVisible(floating)};
+        .floatingDisplayAvailable = floating != nullptr && ::IsWindowVisible(floating),
+        .taskbarMemoryVisible = rateStrip_.IsMemoryVisible(),
+        .taskbarRatesVisible = rateStrip_.IsRatesVisible(),
+        .gpuAvailable = gpuReader_.Available(),
+        .gpuVisible = rateStrip_.IsGpuVisible()};
 }
 
 void TrayMessageWindow::MaintainMenuAccess()
@@ -413,7 +433,17 @@ winmon::OperatorAction TrayMessageWindow::ShowOperatorMenu()
     OperatorMenuScope transaction{core_};
 
     CMenu menu;
-    if (!menu.CreatePopupMenu() || !AppendMenuItems(menu, *model)) return {};
+    constexpr wchar_t versionLabel[] = L"Win Mon " WINMON_VERSION_TEXT
+#if WINMON_VERSION_PATCH
+        "." WINMON_STRINGIFY(WINMON_VERSION_PATCH)
+#endif
+        ;
+    if (!menu.CreatePopupMenu() ||
+        !menu.AppendMenu(MF_STRING | MF_GRAYED, UINT_PTR{0}, versionLabel) ||
+        !menu.AppendMenu(MF_SEPARATOR) || !AppendMenuItems(menu, *model))
+    {
+        return {};
+    }
     SetForegroundWindow();
     const auto choiceToken = static_cast<std::uint32_t>(::TrackPopupMenu(
         menu.GetSafeHmenu(),
@@ -533,6 +563,42 @@ void TrayMessageWindow::ExecuteOperatorAction(winmon::OperatorAction action)
             [&] { return floatingRateDisplay_.SetOpacity(action.opacity); },
             [&] { return settings::SetFloatingDisplayOpacity(action.opacity); },
             [&] { return floatingRateDisplay_.SetOpacity(previous); }));
+        break;
+    }
+    case winmon::OperatorActionKind::ShowTaskbarGpu:
+    case winmon::OperatorActionKind::HideTaskbarGpu:
+    case winmon::OperatorActionKind::ShowTaskbarRates:
+    case winmon::OperatorActionKind::HideTaskbarRates:
+    case winmon::OperatorActionKind::ShowTaskbarMemory:
+    case winmon::OperatorActionKind::HideTaskbarMemory:
+    {
+        using Kind = winmon::OperatorActionKind;
+        auto selection = MenuToggles();
+        bool saved;
+        if (action.kind == Kind::ShowTaskbarGpu || action.kind == Kind::HideTaskbarGpu)
+        {
+            selection.gpuVisible = action.kind == Kind::ShowTaskbarGpu;
+            saved = settings::SetTaskbarGpuVisible(selection.gpuVisible);
+        }
+        else if (action.kind == Kind::ShowTaskbarRates || action.kind == Kind::HideTaskbarRates)
+        {
+            selection.taskbarRatesVisible = action.kind == Kind::ShowTaskbarRates;
+            saved = settings::SetTaskbarRatesVisible(selection.taskbarRatesVisible);
+        }
+        else
+        {
+            selection.taskbarMemoryVisible = action.kind == Kind::ShowTaskbarMemory;
+            saved = settings::SetTaskbarMemoryVisible(selection.taskbarMemoryVisible);
+        }
+        if (saved)
+        {
+            rateStrip_.SetContentVisible(selection.taskbarRatesVisible, selection.taskbarMemoryVisible, selection.gpuVisible);
+            MaintainMenuAccess();
+        }
+        else
+        {
+            MessageBoxW(L"Win Mon could not save the taskbar content setting.", L"Win Mon", MB_OK | MB_ICONERROR);
+        }
         break;
     }
     case winmon::OperatorActionKind::SetTaskbarDisplayLeft:

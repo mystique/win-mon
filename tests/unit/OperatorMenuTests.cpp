@@ -12,6 +12,7 @@ TEST_CASE("Menu layout and representative action tokens match the operator contr
     const std::vector<std::wstring> expectedLabels{L"Monitored Network",
                                                    L"",
                                                    L"Show Taskbar Text",
+                                                   L"Taskbar Display Content",
                                                    L"Taskbar Display Position",
                                                    L"Enable Taskbar Context Menu",
                                                    L"",
@@ -179,4 +180,58 @@ TEST_CASE("Taskbar position menu reflects and selects Left and Right", "[unit][m
     REQUIRE(
         core.CompleteOperatorMenu(FindItem(FindItem(*menu, L"Taskbar Display Position").children, L"Right").choiceToken)
             .kind == OperatorActionKind::SetTaskbarDisplayRight);
+}
+
+TEST_CASE("Taskbar memory menu toggles the current setting", "[unit][menu]")
+{
+    WinMonCore core;
+    for (bool visible : {false, true})
+    {
+        auto menu = core.BeginOperatorMenu({.taskbarMemoryVisible = visible});
+        REQUIRE(menu);
+        const auto& items = FindItem(*menu, L"Taskbar Display Content").children;
+        const auto& memory = FindItem(items, L"Memory");
+        CHECK(FindItem(items, L"Network Speed").enabled == visible);
+        CHECK(memory.checked == visible);
+        const auto action = core.CompleteOperatorMenu(memory.choiceToken);
+        CHECK(action.kind == (visible ? OperatorActionKind::HideTaskbarMemory
+                                      : OperatorActionKind::ShowTaskbarMemory));
+    }
+}
+
+TEST_CASE("Memory-only selection keeps the last content item checked", "[unit][menu]")
+{
+    WinMonCore core;
+    auto menu = core.BeginOperatorMenu({.taskbarMemoryVisible = true, .taskbarRatesVisible = false});
+    REQUIRE(menu);
+    const auto& items = FindItem(*menu, L"Taskbar Display Content").children;
+    const auto& memory = FindItem(items, L"Memory");
+    CHECK(memory.checked);
+    CHECK_FALSE(memory.enabled);
+    CHECK(memory.choiceToken == 0);
+    const auto& rates = FindItem(items, L"Network Speed");
+    CHECK_FALSE(rates.checked);
+    CHECK(core.CompleteOperatorMenu(rates.choiceToken).kind == OperatorActionKind::ShowTaskbarRates);
+}
+
+TEST_CASE("GPU is offered only after a successful probe and can be the only group", "[unit][menu]")
+{
+    WinMonCore core;
+    for (bool available : {false, true})
+    {
+        auto menu = core.BeginOperatorMenu({.taskbarMemoryVisible = false, .taskbarRatesVisible = !available,
+            .gpuAvailable = available, .gpuVisible = available});
+        REQUIRE(menu);
+        const auto& content = FindItem(*menu, L"Taskbar Display Content").children;
+        REQUIRE(content.size() == (available ? 3 : 2));
+        CHECK(content.front().label == L"Network Speed");
+        CHECK(content.back().label == L"Memory");
+        if (available)
+        {
+            CHECK(content[1].label == L"GPU");
+            CHECK(content[1].checked);
+            CHECK_FALSE(content[1].enabled);
+        }
+        core.CancelOperatorMenu();
+    }
 }

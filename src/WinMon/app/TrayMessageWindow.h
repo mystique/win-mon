@@ -52,6 +52,7 @@ private:
 
     DECLARE_MESSAGE_MAP()
 
+    NvidiaGpuReader gpuReader_;
     RateStrip rateStrip_;
     FloatingRateDisplay floatingRateDisplay_;
     winmon::ShellLifecycle shellLifecycle_;
