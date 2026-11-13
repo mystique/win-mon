@@ -433,11 +433,12 @@ winmon::OperatorAction TrayMessageWindow::ShowOperatorMenu()
     OperatorMenuScope transaction{core_};
 
     CMenu menu;
-    constexpr wchar_t versionLabel[] = L"Win Mon " WINMON_VERSION_TEXT
-#if WINMON_VERSION_PATCH
-        "." WINMON_STRINGIFY(WINMON_VERSION_PATCH)
-#endif
-        ;
+    wchar_t versionLabel[32];
+    if (WINMON_VERSION_PATCH != 0) {
+        swprintf_s(versionLabel, L"Win Mon %u.%u.%u", WINMON_VERSION_MAJOR, WINMON_VERSION_MINOR, WINMON_VERSION_PATCH);
+    } else {
+        swprintf_s(versionLabel, L"Win Mon %u.%u", WINMON_VERSION_MAJOR, WINMON_VERSION_MINOR);
+    }
     if (!menu.CreatePopupMenu() ||
         !menu.AppendMenu(MF_STRING | MF_GRAYED, UINT_PTR{0}, versionLabel) ||
         !menu.AppendMenu(MF_SEPARATOR) || !AppendMenuItems(menu, *model))

@@ -1,6 +1,5 @@
 # Builds Release x64 WinMon.exe and publishes a GitHub Release whose tag
-# matches src/WinMon/res/WinMon.rc. File version 1.1.0.0 becomes v1.1.0
-# when the fourth component is 0; otherwise the tag keeps all four components.
+# matches src/WinMon/res/resource.h. File version 1.5.0.0 is published as v1.5.0.
 name: Release
 
 on:
@@ -35,31 +34,40 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
 
+          $headerPath = 'src/WinMon/res/resource.h'
           $rcPath = 'src/WinMon/res/WinMon.rc'
+          $header = Get-Content -Raw -Path $headerPath
           $rc = Get-Content -Raw -Path $rcPath
-          function Get-VersionParts([string]$label) {
-            if ($rc -notmatch "(?m)^\s*$label\s+(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*$") {
-              throw "$label not found in $rcPath"
+          function Get-MacroNumber([string]$name) {
+            if ($header -notmatch "(?m)^#define\s+$name\s+(\d+)\s*$") {
+              throw "$name not found in $headerPath"
             }
-            return @($Matches[1], $Matches[2], $Matches[3], $Matches[4])
+            return $Matches[1]
           }
 
-          $fileParts = Get-VersionParts 'FILEVERSION'
-          $productParts = Get-VersionParts 'PRODUCTVERSION'
-          $fileVersion = $fileParts -join '.'
-          if (($productParts -join '.') -ne $fileVersion) {
-            throw "FILEVERSION and PRODUCTVERSION disagree in $rcPath"
+          $major = Get-MacroNumber 'WINMON_VERSION_MAJOR'
+          $minor = Get-MacroNumber 'WINMON_VERSION_MINOR'
+          $patch = Get-MacroNumber 'WINMON_VERSION_PATCH'
+          $fileVersion = "$major.$minor.$patch.0"
+          $versionText = "`"$fileVersion\0`""
+          if ($header -notmatch "(?m)^#define\s+WINMON_FULL_VERSION_TEXT\s+$([regex]::Escape($versionText))\s*$") {
+            throw "WINMON_FULL_VERSION_TEXT must be $versionText in $headerPath"
+          }
+          foreach ($label in @('FILEVERSION', 'PRODUCTVERSION')) {
+            if ($rc -notmatch "(?m)^\s*$label\s+WINMON_VERSION_MAJOR,WINMON_VERSION_MINOR,WINMON_VERSION_PATCH,0\s*$") {
+              throw "$label in $rcPath does not use the resource.h version macros"
+            }
           }
           foreach ($key in @('FileVersion', 'ProductVersion')) {
-            if ($rc -notmatch "VALUE `"$key`", `"$([regex]::Escape($fileVersion))\\0`"") {
-              throw "$key string does not match $fileVersion in $rcPath"
+            if ($rc -notmatch "VALUE `"$key`", WINMON_FULL_VERSION_TEXT") {
+              throw "$key in $rcPath does not use WINMON_FULL_VERSION_TEXT"
             }
           }
 
-          $version = if ($fileParts[3] -eq '0') { ($fileParts[0..2] -join '.') } else { $fileVersion }
+          $version = "$major.$minor.$patch"
           $tag = "v$version"
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne $tag) {
-            throw "Tag $($env:GITHUB_REF_NAME) does not match resource version $tag. Update $rcPath or push $tag."
+            throw "Tag $($env:GITHUB_REF_NAME) does not match resource version $tag. Update $headerPath or push $tag."
           }
 
           $stdoutFile = New-TemporaryFile
@@ -73,7 +81,7 @@ jobs:
               $sha = $tagObject.object.sha
             }
             if ($sha -ne $env:GITHUB_SHA) {
-              throw "Tag $tag already points at $sha, not $($env:GITHUB_SHA). Bump the version in $rcPath before publishing again."
+              throw "Tag $tag already points at $sha, not $($env:GITHUB_SHA). Bump the version in $headerPath before publishing again."
             }
           } else {
             $refJson = "$(Get-Content -Raw $stdoutFile.FullName)$(Get-Content -Raw $stderrFile.FullName)"
